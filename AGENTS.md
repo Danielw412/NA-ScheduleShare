@@ -2,9 +2,9 @@
 
 ## Project overview
 
-NA ClassMatch is a student schedule-sharing site built by the NA Computer and AI Club. Students create an A/B-day schedule, find classes and classmates, and discover other schedules only when the schedule owner’s privacy setting permits it. It is not an official school website.
+NA ScheduleShare is a student schedule-sharing site built by the NA Computer and AI Club. Students create an A/B-day schedule, find classes and classmates, and discover other schedules only when the schedule owner’s privacy setting permits it. It is not an official school website.
 
-The frontend is a React 19 + TypeScript + Vite single-page application. `src/App.tsx` defines the routes, `src/features/auth/AuthProvider.tsx` owns authentication/profile state, and a `HashRouter` in `src/main.tsx` makes nested routes reliable on GitHub Pages at `/NA-ClassMatch/`. `.github/workflows/deploy.yml` builds and deploys `dist`.
+The frontend is a React 19 + TypeScript + Vite single-page application. `src/App.tsx` defines the routes, `src/features/auth/AuthProvider.tsx` owns authentication/profile state, and a `HashRouter` in `src/main.tsx` makes nested routes reliable on GitHub Pages at `/NA-ScheduleShare/`. `.github/workflows/deploy.yml` builds and deploys `dist`.
 
 Supabase supplies Auth and PostgreSQL. Authorization, schedule privacy, suspension enforcement, admin permissions, immutable history, and audit behavior are enforced by PostgreSQL RLS and narrowly granted RPC functions in `supabase/migrations`; frontend route guards are not security boundaries.
 
@@ -35,7 +35,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `supabase/tests/database/` — pgTAP privacy and authorization integration tests.
 - `supabase/seed.sql` — local-only Auth users, profiles, classes, slots, and enrollments.
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.
-- `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ClassMatch/` base path.
+- `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ScheduleShare/` base path.
 - `public/na-club-logo.png` — replaceable temporary logo asset.
 - `docs/design/` — generated visual direction references used to validate desktop and mobile implementation.
 

@@ -1,4 +1,4 @@
-project_id = "na-classmatch"
+project_id = "na-scheduleshare"
 
 [api]
 enabled = true
@@ -41,11 +41,11 @@ enabled = false
 
 [auth]
 enabled = true
-site_url = "http://127.0.0.1:5173/NA-ClassMatch/"
+site_url = "http://127.0.0.1:5173/NA-ScheduleShare/"
 additional_redirect_urls = [
-  "http://localhost:5173/NA-ClassMatch/",
-  "http://127.0.0.1:5173/NA-ClassMatch/",
-  "https://danielw412.github.io/NA-ClassMatch/"
+  "http://localhost:5173/NA-ScheduleShare/",
+  "http://127.0.0.1:5173/NA-ScheduleShare/",
+  "https://danielw412.github.io/NA-ScheduleShare/"
 ]
 jwt_expiry = 900
 enable_refresh_token_rotation = true

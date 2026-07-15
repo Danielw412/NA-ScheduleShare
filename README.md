@@ -1,8 +1,8 @@
-# NA ClassMatch
+# NA ScheduleShare
 
-NA ClassMatch is a student schedule-sharing application built by the **NA Computer and AI Club**. It is not an official school website. Students build an A/B-day schedule, find shared classes, and discover schedules only when each schedule owner’s privacy choice permits it. Administrators can moderate accounts, reports, classes, duplicate merges, roles, history, and audit records.
+NA ScheduleShare is a student schedule-sharing application built by the **NA Computer and AI Club**. It is not an official school website. Students build an A/B-day schedule, find shared classes, and discover schedules only when each schedule owner’s privacy choice permits it. Administrators can moderate accounts, reports, classes, duplicate merges, roles, history, and audit records.
 
-The frontend is React 19 + TypeScript + Vite and uses a `HashRouter`, so nested routes work when hosted at `https://danielw412.github.io/NA-ClassMatch/`. Supabase provides Auth and PostgreSQL. Privacy and authorization are enforced in PostgreSQL with RLS and narrowly granted RPC functions; frontend checks are only presentation safeguards.
+The frontend is React 19 + TypeScript + Vite and uses a `HashRouter`, so nested routes work when hosted at `https://danielw412.github.io/NA-ScheduleShare/`. Supabase provides Auth and PostgreSQL. Privacy and authorization are enforced in PostgreSQL with RLS and narrowly granted RPC functions; frontend checks are only presentation safeguards.
 
 ## Features
 
@@ -54,11 +54,11 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your-local-public-key
 VITE_ENABLE_DEMO_MODE=false
 ```
 
-Open `http://127.0.0.1:5173/NA-ClassMatch/`. Local seed accounts all use `ClassMatch123!`:
+Open `http://127.0.0.1:5173/NA-ScheduleShare/`. Local seed accounts all use `ScheduleShare123!`:
 
-- `admin@classmatch.local`
-- `jordan@classmatch.local`
-- `alex@classmatch.local`
+- `admin@scheduleshare.local`
+- `jordan@scheduleshare.local`
+- `alex@scheduleshare.local`
 
 For UI-only work without Supabase, set `VITE_ENABLE_DEMO_MODE=true` and leave the two Supabase variables blank. Demo mode is intentionally disabled in `.env.example` and must not be enabled for production.
 
@@ -82,9 +82,9 @@ pnpm preview
 3. Link the repository: `pnpm exec supabase link --project-ref YOUR_PROJECT_REF`.
 4. Apply migrations: `pnpm db:push`.
 5. In Authentication > URL Configuration set:
-   - Site URL: `https://danielw412.github.io/NA-ClassMatch/`
-   - Redirect URL: `https://danielw412.github.io/NA-ClassMatch/`
-   - Also add `http://127.0.0.1:5173/NA-ClassMatch/` and `http://localhost:5173/NA-ClassMatch/` for development.
+   - Site URL: `https://danielw412.github.io/NA-ScheduleShare/`
+   - Redirect URL: `https://danielw412.github.io/NA-ScheduleShare/`
+   - Also add `http://127.0.0.1:5173/NA-ScheduleShare/` and `http://localhost:5173/NA-ScheduleShare/` for development.
 6. In Authentication > Email, keep email/password sign-up enabled. Enable email confirmation for production and configure an SMTP provider before launch.
 7. Set production password and Auth rate-limit policies to match or exceed the local settings in `supabase/config.toml`.
 

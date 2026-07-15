@@ -1,4 +1,4 @@
--- Local-only seed data. Password for every seeded account: ClassMatch123!
+-- Local-only seed data. Password for every seeded account: ScheduleShare123!
 begin;
 
 insert into auth.users (
@@ -6,16 +6,16 @@ insert into auth.users (
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
   confirmation_token, email_change, email_change_token_current, email_change_token_new, recovery_token
 ) values
-  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'admin@classmatch.local', extensions.crypt('ClassMatch123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Avery Admin"}', now(), now(), '', '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'jordan@classmatch.local', extensions.crypt('ClassMatch123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Jordan Smith"}', now(), now(), '', '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'alex@classmatch.local', extensions.crypt('ClassMatch123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Alex Morgan"}', now(), now(), '', '', '', '', '')
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'admin@scheduleshare.local', extensions.crypt('ScheduleShare123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Avery Admin"}', now(), now(), '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'jordan@scheduleshare.local', extensions.crypt('ScheduleShare123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Jordan Smith"}', now(), now(), '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'alex@scheduleshare.local', extensions.crypt('ScheduleShare123!', extensions.gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Alex Morgan"}', now(), now(), '', '', '', '', '')
 on conflict (id) do nothing;
 
 insert into auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
 values
-  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '{"sub":"10000000-0000-4000-8000-000000000001","email":"admin@classmatch.local"}', 'email', now(), now()),
-  ('10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', '{"sub":"10000000-0000-4000-8000-000000000002","email":"jordan@classmatch.local"}', 'email', now(), now()),
-  ('10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', '{"sub":"10000000-0000-4000-8000-000000000003","email":"alex@classmatch.local"}', 'email', now(), now())
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '{"sub":"10000000-0000-4000-8000-000000000001","email":"admin@scheduleshare.local"}', 'email', now(), now()),
+  ('10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', '{"sub":"10000000-0000-4000-8000-000000000002","email":"jordan@scheduleshare.local"}', 'email', now(), now()),
+  ('10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', '{"sub":"10000000-0000-4000-8000-000000000003","email":"alex@scheduleshare.local"}', 'email', now(), now())
 on conflict (provider_id, provider) do nothing;
 
 update public.profiles set grade = 12, privacy_setting = 'school', onboarding_completed = true where id = '10000000-0000-4000-8000-000000000001';

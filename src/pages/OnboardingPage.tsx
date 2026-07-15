@@ -53,7 +53,7 @@ export function OnboardingPage() {
           </div>
         </fieldset>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <button className="button button-primary button-block" disabled={busy || !grade}>{busy ? 'Saving…' : 'Continue to ClassMatch'}</button>
+        <button className="button button-primary button-block" disabled={busy || !grade}>{busy ? 'Saving…' : 'Continue to NA ScheduleShare'}</button>
       </form>
     </main>
   )

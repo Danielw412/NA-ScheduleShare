@@ -1,6 +1,6 @@
 import { BrandLogo } from './BrandLogo'
 
-export function LoadingScreen({ label = 'Loading ClassMatch…' }: { label?: string }) {
+export function LoadingScreen({ label = 'Loading NA ScheduleShare…' }: { label?: string }) {
   return (
     <main className="centered-state" aria-live="polite">
       <BrandLogo />
