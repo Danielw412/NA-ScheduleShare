@@ -2,12 +2,12 @@ begin;
 select plan(13);
 
 -- Test identities
-insert into auth.users (instance_id, id, aud, role, email, encrypted_password, confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token, recovery_token)
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_current, email_change_token_new, recovery_token)
 values
-  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'private@test.local', '', now(), '{}', '{"full_name":"Private Student"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'viewer@test.local', '', now(), '{}', '{"full_name":"Classmate Viewer"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'outsider@test.local', '', now(), '{}', '{"full_name":"Outside Student"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000004', 'authenticated', 'authenticated', 'admin@test.local', '', now(), '{}', '{"full_name":"Test Admin"}', now(), now(), '', '', '', '');
+  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'private@test.local', '', now(), '{}', '{"full_name":"Private Student"}', now(), now(), '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'viewer@test.local', '', now(), '{}', '{"full_name":"Classmate Viewer"}', now(), now(), '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'outsider@test.local', '', now(), '{}', '{"full_name":"Outside Student"}', now(), now(), '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', '90000000-0000-4000-8000-000000000004', 'authenticated', 'authenticated', 'admin@test.local', '', now(), '{}', '{"full_name":"Test Admin"}', now(), now(), '', '', '', '', '');
 
 update public.profiles set grade = 11, onboarding_completed = true, privacy_setting = 'private' where id = '90000000-0000-4000-8000-000000000001';
 update public.profiles set grade = 11, onboarding_completed = true, privacy_setting = 'school' where id in ('90000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000004');
