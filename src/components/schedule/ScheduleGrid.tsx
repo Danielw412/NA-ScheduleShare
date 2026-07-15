@@ -1,6 +1,6 @@
 import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
 import { termLabels, type AcademicTerm, type DayType, type ScheduleEnrollment } from '../../lib/domain'
-import { enrollmentAtSlot, findScheduleConflicts } from '../../lib/schedule'
+import { enrollmentAtSlot, findScheduleConflicts, PERIOD_NUMBERS } from '../../lib/schedule'
 
 interface ScheduleGridProps {
   enrollments: ScheduleEnrollment[]
@@ -26,7 +26,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
       <div className="schedule-grid" role="grid" aria-label={`${termLabels[selectedTerm]} A/B-day schedule`}>
         <div className="schedule-corner" role="columnheader" />
         {(['A', 'B'] as DayType[]).map((day) => <div className={`day-header day-${day.toLowerCase()}`} role="columnheader" key={day}>{day} Day</div>)}
-        {Array.from({ length: 8 }, (_, index) => index + 1).map((period) => (
+        {PERIOD_NUMBERS.map((period) => (
           <div className="schedule-row" role="row" key={period}>
             <div className="period-label" role="rowheader"><span>Period</span> {period}</div>
             {(['A', 'B'] as DayType[]).map((dayType) => {

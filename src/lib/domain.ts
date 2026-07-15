@@ -66,6 +66,38 @@ export interface StudentDirectoryResult {
   can_view_schedule: boolean
 }
 
+export interface ReportableUser {
+  student_id: string
+  full_name: string
+  grade: Grade
+}
+
+export interface AdminReportRecord {
+  report_id: string
+  reason_category: 'suspicious_user' | 'inappropriate_name' | 'incorrect_class_information' | 'duplicate_class' | 'other'
+  explanation: string | null
+  status: 'open' | 'in_review' | 'resolved' | 'dismissed'
+  reporter_id: string | null
+  reporter_name: string | null
+  reported_user_id: string | null
+  reported_user_name: string | null
+  reported_class_id: string | null
+  reported_class_name: string | null
+  assigned_admin_id: string | null
+  assigned_admin_name: string | null
+  resolution_notes: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface AdminClassRecord extends ClassDefinition {
+  status: 'active' | 'archived' | 'merged'
+  enrollment_count: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ClassMemberResult {
   student_id: string
   full_name: string

@@ -1,5 +1,7 @@
 import type {
   AcademicTerm,
+  AdminClassRecord,
+  AdminReportRecord,
   ClassDefinition,
   ClassmateResult,
   ClassMemberResult,
@@ -7,10 +9,12 @@ import type {
   DayType,
   HistoryRecord,
   MeetingSlot,
+  ReportableUser,
   ScheduleEnrollment,
   StudentDirectoryResult,
 } from '../domain'
 import { supabase } from './client'
+import type { Json } from './database.types'
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase is not configured.')
@@ -85,8 +89,8 @@ export async function searchClasses(input: ClassSearchInput, signal?: AbortSigna
   const client = requireClient()
   const request = client.rpc('search_classes', {
     p_query: input.query,
-    p_day_type: input.dayType ?? null,
-    p_period_number: input.period ?? null,
+    p_day_type: input.dayType,
+    p_period_number: input.period,
     p_limit: 20,
   })
   const { data, error } = await (signal ? request.abortSignal(signal) : request)
@@ -130,7 +134,7 @@ export async function createClassAndEnroll(input: {
     p_teacher_name: input.teacherName,
     p_academic_term: input.term,
     p_is_double_period: input.isDouble,
-    p_meeting_slots: input.meetingSlots,
+    p_meeting_slots: input.meetingSlots as unknown as Json,
     p_confirmed_no_match: input.confirmedNoMatch,
   })
   if (error) throw error
@@ -164,10 +168,10 @@ export async function updateEnrollmentTerm(enrollmentId: string, term: AcademicT
 export async function searchStudentDirectory(filters: { query?: string; grade?: number; className?: string; teacher?: string }): Promise<StudentDirectoryResult[]> {
   const client = requireClient()
   const { data, error } = await client.rpc('search_student_directory', {
-    p_query: filters.query || null,
-    p_grade: filters.grade || null,
-    p_class_name: filters.className || null,
-    p_teacher_name: filters.teacher || null,
+    p_query: filters.query || undefined,
+    p_grade: filters.grade || undefined,
+    p_class_name: filters.className || undefined,
+    p_teacher_name: filters.teacher || undefined,
   })
   if (error) throw error
   return data as unknown as StudentDirectoryResult[]
@@ -218,7 +222,7 @@ export async function getClassmates(): Promise<ClassmateResult[]> {
 }
 
 export async function submitReport(input: {
-  reason: string
+  reason: AdminReportRecord['reason_category']
   explanation?: string
   reportedUserId?: string
   reportedClassId?: string
@@ -226,24 +230,84 @@ export async function submitReport(input: {
   const client = requireClient()
   const { data, error } = await client.rpc('create_report', {
     p_reason_category: input.reason,
-    p_explanation: input.explanation || null,
-    p_reported_user_id: input.reportedUserId || null,
-    p_reported_class_id: input.reportedClassId || null,
+    p_explanation: input.explanation || undefined,
+    p_reported_user_id: input.reportedUserId || undefined,
+    p_reported_class_id: input.reportedClassId || undefined,
   })
   if (error) throw error
   return data as string
 }
 
+export async function searchReportableUsers(query = '', userId?: string): Promise<ReportableUser[]> {
+  const client = requireClient()
+  const { data, error } = await client.rpc('search_reportable_users', {
+    p_query: query,
+    p_user_id: userId,
+    p_limit: 20,
+  })
+  if (error) throw error
+  return data as unknown as ReportableUser[]
+}
+
 export async function adminListUsers(query = '', grade?: number, status?: string) {
   const client = requireClient()
-  const { data, error } = await client.rpc('admin_list_users', { p_query: query, p_grade: grade ?? null, p_status: status ?? null })
+  const { data, error } = await client.rpc('admin_list_users', { p_query: query, p_grade: grade, p_status: status })
   if (error) throw error
   return data as unknown as Array<Record<string, unknown>>
 }
 
+export async function adminListReports(): Promise<AdminReportRecord[]> {
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_list_reports')
+  if (error) throw error
+  return data as unknown as AdminReportRecord[]
+}
+
+export async function adminListClasses(): Promise<AdminClassRecord[]> {
+  const client = requireClient()
+  const { data, error } = await client.rpc('admin_list_classes')
+  if (error) throw error
+  return (data as unknown as Array<Record<string, unknown>>).map((row) => ({
+    id: row.class_id as string,
+    class_name: row.class_name as string,
+    teacher_name: row.teacher_name as string,
+    default_academic_term: row.default_academic_term as AcademicTerm,
+    is_double_period: Boolean(row.is_double_period),
+    meeting_slots: slotsFrom(row.meeting_slots),
+    status: row.status as AdminClassRecord['status'],
+    enrollment_count: Number(row.enrollment_count),
+    created_by: row.created_by as string | null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  }))
+}
+
+export async function adminUpdateClass(input: {
+  classId: string
+  className: string
+  teacherName: string
+  term: AcademicTerm
+  isDouble: boolean
+  meetingSlots: MeetingSlot[]
+  reason: string
+}): Promise<void> {
+  const client = requireClient()
+  const { error } = await client.rpc('admin_update_class', {
+    p_class_id: input.classId,
+    p_class_name: input.className,
+    p_teacher_name: input.teacherName,
+    p_academic_term: input.term,
+    p_is_double_period: input.isDouble,
+    p_meeting_slots: input.meetingSlots as unknown as Json,
+    p_reason: input.reason,
+  })
+  if (error) throw error
+}
+
 export async function callAdminAction(functionName: string, args: Record<string, unknown>): Promise<unknown> {
   const client = requireClient()
-  const { data, error } = await client.rpc(functionName, args)
+  const rpc = client.rpc as unknown as (name: string, parameters: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>
+  const { data, error } = await rpc(functionName, args)
   if (error) throw error
   return data
 }

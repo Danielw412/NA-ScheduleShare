@@ -6,6 +6,7 @@ import { useAuth } from '../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../hooks/useClassSearch'
 import { demoEnrollments } from '../lib/demo-data'
 import type { ClassMemberResult, ClassSearchResult, DayType } from '../lib/domain'
+import { PERIOD_NUMBERS } from '../lib/schedule'
 import { getClassMembers, searchClasses } from '../lib/supabase/data'
 
 const demoClasses: ClassSearchResult[] = demoEnrollments.map((enrollment, index) => ({ ...enrollment.class, score: 100 - index }))
@@ -50,13 +51,13 @@ export function ClassesPage() {
   return (
     <DiscoveryGate>
       <div className="classes-page">
-        <header className="page-heading"><div><h1>View Classes</h1><p>Search shared class records by name, teacher, day, or period.</p></div><Link className="button button-secondary" to="/report"><Flag size={17} /> Report class info</Link></header>
+        <header className="page-heading"><div><h1>View Classes</h1><p>Search shared class records by name, teacher, day, or period.</p></div><Link className="button button-secondary" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
         <div className="class-browser">
           <section className="class-list-panel">
             <div className="search-toolbar">
               <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Class or teacher" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
               <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
-              <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{Array.from({ length: 8 }, (_, index) => <option value={index + 1} key={index + 1}>Period {index + 1}</option>)}</select></label>
+              <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
             </div>
             {searchError ? <p className="form-error" role="alert">{searchError}</p> : null}
             {memberError ? <p className="form-error" role="alert">{memberError}</p> : null}

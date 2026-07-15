@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ScheduleEnrollment } from './domain'
-import { findScheduleConflicts, suggestedDoubleSlots, termIncludes, termsOverlap } from './schedule'
+import { buildMeetingSlots, findScheduleConflicts, suggestedDoubleSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
 
 function enrollment(id: string, term: ScheduleEnrollment['academic_term'], period: number): ScheduleEnrollment {
   return {
@@ -52,11 +52,37 @@ describe('double-period suggestions', () => {
     ])
   })
 
-  it('keeps a period-eight selection in range', () => {
-    expect(suggestedDoubleSlots({ day_type: 'A', period_number: 8 })).toEqual([
-      { day_type: 'A', period_number: 7 },
+  it('keeps a period-nine selection in range', () => {
+    expect(suggestedDoubleSlots({ day_type: 'A', period_number: 9 })).toEqual([
       { day_type: 'A', period_number: 8 },
+      { day_type: 'A', period_number: 9 },
     ])
   })
-})
 
+  it('defaults a normal class to the selected period on both A and B days', () => {
+    expect(buildMeetingSlots('both', 9, false)).toEqual([
+      { day_type: 'A', period_number: 9 },
+      { day_type: 'B', period_number: 9 },
+    ])
+  })
+
+  it('builds consecutive double-period slots for every selected meeting day', () => {
+    expect(buildMeetingSlots('both', 4, true)).toEqual([
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'A', period_number: 5 },
+      { day_type: 'B', period_number: 4 },
+      { day_type: 'B', period_number: 5 },
+    ])
+  })
+
+  it('rejects invalid single and double-period meeting-slot combinations', () => {
+    expect(validateMeetingSlots([
+      { day_type: 'A', period_number: 2 },
+      { day_type: 'A', period_number: 3 },
+    ], false)).toContain('one A-day period')
+    expect(validateMeetingSlots([
+      { day_type: 'B', period_number: 2 },
+      { day_type: 'B', period_number: 4 },
+    ], true)).toContain('two consecutive B-day periods')
+  })
+})

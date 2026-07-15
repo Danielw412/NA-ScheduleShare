@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(true)
-    const { data: accountData, error: accountError } = await supabase.rpc('get_my_account_state', {})
+    const { data: accountData, error: accountError } = await supabase.rpc('get_my_account_state')
     if (accountError) {
       setLoading(false)
       throw accountError
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const [profileResult, adminResult] = await Promise.all([
       supabase.from('profiles').select('id, full_name, grade, privacy_setting, onboarding_completed, created_at, updated_at').eq('id', nextUser.id).single(),
-      supabase.rpc('is_current_user_admin', {}),
+      supabase.rpc('is_current_user_admin'),
     ])
     if (profileResult.error) throw profileResult.error
     setProfile(toProfile(profileResult.data as unknown as Record<string, unknown>))

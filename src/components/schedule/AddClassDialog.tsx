@@ -2,8 +2,8 @@ import { AlertTriangle, Filter, Plus, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
-import type { AcademicTerm, ClassDefinition, ClassSearchResult, DayType, MeetingSlot, ScheduleEnrollment } from '../../lib/domain'
-import { suggestedDoubleSlots } from '../../lib/schedule'
+import type { AcademicTerm, ClassDefinition, ClassSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
+import { buildMeetingSlots, PERIOD_NUMBERS, validateMeetingSlots, type MeetingDaySelection } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
 
 interface AddClassDialogProps {
@@ -53,7 +53,8 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const [className, setClassName] = useState('')
   const [teacherName, setTeacherName] = useState('')
   const [isDouble, setIsDouble] = useState(false)
-  const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>([{ day_type: dayType, period_number: period }])
+  const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>('both')
+  const [meetingPeriod, setMeetingPeriod] = useState(period)
   const [confirmedNoMatch, setConfirmedNoMatch] = useState(false)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoResults
@@ -79,7 +80,8 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
     setClassName('')
     setTeacherName('')
     setIsDouble(false)
-    setMeetingSlots([{ day_type: dayType, period_number: period }])
+    setMeetingDays('both')
+    setMeetingPeriod(period)
     setConfirmedNoMatch(false)
   }, [dayType, open, period, replacing?.academic_term])
 
@@ -87,23 +89,14 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
     setSelected((current) => current && results.some((item) => item.id === current.id) ? current : null)
   }, [results])
 
-  useEffect(() => {
-    if (isDouble) setMeetingSlots(suggestedDoubleSlots({ day_type: dayType, period_number: period }))
-    else setMeetingSlots([{ day_type: dayType, period_number: period }])
-  }, [dayType, isDouble, period])
-
   const context = `${dayType} Day · Period ${period}`
-  const canCreate = className.trim().length >= 2 && teacherName.trim().length >= 2 && confirmedNoMatch && (!isDouble || meetingSlots.length >= 2)
+  const meetingSlots = buildMeetingSlots(meetingDays, meetingPeriod, isDouble)
+  const meetingSlotError = validateMeetingSlots(meetingSlots, isDouble)
+  const canCreate = className.trim().length >= 2 && teacherName.trim().length >= 2 && confirmedNoMatch && !meetingSlotError
   const likelyDuplicates = useMemo(() => results.filter((result) => {
     const normalized = `${result.class_name} ${result.teacher_name}`.toLowerCase()
     return className && normalized.includes(className.trim().toLowerCase())
   }).slice(0, 3), [className, results])
-
-  function toggleSlot(slot: MeetingSlot) {
-    setMeetingSlots((current) => current.some((item) => item.day_type === slot.day_type && item.period_number === slot.period_number)
-      ? current.filter((item) => item.day_type !== slot.day_type || item.period_number !== slot.period_number)
-      : [...current, slot].sort((a, b) => a.day_type.localeCompare(b.day_type) || a.period_number - b.period_number))
-  }
 
   async function confirmSelection() {
     if (!selected) return
@@ -183,8 +176,10 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
           <form className="create-class-form" onSubmit={(event) => void createClass(event)}>
             <div className="two-field-row"><label>Class name<input required maxLength={120} value={className} onChange={(event) => { setClassName(event.target.value); setConfirmedNoMatch(false) }} /></label><label>Teacher<input required maxLength={120} value={teacherName} onChange={(event) => { setTeacherName(event.target.value); setConfirmedNoMatch(false) }} /></label></div>
             <label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label>
-            <label className="checkbox-row"><input type="checkbox" checked={isDouble} onChange={(event) => setIsDouble(event.target.checked)} /><span><strong>Double-period class</strong><small>Confirm every consecutive meeting slot below.</small></span></label>
-            {isDouble ? <fieldset className="slot-picker"><legend>Meeting slots</legend>{(['A', 'B'] as DayType[]).map((day) => <div key={day}><strong>{day} Day</strong>{Array.from({ length: 8 }, (_, index) => index + 1).map((value) => <label key={value}><input type="checkbox" checked={meetingSlots.some((slot) => slot.day_type === day && slot.period_number === value)} onChange={() => toggleSlot({ day_type: day, period_number: value })} />P{value}</label>)}</div>)}</fieldset> : <p className="inferred-slot">Meeting slot: <strong>{context}</strong></p>}
+            <div className="two-field-row"><label>Meeting days<select value={meetingDays} onChange={(event) => setMeetingDays(event.target.value as MeetingDaySelection)}><option value="both">Both A and B days</option><option value="A">A day only</option><option value="B">B day only</option></select></label><label>{isDouble ? 'Primary period' : 'Period'}<select value={meetingPeriod} onChange={(event) => setMeetingPeriod(Number(event.target.value))}>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label></div>
+            <label className="checkbox-row"><input type="checkbox" checked={isDouble} onChange={(event) => setIsDouble(event.target.checked)} /><span><strong>Double-period class</strong><small>Uses two consecutive periods on each selected meeting day.</small></span></label>
+            <p className="inferred-slot">Meeting slots: <strong>{meetingSlots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')}</strong></p>
+            {meetingSlotError ? <p className="form-error" role="alert">{meetingSlotError}</p> : null}
             {likelyDuplicates.length ? <div className="duplicate-warning"><strong>Possible matches already exist</strong>{likelyDuplicates.map((result) => <button type="button" key={result.id} onClick={() => { setMode('search'); setSelected(result) }}>{result.class_name} · {result.teacher_name}</button>)}</div> : null}
             <label className="checkbox-row confirmation"><input type="checkbox" checked={confirmedNoMatch} onChange={(event) => setConfirmedNoMatch(event.target.checked)} /><span>I checked the suggestions and none is the correct class.</span></label>
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
