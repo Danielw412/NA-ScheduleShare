@@ -1,6 +1,7 @@
 import { AlertTriangle, Filter, Plus, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAuth } from '../../features/auth/AuthProvider'
+import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
 import type { AcademicTerm, ClassDefinition, ClassSearchResult, DayType, MeetingSlot, ScheduleEnrollment } from '../../lib/domain'
 import { suggestedDoubleSlots } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
@@ -43,11 +44,9 @@ function normalizedDisplay(value: string) {
 export function AddClassDialog({ open, dayType, period, replacing, onClose, onChanged, onDemoAdd }: AddClassDialogProps) {
   const { isDemo } = useAuth()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<ClassSearchResult[]>([])
   const [selected, setSelected] = useState<ClassSearchResult | null>(null)
   const [term, setTerm] = useState<AcademicTerm>('full_year')
   const [mode, setMode] = useState<'search' | 'create'>('search')
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [allowConflict, setAllowConflict] = useState(false)
@@ -56,6 +55,18 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const [isDouble, setIsDouble] = useState(false)
   const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>([{ day_type: dayType, period_number: period }])
   const [confirmedNoMatch, setConfirmedNoMatch] = useState(false)
+  const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
+    ? async (input) => demoResults
+        .filter((result) => `${result.class_name} ${result.teacher_name}`.toLowerCase().includes(input.query.toLowerCase()))
+        .map((result) => ({
+          ...result,
+          meeting_slots: input.dayType && input.period ? [{ day_type: input.dayType, period_number: input.period }] : result.meeting_slots,
+        }))
+    : searchClasses, [isDemo])
+  const { error: searchError, loading, results } = useClassSearch(
+    { query, dayType, period },
+    { enabled: open && mode === 'search', search: executeSearch },
+  )
 
   useEffect(() => {
     if (!open) return
@@ -73,21 +84,8 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   }, [dayType, open, period, replacing?.academic_term])
 
   useEffect(() => {
-    if (!open || mode !== 'search') return
-    const timer = window.setTimeout(() => {
-      setLoading(true)
-      const request = isDemo
-        ? Promise.resolve(demoResults
-            .filter((result) => `${result.class_name} ${result.teacher_name}`.toLowerCase().includes(query.toLowerCase()))
-            .map((result) => ({ ...result, meeting_slots: [{ day_type: dayType, period_number: period }] })))
-        : searchClasses({ query, dayType, period })
-      void request.then((data) => {
-        setResults(data)
-        setSelected((current) => current && data.some((item) => item.id === current.id) ? current : null)
-      }).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Search failed.')).finally(() => setLoading(false))
-    }, 220)
-    return () => window.clearTimeout(timer)
-  }, [dayType, isDemo, mode, open, period, query])
+    setSelected((current) => current && results.some((item) => item.id === current.id) ? current : null)
+  }, [results])
 
   useEffect(() => {
     if (isDouble) setMeetingSlots(suggestedDoubleSlots({ day_type: dayType, period_number: period }))
@@ -169,7 +167,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
               <button className="button button-secondary" type="button"><Filter size={18} aria-hidden="true" /> Filters</button>
             </div>
             <div className="search-results" aria-live="polite">
-              {loading ? <p className="muted">Searching…</p> : results.length === 0 ? <p className="empty-inline">No classes match this cell and search.</p> : results.map((result) => (
+              {loading ? <p className="muted">Searching…</p> : searchError ? null : results.length === 0 ? <p className="empty-inline">No classes match this cell and search.</p> : results.map((result) => (
                 <label className={selected?.id === result.id ? 'class-result is-selected' : 'class-result'} key={result.id}>
                   <input type="radio" name="class-result" checked={selected?.id === result.id} onChange={() => { setSelected(result); setTerm(result.default_academic_term) }} />
                   <span><strong>{result.class_name}</strong><small>{result.teacher_name}</small><em>{result.meeting_slots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
@@ -178,7 +176,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
             </div>
             <div className="term-field"><label>Enrollment term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label></div>
             <div className="cant-find"><span>Can’t find the right class?</span><button className="button button-secondary" type="button" onClick={() => setMode('create')}><Plus aria-hidden="true" /> Create a new class</button></div>
-            {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
+            {searchError || error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{searchError ?? error}</span></div> : null}
             <button className="button button-primary button-block dialog-primary" type="button" disabled={!selected || saving} onClick={() => void confirmSelection()}>{saving ? 'Saving…' : allowConflict ? 'Confirm and add anyway' : replacing ? 'Replace class' : 'Add class'}</button>
           </>
         ) : (

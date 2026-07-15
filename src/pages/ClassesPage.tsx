@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { DiscoveryGate } from '../components/auth/DiscoveryGate'
 import { useAuth } from '../features/auth/AuthProvider'
+import { useClassSearch, type ClassSearchExecutor } from '../hooks/useClassSearch'
 import { demoEnrollments } from '../lib/demo-data'
 import type { ClassMemberResult, ClassSearchResult, DayType } from '../lib/domain'
 import { getClassMembers, searchClasses } from '../lib/supabase/data'
@@ -15,27 +16,23 @@ export function ClassesPage() {
   const [query, setQuery] = useState('')
   const [dayType, setDayType] = useState<DayType | ''>('')
   const [period, setPeriod] = useState<number | ''>('')
-  const [results, setResults] = useState<ClassSearchResult[]>([])
   const [members, setMembers] = useState<ClassMemberResult[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [memberError, setMemberError] = useState<string | null>(null)
+  const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
+    ? async (input) => demoClasses.filter((item) => {
+        const matchesQuery = `${item.class_name} ${item.teacher_name}`.toLowerCase().includes(input.query.toLowerCase())
+        const matchesDay = !input.dayType || item.meeting_slots.some((slot) => slot.day_type === input.dayType)
+        const matchesPeriod = !input.period || item.meeting_slots.some((slot) => slot.period_number === input.period)
+        const matchesCell = !input.dayType || !input.period || item.meeting_slots.some((slot) => slot.day_type === input.dayType && slot.period_number === input.period)
+        return matchesQuery && matchesDay && matchesPeriod && matchesCell
+      })
+    : searchClasses, [isDemo])
+  const { error: searchError, loading, results } = useClassSearch({
+    query,
+    dayType: dayType || undefined,
+    period: period || undefined,
+  }, { search: executeSearch })
   const selected = useMemo(() => results.find((result) => result.id === classId) ?? demoClasses.find((result) => result.id === classId), [classId, results])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setLoading(true)
-      const request = isDemo
-        ? Promise.resolve(demoClasses.filter((item) => {
-            const matchesQuery = `${item.class_name} ${item.teacher_name}`.toLowerCase().includes(query.toLowerCase())
-            const matchesDay = !dayType || item.meeting_slots.some((slot) => slot.day_type === dayType)
-            const matchesPeriod = !period || item.meeting_slots.some((slot) => slot.period_number === period)
-            return matchesQuery && matchesDay && matchesPeriod
-          }))
-        : searchClasses({ query, dayType: dayType || undefined, period: period || undefined })
-      void request.then(setResults).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Search failed.')).finally(() => setLoading(false))
-    }, 220)
-    return () => window.clearTimeout(timer)
-  }, [dayType, isDemo, period, query])
 
   useEffect(() => {
     if (!classId) return
@@ -46,7 +43,8 @@ export function ClassesPage() {
       ])
       return
     }
-    void getClassMembers(classId).then(setMembers).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Could not load class members.'))
+    setMemberError(null)
+    void getClassMembers(classId).then(setMembers).catch((caught: unknown) => setMemberError(caught instanceof Error ? caught.message : 'Could not load class members.'))
   }, [classId, isDemo])
 
   return (
@@ -60,7 +58,8 @@ export function ClassesPage() {
               <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
               <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{Array.from({ length: 8 }, (_, index) => <option value={index + 1} key={index + 1}>Period {index + 1}</option>)}</select></label>
             </div>
-            {error ? <p className="form-error" role="alert">{error}</p> : null}
+            {searchError ? <p className="form-error" role="alert">{searchError}</p> : null}
+            {memberError ? <p className="form-error" role="alert">{memberError}</p> : null}
             <div className="class-list" aria-live="polite">
               {loading ? <p className="muted">Searching…</p> : results.map((result) => (
                 <Link className={classId === result.id ? 'class-list-row is-active' : 'class-list-row'} to={`/classes/${result.id}`} key={result.id}>
@@ -68,7 +67,7 @@ export function ClassesPage() {
                   <div>{result.meeting_slots.map((slot) => <small key={`${slot.day_type}-${slot.period_number}`}>{slot.day_type} · P{slot.period_number}</small>)}</div>
                 </Link>
               ))}
-              {!loading && results.length === 0 ? <p className="empty-inline">No matching classes.</p> : null}
+              {!loading && !searchError && results.length === 0 ? <p className="empty-inline">No matching classes.</p> : null}
             </div>
           </section>
           <section className="class-detail-panel">

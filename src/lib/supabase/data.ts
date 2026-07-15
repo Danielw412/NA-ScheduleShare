@@ -25,6 +25,19 @@ function slotsFrom(value: unknown): MeetingSlot[] {
   })
 }
 
+export interface ClassSearchInput {
+  query: string
+  dayType?: DayType
+  period?: number
+}
+
+function safeClassSearchError(error: { code?: string; message?: string }) {
+  if (error.code === 'PGRST301' || error.message?.toLowerCase().includes('jwt')) {
+    return 'Your session could not be verified. Refresh the page and sign in again.'
+  }
+  return 'Class search is temporarily unavailable. Please try again.'
+}
+
 export async function fetchSchedule(studentId: string): Promise<ScheduleEnrollment[]> {
   const client = requireClient()
   const { data, error } = await client
@@ -68,15 +81,19 @@ export async function fetchHistory(studentId: string, limit = 10): Promise<Histo
   return data as unknown as HistoryRecord[]
 }
 
-export async function searchClasses(input: { query: string; dayType?: DayType; period?: number }): Promise<ClassSearchResult[]> {
+export async function searchClasses(input: ClassSearchInput, signal?: AbortSignal): Promise<ClassSearchResult[]> {
   const client = requireClient()
-  const { data, error } = await client.rpc('search_classes', {
+  const request = client.rpc('search_classes', {
     p_query: input.query,
     p_day_type: input.dayType ?? null,
     p_period_number: input.period ?? null,
     p_limit: 20,
   })
-  if (error) throw error
+  const { data, error } = await (signal ? request.abortSignal(signal) : request)
+  if (error) {
+    if (import.meta.env.DEV) console.error('Class search failed.', { error, input })
+    throw new Error(safeClassSearchError(error))
+  }
   return (data as unknown as Array<Record<string, unknown>>).map((row) => ({
     id: row.class_id as string,
     class_name: row.class_name as string,

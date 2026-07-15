@@ -20,7 +20,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 
 - `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, privacy, reporting, and the six-section admin page.
 - `src/components/` — reusable UI. `auth/` has route/discovery/suspension guards, `layout/` has the shell/navigation/footer, `schedule/` has the grid/add flow/term controls/utility rail, and `ui/` has shared brand/loading components.
-- `src/hooks/useSchedule.ts` — schedule loading and student schedule mutations.
+- `src/hooks/useSchedule.ts` and `src/hooks/useClassSearch.ts` — schedule loading/mutations and shared debounced class-search state.
 - `src/lib/supabase/client.ts` — browser Supabase client; only public URL/publishable-key variables belong here.
 - `src/lib/supabase/data.ts` — typed frontend queries and RPC calls.
 - `src/lib/supabase/database.types.ts` — generated-compatible TypeScript database types. Regenerate after schema changes.
