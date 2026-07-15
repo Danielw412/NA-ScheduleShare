@@ -35,6 +35,16 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 const activeAccount: AccountState = { suspended: false, suspension_reason: null, deleted: false }
 
+function onboardingErrorMessage(code: string | undefined): string {
+  if (code === '42501') {
+    return 'Your profile could not be saved because this account is not allowed to make that change. Please sign in again or contact an administrator.'
+  }
+  if (code === '23514' || code === '22001' || code === '22P02') {
+    return 'Please check that your name, grade, and privacy setting are valid.'
+  }
+  return 'We could not save your profile right now. Please try again.'
+}
+
 function toProfile(row: Record<string, unknown>): Profile {
   return {
     id: row.id as string,
@@ -160,7 +170,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('profiles')
       .update({ full_name: input.fullName, grade: input.grade, privacy_setting: input.privacySetting, onboarding_completed: true })
       .eq('id', user.id)
-    if (error) throw error
+    if (error) {
+      if (import.meta.env.DEV) console.error('Could not complete onboarding.', error)
+      throw new Error(onboardingErrorMessage(error.code))
+    }
     await hydrateUser(user)
   }, [hydrateUser, isDemo, user])
 
