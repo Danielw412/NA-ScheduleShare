@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+dist/
+.env
+.env.local
+.env.*.local
+.supabase/
+supabase/.temp/
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+Thumbs.db
