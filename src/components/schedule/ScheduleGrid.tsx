@@ -27,17 +27,17 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
         <div className="schedule-corner" role="columnheader" />
         {(['A', 'B'] as DayType[]).map((day) => <div className={`day-header day-${day.toLowerCase()}`} role="columnheader" key={day}>{day} Day</div>)}
         {PERIOD_NUMBERS.map((period) => (
-          <div className="schedule-row" role="row" key={period}>
-            <div className="period-label" role="rowheader"><span>Period</span> {period}</div>
+          <div className="schedule-row" role="row" data-period={period} key={period}>
+            <div className="period-label" role="rowheader" data-period={period}><span>Period</span> {period}</div>
             {(['A', 'B'] as DayType[]).map((dayType) => {
               const enrollment = enrollmentAtSlot(enrollments, dayType, period, selectedTerm)
               if (!enrollment) {
                 return readOnly ? (
-                  <div className="schedule-cell empty-cell readonly-cell" role="gridcell" key={dayType}>
+                  <div className="schedule-cell empty-cell readonly-cell" role="gridcell" data-day={dayType} data-period={period} key={dayType}>
                     <span>Open</span>
                   </div>
                 ) : (
-                  <button className="schedule-cell empty-cell" role="gridcell" type="button" key={dayType} onClick={() => onAdd(dayType, period)}>
+                  <button className="schedule-cell empty-cell" role="gridcell" data-day={dayType} data-period={period} type="button" key={dayType} onClick={() => onAdd(dayType, period)}>
                     <Plus size={19} aria-hidden="true" /> Add class
                   </button>
                 )
@@ -45,15 +45,15 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
               const continuation = isContinuation(enrollment, dayType, period)
               const conflicted = conflictedIds.has(enrollment.id)
               return (
-                <div className={`schedule-cell filled-cell ${enrollment.class.is_double_period ? 'is-double' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" key={dayType}>
+                <div className={`schedule-cell filled-cell ${enrollment.class.is_double_period ? 'is-double' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
                   {conflicted ? <AlertTriangle className="conflict-icon" size={18} aria-label="Schedule conflict" /> : null}
                   <div className="class-cell-copy">
-                    <strong>{continuation ? `${enrollment.class.class_name} — continues` : enrollment.class.class_name}</strong>
-                    <span>{continuation ? 'Double period' : enrollment.class.teacher_name}</span>
+                    <strong>{continuation ? `${enrollment.class.course_name} — continues` : enrollment.class.course_name}</strong>
+                    <span>{continuation ? 'Double period' : enrollment.class.teacher_last_name}</span>
                     {enrollment.class.is_double_period && !continuation ? <small>{dayType} Day · {enrollment.class.meeting_slots.filter((slot) => slot.day_type === dayType).map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
                   </div>
                   {!readOnly ? <details className="cell-menu">
-                    <summary aria-label={`Actions for ${enrollment.class.class_name}`}><MoreVertical size={18} aria-hidden="true" /></summary>
+                    <summary aria-label={`Actions for ${enrollment.class.course_name}`}><MoreVertical size={18} aria-hidden="true" /></summary>
                     <div className="cell-menu-popover">
                       <label>Academic term
                         <select value={enrollment.academic_term} onChange={(event) => onTermChange(enrollment, event.target.value as AcademicTerm)}>

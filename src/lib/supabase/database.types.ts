@@ -157,47 +157,92 @@ export type Database = {
       }
       classes: {
         Row: {
-          class_name: string
+          course_name_id: string
           created_at: string
           created_by: string | null
           default_academic_term: Database["public"]["Enums"]["academic_term"]
           id: string
           is_double_period: boolean
-          normalized_class_name: string
-          normalized_teacher_name: string
+          normalized_teacher_last_name: string
           status: Database["public"]["Enums"]["class_status"]
-          teacher_name: string
+          teacher_last_name: string
           updated_at: string
         }
         Insert: {
-          class_name: string
+          course_name_id: string
           created_at?: string
           created_by?: string | null
           default_academic_term?: Database["public"]["Enums"]["academic_term"]
           id?: string
           is_double_period?: boolean
-          normalized_class_name: string
-          normalized_teacher_name: string
+          normalized_teacher_last_name: string
           status?: Database["public"]["Enums"]["class_status"]
-          teacher_name: string
+          teacher_last_name: string
           updated_at?: string
         }
         Update: {
-          class_name?: string
+          course_name_id?: string
           created_at?: string
           created_by?: string | null
           default_academic_term?: Database["public"]["Enums"]["academic_term"]
           id?: string
           is_double_period?: boolean
-          normalized_class_name?: string
-          normalized_teacher_name?: string
+          normalized_teacher_last_name?: string
           status?: Database["public"]["Enums"]["class_status"]
-          teacher_name?: string
+          teacher_last_name?: string
           updated_at?: string
         }
         Relationships: [
           {
+            foreignKeyName: "classes_course_name_id_fkey"
+            columns: ["course_name_id"]
+            isOneToOne: false
+            referencedRelation: "course_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "classes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_names: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          normalized_name: string
+          source: string
+          status: Database["public"]["Enums"]["course_name_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          normalized_name: string
+          source?: string
+          status?: Database["public"]["Enums"]["course_name_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          normalized_name?: string
+          source?: string
+          status?: Database["public"]["Enums"]["course_name_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_names_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -246,6 +291,7 @@ export type Database = {
           id: string
           reason_category: Database["public"]["Enums"]["report_reason"]
           reported_class_id: string | null
+          reported_course_name_snapshot: string | null
           reported_user_id: string | null
           reporter_id: string | null
           resolution_notes: string | null
@@ -259,6 +305,7 @@ export type Database = {
           id?: string
           reason_category: Database["public"]["Enums"]["report_reason"]
           reported_class_id?: string | null
+          reported_course_name_snapshot?: string | null
           reported_user_id?: string | null
           reporter_id?: string | null
           resolution_notes?: string | null
@@ -272,6 +319,7 @@ export type Database = {
           id?: string
           reason_category?: Database["public"]["Enums"]["report_reason"]
           reported_class_id?: string | null
+          reported_course_name_snapshot?: string | null
           reported_user_id?: string | null
           reporter_id?: string | null
           resolution_notes?: string | null
@@ -363,6 +411,14 @@ export type Database = {
         Args: { p_class_id: string; p_reason: string }
         Returns: undefined
       }
+      admin_create_course_name: {
+        Args: { p_name: string; p_reason: string }
+        Returns: string
+      }
+      admin_delete_class_section: {
+        Args: { p_class_id: string; p_reason: string }
+        Returns: undefined
+      }
       admin_delete_user: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
@@ -370,16 +426,32 @@ export type Database = {
       admin_list_classes: {
         Args: never
         Returns: {
+          active_enrollment_count: number
           class_id: string
-          class_name: string
+          course_name: string
+          course_name_id: string
           created_at: string
           created_by: string
           default_academic_term: Database["public"]["Enums"]["academic_term"]
-          enrollment_count: number
           is_double_period: boolean
           meeting_slots: Json
+          report_count: number
           status: Database["public"]["Enums"]["class_status"]
-          teacher_name: string
+          teacher_last_name: string
+          total_enrollment_count: number
+          updated_at: string
+        }[]
+      }
+      admin_list_course_names: {
+        Args: never
+        Returns: {
+          active_section_count: number
+          course_name: string
+          course_name_id: string
+          created_at: string
+          section_count: number
+          source: string
+          status: Database["public"]["Enums"]["course_name_status"]
           updated_at: string
         }[]
       }
@@ -393,7 +465,7 @@ export type Database = {
           reason_category: Database["public"]["Enums"]["report_reason"]
           report_id: string
           reported_class_id: string
-          reported_class_name: string
+          reported_course_name: string
           reported_user_id: string
           reported_user_name: string
           reporter_id: string
@@ -423,12 +495,24 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_merge_course_names: {
+        Args: {
+          p_canonical_course_name_id: string
+          p_duplicate_course_name_id: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
       admin_promote_user: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
       }
       admin_remove_user_role: {
         Args: { p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_rename_course_name: {
+        Args: { p_course_name_id: string; p_name: string; p_reason: string }
         Returns: undefined
       }
       admin_resolve_report: {
@@ -441,6 +525,10 @@ export type Database = {
       }
       admin_restore_user: {
         Args: { p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_course_name_enabled: {
+        Args: { p_course_name_id: string; p_enabled: boolean; p_reason: string }
         Returns: undefined
       }
       admin_set_enrollment: {
@@ -462,11 +550,11 @@ export type Database = {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
           p_class_id: string
-          p_class_name: string
+          p_course_name_id: string
           p_is_double_period: boolean
           p_meeting_slots: Json
           p_reason: string
-          p_teacher_name: string
+          p_teacher_last_name: string
         }
         Returns: undefined
       }
@@ -483,11 +571,12 @@ export type Database = {
       create_class_and_enroll: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
-          p_class_name: string
-          p_confirmed_no_match: boolean
+          p_confirmed_no_course_match: boolean
+          p_course_name_id: string
           p_is_double_period: boolean
           p_meeting_slots: Json
-          p_teacher_name: string
+          p_new_course_name: string
+          p_teacher_last_name: string
         }
         Returns: string
       }
@@ -525,7 +614,7 @@ export type Database = {
           full_name: string
           grade: number
           privacy_setting: Database["public"]["Enums"]["privacy_setting"]
-          shared_class_names: Json
+          shared_course_names: Json
           student_id: string
         }[]
       }
@@ -542,12 +631,13 @@ export type Database = {
         Returns: {
           academic_term: Database["public"]["Enums"]["academic_term"]
           class_id: string
-          class_name: string
+          course_name: string
+          course_name_id: string
           created_at: string
           enrollment_id: string
           is_double_period: boolean
           meeting_slots: Json
-          teacher_name: string
+          teacher_last_name: string
         }[]
       }
       is_current_user_admin: { Args: never; Returns: boolean }
@@ -573,12 +663,21 @@ export type Database = {
         }
         Returns: {
           class_id: string
-          class_name: string
+          course_name: string
+          course_name_id: string
           default_academic_term: Database["public"]["Enums"]["academic_term"]
           is_double_period: boolean
           meeting_slots: Json
           score: number
-          teacher_name: string
+          teacher_last_name: string
+        }[]
+      }
+      search_course_names: {
+        Args: { p_limit?: number; p_query?: string }
+        Returns: {
+          course_name: string
+          course_name_id: string
+          score: number
         }[]
       }
       search_reportable_users: {
@@ -591,10 +690,10 @@ export type Database = {
       }
       search_student_directory: {
         Args: {
-          p_class_name?: string
+          p_course_name?: string
           p_grade?: number
           p_query?: string
-          p_teacher_name?: string
+          p_teacher_last_name?: string
         }
         Returns: {
           can_view_schedule: boolean
@@ -616,6 +715,7 @@ export type Database = {
     Enums: {
       academic_term: "full_year" | "semester_1" | "semester_2"
       class_status: "active" | "archived" | "merged"
+      course_name_status: "active" | "disabled" | "merged"
       day_type: "A" | "B"
       privacy_setting: "private" | "classmates" | "school"
       report_reason:
@@ -764,6 +864,7 @@ export const Constants = {
     Enums: {
       academic_term: ["full_year", "semester_1", "semester_2"],
       class_status: ["active", "archived", "merged"],
+      course_name_status: ["active", "disabled", "merged"],
       day_type: ["A", "B"],
       privacy_setting: ["private", "classmates", "school"],
       report_reason: [

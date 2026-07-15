@@ -16,8 +16,8 @@ export function StudentsPage() {
   const { isDemo } = useAuth()
   const [query, setQuery] = useState('')
   const [grade, setGrade] = useState<number | ''>('')
-  const [className, setClassName] = useState('')
-  const [teacher, setTeacher] = useState('')
+  const [courseName, setCourseName] = useState('')
+  const [teacherLastName, setTeacherLastName] = useState('')
   const [students, setStudents] = useState<StudentDirectoryResult[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -25,11 +25,11 @@ export function StudentsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setLoading(true)
-      const request = isDemo ? Promise.resolve(demoStudents.filter((student) => (!query || student.full_name.toLowerCase().includes(query.toLowerCase())) && (!grade || student.grade === grade))) : searchStudentDirectory({ query, grade: grade || undefined, className, teacher })
+      const request = isDemo ? Promise.resolve(demoStudents.filter((student) => (!query || student.full_name.toLowerCase().includes(query.toLowerCase())) && (!grade || student.grade === grade))) : searchStudentDirectory({ query, grade: grade || undefined, courseName, teacherLastName })
       void request.then(setStudents).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Directory search failed.')).finally(() => setLoading(false))
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [className, grade, isDemo, query, teacher])
+  }, [courseName, grade, isDemo, query, teacherLastName])
 
   return (
     <DiscoveryGate>
@@ -38,8 +38,8 @@ export function StudentsPage() {
         <section className="directory-filters">
           <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Student name</span><input placeholder="Student name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
           <label><span>Grade</span><select value={grade} onChange={(event) => setGrade(event.target.value ? Number(event.target.value) : '')}><option value="">All</option>{[9, 10, 11, 12].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <label><span>Class</span><input placeholder="Any class" value={className} onChange={(event) => setClassName(event.target.value)} /></label>
-          <label><span>Teacher</span><input placeholder="Any teacher" value={teacher} onChange={(event) => setTeacher(event.target.value)} /></label>
+          <label><span>Course</span><input placeholder="Any course" value={courseName} onChange={(event) => setCourseName(event.target.value)} /></label>
+          <label><span>Teacher Last Name</span><input placeholder="Any teacher last name" value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /></label>
           <SlidersHorizontal aria-hidden="true" />
         </section>
         {error ? <p className="form-error">{error}</p> : null}

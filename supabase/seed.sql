@@ -26,14 +26,17 @@ insert into private.user_roles (user_id, role, granted_by)
 values ('10000000-0000-4000-8000-000000000001', 'administrator', '10000000-0000-4000-8000-000000000001')
 on conflict (user_id) do nothing;
 
-insert into public.classes (id, class_name, teacher_name, default_academic_term, is_double_period, created_by)
-values
-  ('20000000-0000-4000-8000-000000000001', 'AP English Language', 'Ms. Carter', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('20000000-0000-4000-8000-000000000002', 'Chemistry', 'Mr. Patel', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('20000000-0000-4000-8000-000000000003', 'Algebra II', 'Ms. Rivera', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('20000000-0000-4000-8000-000000000004', 'AP US History', 'Mr. Johnson', 'full_year', true, '10000000-0000-4000-8000-000000000001'),
-  ('20000000-0000-4000-8000-000000000005', 'Spanish III', 'Ms. Lopez', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('20000000-0000-4000-8000-000000000006', 'Physics', 'Dr. Kim', 'full_year', false, '10000000-0000-4000-8000-000000000001')
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select seed.id, cn.id, seed.teacher_last_name, seed.term, seed.is_double, seed.created_by
+from (values
+  ('20000000-0000-4000-8000-000000000001'::uuid, 'AP Language', 'Carter', 'full_year'::public.academic_term, false, '10000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000002'::uuid, 'Academic Chemistry', 'Patel', 'full_year'::public.academic_term, false, '10000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000003'::uuid, 'Honors Algebra 2', 'Rivera', 'full_year'::public.academic_term, false, '10000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000004'::uuid, 'AP US History', 'Johnson', 'full_year'::public.academic_term, true, '10000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000005'::uuid, 'Honors Spanish 3', 'Lopez', 'full_year'::public.academic_term, false, '10000000-0000-4000-8000-000000000001'::uuid),
+  ('20000000-0000-4000-8000-000000000006'::uuid, 'Academic Physics', 'Kim', 'full_year'::public.academic_term, false, '10000000-0000-4000-8000-000000000001'::uuid)
+) as seed(id, course_name, teacher_last_name, term, is_double, created_by)
+join public.course_names cn on cn.normalized_name = private.normalize_search(seed.course_name)
 on conflict (id) do nothing;
 
 insert into public.class_meeting_slots (class_id, day_type, period_number)

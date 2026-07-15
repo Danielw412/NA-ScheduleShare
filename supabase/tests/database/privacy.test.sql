@@ -13,12 +13,19 @@ update public.profiles set grade = 11, onboarding_completed = true, privacy_sett
 update public.profiles set grade = 11, onboarding_completed = true, privacy_setting = 'school' where id in ('90000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000004');
 insert into private.user_roles (user_id, role, granted_by) values ('90000000-0000-4000-8000-000000000004', 'administrator', '90000000-0000-4000-8000-000000000004');
 
-insert into public.classes (id, class_name, teacher_name, default_academic_term, is_double_period, created_by)
+insert into public.course_names (id, name, normalized_name, source)
 values
-  ('91000000-0000-4000-8000-000000000001', 'Shared Biology', 'Ms. Green', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
-  ('91000000-0000-4000-8000-000000000002', 'Private Elective', 'Mr. Blue', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
-  ('91000000-0000-4000-8000-000000000003', 'Canonical Chemistry', 'Dr. Gold', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
-  ('91000000-0000-4000-8000-000000000004', 'Chemistry Duplicate', 'Dr. Gold', 'full_year', false, '90000000-0000-4000-8000-000000000004');
+  ('91000000-0000-4000-8000-000000000011', 'Shared Biology', 'shared biology', 'admin'),
+  ('91000000-0000-4000-8000-000000000012', 'Private Elective', 'private elective', 'admin'),
+  ('91000000-0000-4000-8000-000000000013', 'Canonical Chemistry', 'canonical chemistry', 'admin'),
+  ('91000000-0000-4000-8000-000000000014', 'Chemistry Duplicate', 'chemistry duplicate', 'admin');
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+values
+  ('91000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000011', 'Green', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
+  ('91000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000012', 'Blue', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
+  ('91000000-0000-4000-8000-000000000003', '91000000-0000-4000-8000-000000000013', 'Gold', 'full_year', false, '90000000-0000-4000-8000-000000000004'),
+  ('91000000-0000-4000-8000-000000000004', '91000000-0000-4000-8000-000000000014', 'Gold', 'full_year', false, '90000000-0000-4000-8000-000000000004');
 
 insert into public.class_meeting_slots (class_id, day_type, period_number)
 values

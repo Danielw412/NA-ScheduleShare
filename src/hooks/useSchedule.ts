@@ -55,7 +55,7 @@ export function useSchedule(studentId?: string) {
       id: crypto.randomUUID(),
       action: 'class_added',
       previous_value: null,
-      new_value: { class_id: classDefinition.id, class_name: classDefinition.class_name },
+      new_value: { class_id: classDefinition.id, course_name: classDefinition.course_name },
       changed_by: ownerId,
       created_at: timestamp,
     }, ...current])

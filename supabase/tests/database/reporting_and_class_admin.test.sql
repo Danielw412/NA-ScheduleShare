@@ -16,10 +16,16 @@ update public.profiles
 set grade = 12, onboarding_completed = true, privacy_setting = 'private'
 where id = '93000000-0000-4000-8000-000000000001';
 
-insert into public.classes (id, class_name, teacher_name, default_academic_term, is_double_period, created_by)
+insert into public.course_names (id, name, normalized_name, source)
 values
-  ('93000000-0000-4000-8000-000000000010', 'Editable Seminar', 'Ms. Original', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('93000000-0000-4000-8000-000000000011', 'Conflict Seminar', 'Mr. Conflict', 'full_year', false, '10000000-0000-4000-8000-000000000001');
+  ('93000000-0000-4000-8000-000000000020', 'Editable Seminar', 'editable seminar', 'admin'),
+  ('93000000-0000-4000-8000-000000000021', 'Conflict Seminar', 'conflict seminar', 'admin'),
+  ('93000000-0000-4000-8000-000000000022', 'Edited Seminar', 'edited seminar', 'admin');
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+values
+  ('93000000-0000-4000-8000-000000000010', '93000000-0000-4000-8000-000000000020', 'Original', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
+  ('93000000-0000-4000-8000-000000000011', '93000000-0000-4000-8000-000000000021', 'Conflict', 'full_year', false, '10000000-0000-4000-8000-000000000001');
 
 insert into public.class_meeting_slots (class_id, day_type, period_number)
 values
@@ -81,8 +87,9 @@ select throws_ok(
 );
 select lives_ok(
   $$select public.create_class_and_enroll(
+    null,
     'Period Nine Study',
-    'Dr. Flexible',
+    'Flexible',
     'full_year',
     false,
     '[{"day_type":"A","period_number":9},{"day_type":"B","period_number":9}]'::jsonb,
@@ -91,7 +98,7 @@ select lives_ok(
   'a class can be created at period nine on both A and B days'
 );
 select is(
-  (select count(*) from public.class_meeting_slots s join public.classes c on c.id = s.class_id where c.class_name = 'Period Nine Study'),
+  (select count(*) from public.class_meeting_slots s join public.classes c on c.id = s.class_id join public.course_names cn on cn.id = c.course_name_id where cn.name = 'Period Nine Study'),
   2::bigint,
   'both default meeting-day slots are stored'
 );
@@ -107,8 +114,9 @@ select is(
 );
 select throws_ok(
   $$select public.create_class_and_enroll(
+    null,
     'Invalid Single Class',
-    'Dr. Invalid',
+    'Invalid',
     'full_year',
     false,
     '[{"day_type":"A","period_number":5},{"day_type":"A","period_number":6}]'::jsonb,
@@ -127,8 +135,8 @@ select throws_ok(
 select throws_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
-    'Unauthorized Edit',
-    'Ms. Original',
+    '93000000-0000-4000-8000-000000000020',
+    'Original',
     'full_year',
     false,
     '[{"day_type":"A","period_number":3},{"day_type":"B","period_number":3}]'::jsonb,
@@ -164,8 +172,8 @@ select is(
 select lives_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
-    'Edited Seminar',
-    'Dr. Updated',
+    '93000000-0000-4000-8000-000000000022',
+    'Updated',
     'semester_1',
     false,
     '[{"day_type":"A","period_number":6},{"day_type":"B","period_number":6}]'::jsonb,
@@ -174,7 +182,7 @@ select lives_ok(
   'an administrator can atomically edit an active class'
 );
 select is(
-  (select id from public.classes where class_name = 'Edited Seminar'),
+  (select c.id from public.classes c join public.course_names cn on cn.id = c.course_name_id where cn.name = 'Edited Seminar'),
   '93000000-0000-4000-8000-000000000010'::uuid,
   'class editing preserves the shared class ID'
 );
@@ -194,8 +202,8 @@ select ok(
 select throws_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
-    'Edited Seminar',
-    'Dr. Updated',
+    '93000000-0000-4000-8000-000000000022',
+    'Updated',
     'semester_1',
     true,
     '[{"day_type":"A","period_number":6}]'::jsonb,
@@ -208,8 +216,8 @@ select throws_ok(
 select throws_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
-    'Edited Seminar',
-    'Dr. Updated',
+    '93000000-0000-4000-8000-000000000022',
+    'Updated',
     'semester_1',
     false,
     '[{"day_type":"A","period_number":7},{"day_type":"B","period_number":6}]'::jsonb,

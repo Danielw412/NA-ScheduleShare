@@ -21,17 +21,20 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, privacy, reporting, and the six-section admin page.
 - `src/components/` — reusable UI. `auth/` has route/discovery/suspension guards, `layout/` has the shell/navigation/footer, `schedule/` has the grid/add flow/term controls/utility rail, and `ui/` has shared brand/loading components.
 - `src/hooks/useSchedule.ts` and `src/hooks/useClassSearch.ts` — schedule loading/mutations and shared debounced class-search state.
+- `src/hooks/useCourseNameSearch.ts` — debounced reusable course-catalog search used before creating a class section.
 - `src/lib/supabase/client.ts` — browser Supabase client; only public URL/publishable-key variables belong here.
 - `src/lib/supabase/data.ts` — typed frontend queries and RPC calls.
 - `src/lib/supabase/database.types.ts` — generated-compatible TypeScript database types. Regenerate after schema changes.
 - `src/features/auth/AuthProvider.tsx` — Supabase Auth session hydration, pre-profile suspension check, Google/password actions, onboarding, and admin status.
 - `src/lib/domain.ts` — shared application domain types and labels.
 - `src/lib/schedule.ts` — term overlap, slot lookup, double-period, and conflict logic.
+- `src/lib/teacher.ts` — teacher last-name normalization and practical invalid-input checks shared by forms and tests.
 - `src/pages/AdminPage.tsx` — admin user/report/class/history/role/audit workflows; the database still authorizes every action.
 - `src/config/brand.ts` — single source for site name, organization, attribution, URLs, and temporary logo path.
 - `src/styles.css` — centralized design tokens and responsive styles.
 - `src/lib/*.test.ts` and `src/test/` — frontend unit tests and setup.
 - `supabase/migrations/` — ordered schema, secure API/RPC, grant, and RLS migrations.
+- `supabase/data/course_names.txt` — authoritative approved course-name catalog embedded idempotently by the catalog migration.
 - `supabase/tests/database/` — pgTAP privacy and authorization integration tests.
 - `supabase/seed.sql` — local-only Auth users, profiles, classes, slots, and enrollments.
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.

@@ -13,8 +13,9 @@ function enrollment(id: string, term: ScheduleEnrollment['academic_term'], perio
     updated_at: '2026-07-15T00:00:00Z',
     class: {
       id: `class-${id}`,
-      class_name: `Class ${id}`,
-      teacher_name: 'Teacher',
+      course_name_id: `course-${id}`,
+      course_name: `Course ${id}`,
+      teacher_last_name: 'Teacher',
       default_academic_term: term,
       is_double_period: false,
       meeting_slots: [{ day_type: 'A', period_number: period }],

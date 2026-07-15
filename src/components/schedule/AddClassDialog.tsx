@@ -2,9 +2,11 @@ import { AlertTriangle, Filter, Plus, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
-import type { AcademicTerm, ClassDefinition, ClassSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
+import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
+import type { AcademicTerm, ClassDefinition, ClassSearchResult, CourseNameSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
 import { buildMeetingSlots, PERIOD_NUMBERS, validateMeetingSlots, type MeetingDaySelection } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
+import { normalizeTeacherLastName, teacherLastNameError } from '../../lib/teacher'
 
 interface AddClassDialogProps {
   open: boolean
@@ -19,8 +21,9 @@ interface AddClassDialogProps {
 const demoResults: ClassSearchResult[] = [
   {
     id: '30000000-0000-4000-8000-000000000001',
-    class_name: 'Physics',
-    teacher_name: 'Dr. Kim',
+    course_name_id: 'catalog-academic-physics',
+    course_name: 'Academic Physics',
+    teacher_last_name: 'Kim',
     default_academic_term: 'full_year',
     is_double_period: false,
     meeting_slots: [{ day_type: 'A', period_number: 7 }],
@@ -28,8 +31,9 @@ const demoResults: ClassSearchResult[] = [
   },
   {
     id: '30000000-0000-4000-8000-000000000002',
-    class_name: 'AP Physics 1',
-    teacher_name: 'Ms. Chen',
+    course_name_id: 'catalog-ap-physics-1',
+    course_name: 'AP Physics 1',
+    teacher_last_name: 'Chen',
     default_academic_term: 'full_year',
     is_double_period: false,
     meeting_slots: [{ day_type: 'A', period_number: 7 }],
@@ -37,9 +41,11 @@ const demoResults: ClassSearchResult[] = [
   },
 ]
 
-function normalizedDisplay(value: string) {
-  return value.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
+const demoCourseNames: CourseNameSearchResult[] = [
+  { id: 'catalog-academic-physics', course_name: 'Academic Physics', score: 100 },
+  { id: 'catalog-ap-physics-1', course_name: 'AP Physics 1', score: 92 },
+  { id: 'catalog-ap-physics-12', course_name: 'AP Physics 1&2', score: 88 },
+]
 
 export function AddClassDialog({ open, dayType, period, replacing, onClose, onChanged, onDemoAdd }: AddClassDialogProps) {
   const { isDemo } = useAuth()
@@ -50,24 +56,35 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [allowConflict, setAllowConflict] = useState(false)
-  const [className, setClassName] = useState('')
-  const [teacherName, setTeacherName] = useState('')
+  const [courseQuery, setCourseQuery] = useState('')
+  const [selectedCourseName, setSelectedCourseName] = useState<CourseNameSearchResult | null>(null)
+  const [teacherLastName, setTeacherLastName] = useState('')
   const [isDouble, setIsDouble] = useState(false)
   const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>('both')
   const [meetingPeriod, setMeetingPeriod] = useState(period)
-  const [confirmedNoMatch, setConfirmedNoMatch] = useState(false)
+  const [confirmedNoCourseMatch, setConfirmedNoCourseMatch] = useState(false)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoResults
-        .filter((result) => `${result.class_name} ${result.teacher_name}`.toLowerCase().includes(input.query.toLowerCase()))
+        .filter((result) => `${result.course_name} ${result.teacher_last_name}`.toLowerCase().includes(input.query.toLowerCase()))
         .map((result) => ({
           ...result,
           meeting_slots: input.dayType && input.period ? [{ day_type: input.dayType, period_number: input.period }] : result.meeting_slots,
         }))
     : searchClasses, [isDemo])
+  const executeCourseNameSearch = useMemo<CourseNameSearchExecutor | undefined>(() => isDemo
+    ? async (input) => {
+        const normalized = input.trim().replace(/\s+/g, ' ').toLowerCase()
+        return demoCourseNames.filter((result) => !normalized || result.course_name.toLowerCase().includes(normalized))
+      }
+    : undefined, [isDemo])
   const { error: searchError, loading, results } = useClassSearch(
     { query, dayType, period },
     { enabled: open && mode === 'search', search: executeSearch },
   )
+  const courseSearch = useCourseNameSearch(courseQuery, {
+    enabled: open && mode === 'create',
+    ...(executeCourseNameSearch ? { search: executeCourseNameSearch } : {}),
+  })
 
   useEffect(() => {
     if (!open) return
@@ -77,12 +94,13 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
     setMode('search')
     setError(null)
     setAllowConflict(false)
-    setClassName('')
-    setTeacherName('')
+    setCourseQuery('')
+    setSelectedCourseName(null)
+    setTeacherLastName('')
     setIsDouble(false)
     setMeetingDays('both')
     setMeetingPeriod(period)
-    setConfirmedNoMatch(false)
+    setConfirmedNoCourseMatch(false)
   }, [dayType, open, period, replacing?.academic_term])
 
   useEffect(() => {
@@ -92,11 +110,11 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const context = `${dayType} Day · Period ${period}`
   const meetingSlots = buildMeetingSlots(meetingDays, meetingPeriod, isDouble)
   const meetingSlotError = validateMeetingSlots(meetingSlots, isDouble)
-  const canCreate = className.trim().length >= 2 && teacherName.trim().length >= 2 && confirmedNoMatch && !meetingSlotError
-  const likelyDuplicates = useMemo(() => results.filter((result) => {
-    const normalized = `${result.class_name} ${result.teacher_name}`.toLowerCase()
-    return className && normalized.includes(className.trim().toLowerCase())
-  }).slice(0, 3), [className, results])
+  const teacherError = teacherLastName ? teacherLastNameError(teacherLastName) : null
+  const newCourseName = courseQuery.trim().replace(/\s+/g, ' ')
+  const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
+    && !teacherLastNameError(teacherLastName)
+    && !meetingSlotError
 
   async function confirmSelection() {
     if (!selected) return
@@ -127,14 +145,23 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
     try {
       const definition: ClassDefinition = {
         id: crypto.randomUUID(),
-        class_name: normalizedDisplay(className),
-        teacher_name: normalizedDisplay(teacherName),
+        course_name_id: selectedCourseName?.id ?? crypto.randomUUID(),
+        course_name: selectedCourseName?.course_name ?? newCourseName,
+        teacher_last_name: normalizeTeacherLastName(teacherLastName),
         default_academic_term: term,
         is_double_period: isDouble,
         meeting_slots: meetingSlots,
       }
       if (isDemo) onDemoAdd(definition, term)
-      else await createClassAndEnroll({ className, teacherName, term, isDouble, meetingSlots, confirmedNoMatch })
+      else await createClassAndEnroll({
+        courseNameId: selectedCourseName?.id,
+        newCourseName: selectedCourseName ? undefined : newCourseName,
+        teacherLastName,
+        term,
+        isDouble,
+        meetingSlots,
+        confirmedNoCourseMatch,
+      })
       await onChanged()
       onClose()
     } catch (caught) {
@@ -163,7 +190,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
               {loading ? <p className="muted">Searching…</p> : searchError ? null : results.length === 0 ? <p className="empty-inline">No classes match this cell and search.</p> : results.map((result) => (
                 <label className={selected?.id === result.id ? 'class-result is-selected' : 'class-result'} key={result.id}>
                   <input type="radio" name="class-result" checked={selected?.id === result.id} onChange={() => { setSelected(result); setTerm(result.default_academic_term) }} />
-                  <span><strong>{result.class_name}</strong><small>{result.teacher_name}</small><em>{result.meeting_slots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
+                  <span><strong>{result.course_name}</strong><small>{result.teacher_last_name}</small><em>{result.meeting_slots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
                 </label>
               ))}
             </div>
@@ -174,14 +201,46 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
           </>
         ) : (
           <form className="create-class-form" onSubmit={(event) => void createClass(event)}>
-            <div className="two-field-row"><label>Class name<input required maxLength={120} value={className} onChange={(event) => { setClassName(event.target.value); setConfirmedNoMatch(false) }} /></label><label>Teacher<input required maxLength={120} value={teacherName} onChange={(event) => { setTeacherName(event.target.value); setConfirmedNoMatch(false) }} /></label></div>
+            <div className="course-name-picker">
+              <label>Course name
+                <input
+                  autoFocus
+                  required={!selectedCourseName}
+                  maxLength={120}
+                  placeholder="Search the approved course catalog"
+                  value={courseQuery}
+                  onChange={(event) => {
+                    setCourseQuery(event.target.value)
+                    setSelectedCourseName(null)
+                    setConfirmedNoCourseMatch(false)
+                  }}
+                />
+              </label>
+              <div className="course-name-results" aria-live="polite">
+                {courseSearch.loading ? <p className="muted">Searching course names…</p> : courseSearch.error ? <p className="form-error">{courseSearch.error}</p> : courseSearch.results.slice(0, 6).map((courseName) => (
+                  <button className={selectedCourseName?.id === courseName.id ? 'is-selected' : ''} type="button" key={courseName.id} onClick={() => {
+                    setSelectedCourseName(courseName)
+                    setCourseQuery(courseName.course_name)
+                    setConfirmedNoCourseMatch(false)
+                  }}>
+                    {courseName.course_name}
+                  </button>
+                ))}
+              </div>
+              {selectedCourseName ? <p className="selected-course-name">Selected catalog course: <strong>{selectedCourseName.course_name}</strong></p> : newCourseName.length >= 2 && !courseSearch.loading ? (
+                <label className="checkbox-row confirmation"><input type="checkbox" checked={confirmedNoCourseMatch} onChange={(event) => setConfirmedNoCourseMatch(event.target.checked)} /><span>I reviewed the similar course names above and need to create “{newCourseName}”.</span></label>
+              ) : null}
+            </div>
+            <label>Teacher Last Name
+              <input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />
+              <small id="teacher-last-name-help" className="field-help">Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.</small>
+            </label>
+            {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
             <label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label>
             <div className="two-field-row"><label>Meeting days<select value={meetingDays} onChange={(event) => setMeetingDays(event.target.value as MeetingDaySelection)}><option value="both">Both A and B days</option><option value="A">A day only</option><option value="B">B day only</option></select></label><label>{isDouble ? 'Primary period' : 'Period'}<select value={meetingPeriod} onChange={(event) => setMeetingPeriod(Number(event.target.value))}>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label></div>
             <label className="checkbox-row"><input type="checkbox" checked={isDouble} onChange={(event) => setIsDouble(event.target.checked)} /><span><strong>Double-period class</strong><small>Uses two consecutive periods on each selected meeting day.</small></span></label>
             <p className="inferred-slot">Meeting slots: <strong>{meetingSlots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')}</strong></p>
             {meetingSlotError ? <p className="form-error" role="alert">{meetingSlotError}</p> : null}
-            {likelyDuplicates.length ? <div className="duplicate-warning"><strong>Possible matches already exist</strong>{likelyDuplicates.map((result) => <button type="button" key={result.id} onClick={() => { setMode('search'); setSelected(result) }}>{result.class_name} · {result.teacher_name}</button>)}</div> : null}
-            <label className="checkbox-row confirmation"><input type="checkbox" checked={confirmedNoMatch} onChange={(event) => setConfirmedNoMatch(event.target.checked)} /><span>I checked the suggestions and none is the correct class.</span></label>
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             <div className="form-actions"><button className="button button-secondary" type="button" onClick={() => setMode('search')}>Back to search</button><button className="button button-primary" disabled={!canCreate || saving}>{saving ? 'Creating…' : 'Create and add class'}</button></div>
           </form>

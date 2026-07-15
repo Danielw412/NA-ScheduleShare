@@ -6,8 +6,9 @@ import { useClassSearch, type ClassSearchExecutor } from './useClassSearch'
 
 const chemistry: ClassSearchResult = {
   id: '20000000-0000-4000-8000-000000000002',
-  class_name: 'Chemistry',
-  teacher_name: 'Mr. Patel',
+  course_name_id: '10000000-0000-4000-8000-000000000002',
+  course_name: 'Academic Chemistry',
+  teacher_last_name: 'Patel',
   default_academic_term: 'full_year',
   is_double_period: false,
   meeting_slots: [{ day_type: 'A', period_number: 2 }],

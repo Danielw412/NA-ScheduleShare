@@ -20,13 +20,13 @@ export function SchedulePage() {
   const [message, setMessage] = useState<string | null>(null)
 
   async function remove(enrollment: ScheduleEnrollment) {
-    if (!window.confirm(`Remove ${enrollment.class.class_name} from your schedule? The shared class will not be deleted.`)) return
+    if (!window.confirm(`Remove ${enrollment.class.course_name} from your schedule? The shared class will not be deleted.`)) return
     if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
     else {
       await removeEnrollment(enrollment.id)
       await schedule.reload()
     }
-    setMessage(`${enrollment.class.class_name} was removed from your schedule.`)
+    setMessage(`${enrollment.class.course_name} was removed from your schedule.`)
   }
 
   async function changeTerm(enrollment: ScheduleEnrollment, term: AcademicTerm) {
@@ -67,7 +67,7 @@ export function SchedulePage() {
           onReplace={(enrollment, dayType, period) => setActiveCell({ dayType, period, replacing: enrollment })}
           onTermChange={(enrollment, term) => void changeTerm(enrollment, term)}
         />
-        <ScheduleUtilityRail enrollments={schedule.enrollments} history={schedule.history} />
+        <ScheduleUtilityRail />
       </div>
       {activeCell ? <AddClassDialog
         open

@@ -174,7 +174,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .term-selector button.is-active { background: var(--brand-gold); }
 .term-short { display: none; }
 .schedule-layout { display: grid; grid-template-columns: minmax(650px, 1fr) 320px; align-items: start; gap: 26px; }
-.schedule-grid { display: grid; grid-template-columns: 98px repeat(2, minmax(0, 1fr)); border: 1px solid var(--border-strong); background: var(--border-strong); gap: 1px; }
+.schedule-grid { display: grid; grid-template-columns: 98px repeat(2, minmax(0, 1fr)); border: 1px solid var(--border-strong); background: var(--border-strong); column-gap: 1px; row-gap: 0; }
 .schedule-corner { background: var(--white); }
 .day-header { min-height: 40px; display: grid; place-items: center; background: var(--ink); color: var(--white); font-size: 15px; font-weight: 850; }
 .day-a { border-top: 4px solid var(--brand-gold); }
@@ -182,6 +182,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .schedule-row { display: contents; }
 .period-label { min-height: 62px; display: flex; align-items: center; justify-content: center; gap: 4px; background: var(--white); font-size: 13px; font-weight: 850; }
 .schedule-cell { min-width: 0; min-height: 62px; border: 0; background: var(--white); }
+.schedule-row > .period-label, .schedule-row > .schedule-cell { border-top: 1px solid var(--border-strong); }
 .empty-cell { display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 10px 18px; color: #707070; font-size: 13px; font-weight: 680; outline: 1px dashed #aaa; outline-offset: -7px; }
 .empty-cell:hover, .empty-cell:focus-visible { color: #075fc2; background: #f2f7ff; outline-color: #1268d5; }
 .readonly-cell, .readonly-cell:hover { cursor: default; color: var(--muted); background: var(--surface); outline-color: #d4d4d4; }
@@ -255,6 +256,13 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .dialog-primary { margin-top: 14px; }
 .create-class-form { display: grid; gap: 18px; }
 .two-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-help { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.45; }
+.course-name-picker { display: grid; gap: 8px; }
+.course-name-picker > label { display: grid; gap: 7px; font-size: 12px; font-weight: 800; }
+.course-name-results { min-height: 42px; max-height: 180px; overflow: auto; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px; padding: 9px; border: 1px solid var(--border); background: var(--surface-subtle); }
+.course-name-results button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--white); font-size: 12px; font-weight: 750; }
+.course-name-results button.is-selected { border-color: var(--focus); background: #eaf3ff; color: #075fc2; }
+.selected-course-name { margin: 0; color: #145e2b; font-size: 12px; }
 .checkbox-row { display: flex !important; flex-direction: row !important; align-items: flex-start; gap: 11px !important; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .checkbox-row input { width: 18px; min-height: 18px; margin-top: 1px; accent-color: var(--brand-gold-dark); }
 .checkbox-row span { display: grid; gap: 3px; }
@@ -357,6 +365,8 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .admin-table code { max-width: 220px; overflow: hidden; display: block; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .admin-report-table { --max-admin-columns: 1fr minmax(190px, 1.35fr) 1fr 1fr minmax(150px, .8fr); }
 .admin-class-table { --max-admin-columns: minmax(190px, 1.3fr) minmax(190px, 1.2fr) .65fr .85fr minmax(120px, .65fr); }
+.admin-course-table { --max-admin-columns: minmax(220px, 1.5fr) .55fr .65fr .55fr minmax(180px, 1fr); margin-bottom: 18px; }
+.class-sections-heading { margin-top: 34px; }
 .admin-table-row > span { min-width: 0; }
 .admin-table-row > span:not(.row-actions) { display: grid; gap: 3px; }
 .report-detail-panel { margin-top: 16px; padding: clamp(18px, 3vw, 30px); border: 1px solid var(--border-strong); border-top: 5px solid var(--brand-gold); background: var(--surface-subtle); }

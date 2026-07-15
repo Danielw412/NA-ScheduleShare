@@ -13,7 +13,7 @@ export function HomePage() {
       <section className="home-hero">
         <div>
           <h1>Hey {profile?.full_name.split(' ')[0]}, who’s in your classes?</h1>
-          <p>Build your A/B-day schedule, find classmates, and compare schedules on your terms.</p>
+          <p>Build your schedule, find classmates, and compare schedules with friends.</p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/schedule">Open my schedule <ArrowRight size={18} /></Link>
             <Link className="button button-secondary" to="/classes">Find a class</Link>
