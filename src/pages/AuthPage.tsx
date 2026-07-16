@@ -37,7 +37,7 @@ export function AuthPage() {
   return (
     <main className="auth-page">
       <section className="auth-brand-panel">
-        <BrandLogo />
+        <BrandLogo logoPath="na-club-logo-dark.png" />
         <div>
           <h1>Find your people.<br />Build your schedule.</h1>
           <p>Compare A/B-day classes with classmates while keeping control of who can see your full schedule.</p>
