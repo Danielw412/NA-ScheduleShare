@@ -112,19 +112,17 @@ select is(
   1::bigint,
   'B-day search matches a class that meets on both days'
 );
-select throws_ok(
+select lives_ok(
   $$select public.create_class_and_enroll(
     null,
-    'Invalid Single Class',
-    'Invalid',
+    'Flexible Multi Slot Class',
+    'Flexible',
     'full_year',
     false,
-    '[{"day_type":"A","period_number":5},{"day_type":"A","period_number":6}]'::jsonb,
+    '[{"day_type":"B","period_number":7},{"day_type":"B","period_number":8}]'::jsonb,
     true
   )$$,
-  '23514',
-  'single_period_requires_one_slot_per_day',
-  'a single-period class cannot contain two slots on one day'
+  'a class can contain multiple explicit slots on one day regardless of the legacy flag'
 );
 select throws_ok(
   $$select * from public.admin_list_reports()$$,
@@ -199,7 +197,7 @@ select ok(
   exists (select 1 from public.schedule_change_history where student_id = '10000000-0000-4000-8000-000000000003' and action = 'meeting_slots_changed'),
   'class editing records history for affected active enrollments'
 );
-select throws_ok(
+select lives_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
     '93000000-0000-4000-8000-000000000022',
@@ -207,11 +205,9 @@ select throws_ok(
     'semester_1',
     true,
     '[{"day_type":"A","period_number":6}]'::jsonb,
-    'Invalid double-period edit'
+    'Explicit single-slot edit'
   )$$,
-  '23514',
-  'double_period_requires_two_consecutive_slots_per_day',
-  'invalid double-period combinations are rejected'
+  'the legacy double-period argument does not force extra meeting slots'
 );
 select throws_ok(
   $$select public.admin_update_class(
@@ -229,7 +225,7 @@ select throws_ok(
 );
 select is(
   (select jsonb_array_length(meeting_slots) from public.admin_list_classes() where class_id = '93000000-0000-4000-8000-000000000010'),
-  2,
+  1,
   'the admin class list returns the current meeting slots for form prefill'
 );
 

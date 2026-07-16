@@ -15,6 +15,7 @@ import type {
   ScheduleEnrollment,
   StudentDirectoryResult,
 } from '../domain'
+import { hasMultiplePeriodsOnAnyDay } from '../schedule'
 import { supabase } from './client'
 import type { Json } from './database.types'
 
@@ -142,7 +143,6 @@ export async function createClassAndEnroll(input: {
   newCourseName?: string
   teacherLastName: string
   term: AcademicTerm
-  isDouble: boolean
   meetingSlots: MeetingSlot[]
   confirmedNoCourseMatch: boolean
 }): Promise<string> {
@@ -152,7 +152,7 @@ export async function createClassAndEnroll(input: {
     p_new_course_name: (input.newCourseName ?? null) as unknown as string,
     p_teacher_last_name: input.teacherLastName,
     p_academic_term: input.term,
-    p_is_double_period: input.isDouble,
+    p_is_double_period: hasMultiplePeriodsOnAnyDay(input.meetingSlots),
     p_meeting_slots: input.meetingSlots as unknown as Json,
     p_confirmed_no_course_match: input.confirmedNoCourseMatch,
   })
@@ -326,7 +326,6 @@ export async function adminUpdateClass(input: {
   courseNameId: string
   teacherLastName: string
   term: AcademicTerm
-  isDouble: boolean
   meetingSlots: MeetingSlot[]
   reason: string
 }): Promise<void> {
@@ -336,7 +335,7 @@ export async function adminUpdateClass(input: {
     p_course_name_id: input.courseNameId,
     p_teacher_last_name: input.teacherLastName,
     p_academic_term: input.term,
-    p_is_double_period: input.isDouble,
+    p_is_double_period: hasMultiplePeriodsOnAnyDay(input.meetingSlots),
     p_meeting_slots: input.meetingSlots as unknown as Json,
     p_reason: input.reason,
   })

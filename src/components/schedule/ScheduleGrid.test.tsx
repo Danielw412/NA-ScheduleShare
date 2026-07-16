@@ -52,11 +52,37 @@ describe('ScheduleGrid borders', () => {
 
     expect(styles).toContain('row-gap: 0')
     expect(styles).toContain('.schedule-row > .period-label, .schedule-row > .schedule-cell { border-top: 1px solid var(--border-strong); }')
+    expect(styles).toContain('.filled-cell.is-multi-period { box-shadow: inset 5px 0 0 var(--focus); background: #f7faff; }')
     expect(styles).toContain('.filled-cell.is-continuation { border-top: 2px dashed #8dbbf0; }')
 
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_2" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
+  })
+
+  it('renders asymmetric per-day slots and only marks consecutive cells as continuations', () => {
+    const asymmetric: ScheduleEnrollment = {
+      ...doublePeriod,
+      id: 'enrollment-asymmetric',
+      class_id: 'class-asymmetric',
+      class: {
+        ...doublePeriod.class,
+        id: 'class-asymmetric',
+        is_double_period: true,
+        meeting_slots: [
+          { day_type: 'A', period_number: 4 },
+          { day_type: 'B', period_number: 3 },
+          { day_type: 'B', period_number: 4 },
+        ],
+      },
+    }
+    const { container } = render(<ScheduleGrid enrollments={[asymmetric]} selectedTerm="full_year" {...callbacks} />)
+
+    expect(container.querySelector('[data-day="A"][data-period="4"]')).not.toHaveAttribute('data-continuation')
+    expect(container.querySelector('[data-day="B"][data-period="3"]')).not.toHaveAttribute('data-continuation')
+    expect(container.querySelector('[data-day="B"][data-period="4"]')).toHaveAttribute('data-continuation', 'true')
+    expect(container.querySelector('[data-day="A"][data-period="3"]')).toHaveClass('empty-cell')
+    expect(screen.getByText('B Day · P3 + P4')).toBeInTheDocument()
   })
 })
