@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(25);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -118,11 +118,11 @@ select lives_ok(
     'Flexible Multi Slot Class',
     'Flexible',
     'full_year',
-    false,
+    true,
     '[{"day_type":"B","period_number":7},{"day_type":"B","period_number":8}]'::jsonb,
     true
   )$$,
-  'a class can contain multiple explicit slots on one day regardless of the legacy flag'
+  'a double-period class can contain two consecutive explicit slots on one day'
 );
 select throws_ok(
   $$select * from public.admin_list_reports()$$,
@@ -203,11 +203,11 @@ select lives_ok(
     '93000000-0000-4000-8000-000000000022',
     'Updated',
     'semester_1',
-    true,
+    false,
     '[{"day_type":"A","period_number":6}]'::jsonb,
     'Explicit single-slot edit'
   )$$,
-  'the legacy double-period argument does not force extra meeting slots'
+  'switching to normal mode removes stale extra slots'
 );
 select throws_ok(
   $$select public.admin_update_class(
@@ -227,6 +227,11 @@ select is(
   (select jsonb_array_length(meeting_slots) from public.admin_list_classes() where class_id = '93000000-0000-4000-8000-000000000010'),
   1,
   'the admin class list returns the current meeting slots for form prefill'
+);
+select is(
+  (select is_double_period from public.classes where id = '93000000-0000-4000-8000-000000000010'),
+  false,
+  'normal-mode edits clear stale double-period metadata'
 );
 
 select * from finish();

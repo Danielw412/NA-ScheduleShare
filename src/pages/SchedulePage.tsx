@@ -2,7 +2,6 @@ import { Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
-import { ScheduleUtilityRail } from '../components/schedule/ScheduleUtilityRail'
 import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -67,7 +66,6 @@ export function SchedulePage() {
           onReplace={(enrollment, dayType, period) => setActiveCell({ dayType, period, replacing: enrollment })}
           onTermChange={(enrollment, term) => void changeTerm(enrollment, term)}
         />
-        <ScheduleUtilityRail />
       </div>
       {activeCell ? <AddClassDialog
         open
