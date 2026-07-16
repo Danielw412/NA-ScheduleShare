@@ -2,6 +2,7 @@ import type { AcademicTerm, DayType, MeetingSlot, ScheduleEnrollment } from './d
 
 export const PERIOD_NUMBERS = Array.from({ length: 9 }, (_, index) => index + 1)
 const MAX_PERIOD = PERIOD_NUMBERS.length
+export type MeetingDaySelection = 'both' | DayType
 
 export function termsOverlap(left: AcademicTerm, right: AcademicTerm): boolean {
   return left === 'full_year' || right === 'full_year' || left === right
@@ -60,6 +61,23 @@ export function defaultMeetingSlots(dayType: DayType, period: number): MeetingSl
   ])
 }
 
+export function buildNormalMeetingSlots(daySelection: MeetingDaySelection, period: number): MeetingSlot[] {
+  if (!Number.isInteger(period) || period < 1 || period > MAX_PERIOD) throw new Error('invalid_period')
+  const days: DayType[] = daySelection === 'both' ? ['A', 'B'] : [daySelection]
+  return days.map((dayType) => ({ day_type: dayType, period_number: period }))
+}
+
+export function defaultDoubleMeetingSlots(dayType: DayType, period: number): MeetingSlot[] {
+  if (!Number.isInteger(period) || period < 1 || period > MAX_PERIOD) throw new Error('invalid_period')
+  const continuationPeriod = period === MAX_PERIOD ? period - 1 : period + 1
+  const otherDay: DayType = dayType === 'A' ? 'B' : 'A'
+  return sortMeetingSlots([
+    { day_type: dayType, period_number: Math.min(period, continuationPeriod) },
+    { day_type: dayType, period_number: Math.max(period, continuationPeriod) },
+    { day_type: otherDay, period_number: period },
+  ])
+}
+
 export function toggleMeetingSlot(meetingSlots: MeetingSlot[], slot: MeetingSlot): MeetingSlot[] {
   return meetingSlots.some((candidate) => sameSlot(candidate, slot))
     ? meetingSlots.filter((candidate) => !sameSlot(candidate, slot))
@@ -70,6 +88,16 @@ export function meetingSlotsForDay(meetingSlots: MeetingSlot[], dayType: DayType
   return meetingSlots
     .filter((slot) => slot.day_type === dayType)
     .sort((left, right) => left.period_number - right.period_number)
+}
+
+export function meetingDaySelectionFromSlots(meetingSlots: MeetingSlot[]): MeetingDaySelection {
+  const days = new Set(meetingSlots.map((slot) => slot.day_type))
+  if (days.has('A') && days.has('B')) return 'both'
+  return days.has('A') ? 'A' : days.has('B') ? 'B' : 'both'
+}
+
+export function meetingPeriodFromSlots(meetingSlots: MeetingSlot[], fallback = 1): number {
+  return sortMeetingSlots(meetingSlots)[0]?.period_number ?? fallback
 }
 
 export function hasMultiplePeriodsOnAnyDay(meetingSlots: MeetingSlot[]): boolean {
@@ -88,8 +116,9 @@ export function formatMeetingSlotSummary(meetingSlots: MeetingSlot[]): string {
     .join(' · ')
 }
 
-export function validateMeetingSlots(meetingSlots: MeetingSlot[]): string | null {
+export function validateMeetingSlots(meetingSlots: MeetingSlot[], isDoublePeriod = hasMultiplePeriodsOnAnyDay(meetingSlots)): string | null {
   if (meetingSlots.length === 0) return 'Select at least one meeting slot.'
+  if (meetingSlots.length > 4) return 'A class can use at most four meeting slots.'
   const uniqueSlots = new Set<string>()
   for (const slot of meetingSlots) {
     if ((slot.day_type !== 'A' && slot.day_type !== 'B') || !Number.isInteger(slot.period_number) || slot.period_number < 1 || slot.period_number > MAX_PERIOD) {
@@ -98,6 +127,23 @@ export function validateMeetingSlots(meetingSlots: MeetingSlot[]): string | null
     const key = `${slot.day_type}-${slot.period_number}`
     if (uniqueSlots.has(key)) return 'Meeting slots cannot be duplicated.'
     uniqueSlots.add(key)
+  }
+
+  const daySlotCounts = (['A', 'B'] as DayType[]).map((dayType) => meetingSlotsForDay(meetingSlots, dayType))
+  if (!isDoublePeriod && daySlotCounts.some((daySlots) => daySlots.length > 1)) {
+    return 'A normal class can use only one period on each selected day.'
+  }
+  if (isDoublePeriod) {
+    let hasDoublePeriodDay = false
+    for (const daySlots of daySlotCounts) {
+      if (daySlots.length > 2) return 'A double-period class can use at most two consecutive periods on each day.'
+      if (daySlots.length !== 2) continue
+      if (daySlots[1].period_number !== daySlots[0].period_number + 1) {
+        return 'Double-period selections must use consecutive periods on each day.'
+      }
+      hasDoublePeriodDay = true
+    }
+    if (!hasDoublePeriodDay) return 'Select two consecutive periods on at least one meeting day for a double-period class.'
   }
   return null
 }

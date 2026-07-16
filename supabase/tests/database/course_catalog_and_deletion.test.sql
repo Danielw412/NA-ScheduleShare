@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(32);
 
 select is(
   (select count(*) from public.course_names where source = 'approved'),
@@ -133,6 +133,64 @@ select is(
 select ok(
   exists (select 1 from public.audit_logs where action_type = 'class_permanently_deleted' and target_id = '94000000-0000-4000-8000-000000000002'),
   'permanent deletion records an immutable audit entry'
+);
+
+reset role;
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+values ('94000000-0000-4000-8000-000000000004', '94000000-0000-4000-8000-000000000010', 'Double Delete', 'full_year', true, '10000000-0000-4000-8000-000000000001');
+insert into public.class_meeting_slots (class_id, day_type, period_number)
+values
+  ('94000000-0000-4000-8000-000000000004', 'A', 4),
+  ('94000000-0000-4000-8000-000000000004', 'B', 3),
+  ('94000000-0000-4000-8000-000000000004', 'B', 4);
+insert into public.class_enrollments (student_id, class_id, academic_term)
+values ('10000000-0000-4000-8000-000000000003', '94000000-0000-4000-8000-000000000004', 'full_year');
+insert into public.reports (id, reporter_id, reported_class_id, reason_category, explanation)
+values ('94000000-0000-4000-8000-000000000031', '10000000-0000-4000-8000-000000000002', '94000000-0000-4000-8000-000000000004', 'duplicate_class', 'Double delete regression report');
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select lives_ok(
+  $$select public.admin_delete_class_section('94000000-0000-4000-8000-000000000004', 'Confirmed double-period deletion test')$$,
+  'an administrator can delete a double-period class with asymmetric slots'
+);
+select is(
+  (select count(*) from public.classes where id = '94000000-0000-4000-8000-000000000004'),
+  0::bigint,
+  'double-period permanent deletion removes the class section'
+);
+select is(
+  (select count(*) from public.class_meeting_slots where class_id = '94000000-0000-4000-8000-000000000004'),
+  0::bigint,
+  'double-period permanent deletion removes every meeting slot'
+);
+select is(
+  (select count(*) from public.class_enrollments where class_id = '94000000-0000-4000-8000-000000000004'),
+  0::bigint,
+  'double-period permanent deletion removes every related enrollment'
+);
+select is(
+  (select count(*) from public.reports where id = '94000000-0000-4000-8000-000000000031' and reported_class_id is null),
+  1::bigint,
+  'double-period deletion clears report foreign keys'
+);
+select is(
+  (select reported_course_name_snapshot from public.reports where id = '94000000-0000-4000-8000-000000000031'),
+  'Course Catalog Regression',
+  'double-period deletion preserves report snapshots'
+);
+select ok(
+  exists (select 1 from public.audit_logs where action_type = 'class_permanently_deleted' and target_id = '94000000-0000-4000-8000-000000000004'),
+  'double-period deletion records an immutable audit entry'
+);
+select ok(
+  exists (
+    select 1 from public.schedule_change_history
+    where student_id = '10000000-0000-4000-8000-000000000003'
+      and new_value ->> 'class_id' = '94000000-0000-4000-8000-000000000004'
+      and new_value ->> 'permanently_deleted' = 'true'
+  ),
+  'double-period deletion preserves immutable schedule history'
 );
 reset role;
 select is(

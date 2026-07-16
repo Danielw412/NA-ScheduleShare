@@ -1,6 +1,6 @@
 import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
 import { termLabels, type AcademicTerm, type DayType, type ScheduleEnrollment } from '../../lib/domain'
-import { enrollmentAtSlot, findScheduleConflicts, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
+import { enrollmentAtSlot, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
 
 interface ScheduleGridProps {
   enrollments: ScheduleEnrollment[]
@@ -38,10 +38,11 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
               }
               const daySlots = meetingSlotsForDay(enrollment.class.meeting_slots, dayType)
               const hasMultiplePeriods = daySlots.length > 1
+              const isDoublePeriod = enrollment.class.is_double_period || hasMultiplePeriodsOnAnyDay(enrollment.class.meeting_slots)
               const continuation = isMeetingSlotContinuation(enrollment.class.meeting_slots, { day_type: dayType, period_number: period })
               const conflicted = conflictedIds.has(enrollment.id)
               return (
-                <div className={`schedule-cell filled-cell ${hasMultiplePeriods ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
+                <div className={`schedule-cell filled-cell ${isDoublePeriod ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
                   {conflicted ? <AlertTriangle className="conflict-icon" size={18} aria-label="Schedule conflict" /> : null}
                   <div className="class-cell-copy">
                     <strong>{continuation ? `${enrollment.class.course_name} — continues` : enrollment.class.course_name}</strong>

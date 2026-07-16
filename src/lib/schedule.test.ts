@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MeetingSlot, ScheduleEnrollment } from './domain'
-import { defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
+import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
 
 function enrollment(id: string, term: ScheduleEnrollment['academic_term'], meetingSlots: MeetingSlot[]): ScheduleEnrollment {
   return {
@@ -67,6 +67,27 @@ describe('explicit meeting-slot selections', () => {
       { day_type: 'A', period_number: 4 },
       { day_type: 'B', period_number: 4 },
     ])
+    expect(buildNormalMeetingSlots('both', 4)).toEqual(defaultMeetingSlots('B', 4))
+  })
+
+  it('supports A-day-only and B-day-only normal classes', () => {
+    expect(buildNormalMeetingSlots('A', 6)).toEqual([{ day_type: 'A', period_number: 6 }])
+    expect(buildNormalMeetingSlots('B', 7)).toEqual([{ day_type: 'B', period_number: 7 }])
+    expect(validateMeetingSlots(buildNormalMeetingSlots('A', 6), false)).toBeNull()
+    expect(validateMeetingSlots(buildNormalMeetingSlots('B', 7), false)).toBeNull()
+  })
+
+  it('preselects a clicked day plus a continuation for a double-period class', () => {
+    expect(defaultDoubleMeetingSlots('A', 4)).toEqual([
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'A', period_number: 5 },
+      { day_type: 'B', period_number: 4 },
+    ])
+    expect(defaultDoubleMeetingSlots('B', 9)).toEqual([
+      { day_type: 'A', period_number: 9 },
+      { day_type: 'B', period_number: 8 },
+      { day_type: 'B', period_number: 9 },
+    ])
   })
 
   it.each([
@@ -74,25 +95,43 @@ describe('explicit meeting-slot selections', () => {
       { day_type: 'A', period_number: 4 },
       { day_type: 'B', period_number: 4 },
     ]],
-    ['two periods on both days', [
+    ['an A-day-only class', [{ day_type: 'A', period_number: 6 }]],
+    ['a B-day-only class', [{ day_type: 'B', period_number: 7 }]],
+  ] satisfies Array<[string, MeetingSlot[]]>)('accepts %s', (_label, meetingSlots) => {
+    expect(validateMeetingSlots(meetingSlots, false)).toBeNull()
+  })
+
+  it('accepts independent slots for a valid double-period class', () => {
+    expect(validateMeetingSlots([
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 3 },
+      { day_type: 'B', period_number: 4 },
+    ], true)).toBeNull()
+    expect(validateMeetingSlots([
       { day_type: 'A', period_number: 3 },
       { day_type: 'A', period_number: 4 },
       { day_type: 'B', period_number: 3 },
       { day_type: 'B', period_number: 4 },
-    ]],
-    ['different periods on A and B days', [
-      { day_type: 'A', period_number: 4 },
-      { day_type: 'B', period_number: 3 },
-      { day_type: 'B', period_number: 4 },
-    ]],
-    ['an A-day-only class', [{ day_type: 'A', period_number: 6 }]],
-    ['a B-day-only class', [{ day_type: 'B', period_number: 7 }]],
-    ['nonconsecutive periods', [
+    ], true)).toBeNull()
+  })
+
+  it('rejects double-period selections that are not consecutive or have no double day', () => {
+    expect(validateMeetingSlots([
       { day_type: 'A', period_number: 2 },
       { day_type: 'A', period_number: 5 },
-    ]],
-  ] satisfies Array<[string, MeetingSlot[]]>)('accepts %s', (_label, meetingSlots) => {
-    expect(validateMeetingSlots(meetingSlots)).toBeNull()
+    ], true)).toContain('consecutive')
+    expect(validateMeetingSlots(defaultMeetingSlots('A', 4), true)).toContain('two consecutive')
+    expect(validateMeetingSlots([
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'A', period_number: 5 },
+    ], false)).toContain('normal class')
+  })
+
+  it('recovers the normal selector state from explicit slots', () => {
+    expect(meetingDaySelectionFromSlots([{ day_type: 'A', period_number: 4 }, { day_type: 'B', period_number: 4 }])).toBe('both')
+    expect(meetingDaySelectionFromSlots([{ day_type: 'A', period_number: 4 }])).toBe('A')
+    expect(meetingDaySelectionFromSlots([{ day_type: 'B', period_number: 4 }])).toBe('B')
+    expect(meetingPeriodFromSlots([{ day_type: 'B', period_number: 4 }, { day_type: 'A', period_number: 3 }])).toBe(3)
   })
 
   it('requires at least one unique, valid slot', () => {

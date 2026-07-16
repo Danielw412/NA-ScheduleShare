@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(20);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -35,7 +35,7 @@ select is(
 select public.remove_enrollment((select e.id from public.class_enrollments e join public.classes c on c.id = e.class_id join public.course_names cn on cn.id = c.course_name_id where e.active and cn.name = 'Grid One Both'));
 
 select lives_ok(
-  $$select public.create_class_and_enroll(null, 'Grid Two Both', 'Grid', 'full_year', false,
+  $$select public.create_class_and_enroll(null, 'Grid Two Both', 'Grid', 'full_year', true,
     '[{"day_type":"A","period_number":3},{"day_type":"A","period_number":4},{"day_type":"B","period_number":3},{"day_type":"B","period_number":4}]'::jsonb, true)$$,
   'two periods on both days can be created'
 );
@@ -49,7 +49,7 @@ select is(
 select public.remove_enrollment((select e.id from public.class_enrollments e join public.classes c on c.id = e.class_id join public.course_names cn on cn.id = c.course_name_id where e.active and cn.name = 'Grid Two Both'));
 
 select lives_ok(
-  $$select public.create_class_and_enroll(null, 'Grid Asymmetric', 'Grid', 'full_year', false,
+  $$select public.create_class_and_enroll(null, 'Grid Asymmetric', 'Grid', 'full_year', true,
     '[{"day_type":"A","period_number":4},{"day_type":"B","period_number":3},{"day_type":"B","period_number":4}]'::jsonb, true)$$,
   'A-day period 4 and B-day periods 3 and 4 can be created'
 );
@@ -90,19 +90,20 @@ select is(
 );
 select public.remove_enrollment((select e.id from public.class_enrollments e join public.classes c on c.id = e.class_id join public.course_names cn on cn.id = c.course_name_id where e.active and cn.name = 'Grid B Only'));
 
-select lives_ok(
+select throws_ok(
   $$select public.create_class_and_enroll(null, 'Grid Nonconsecutive', 'Grid', 'full_year', true,
     '[{"day_type":"A","period_number":2},{"day_type":"A","period_number":5}]'::jsonb, true)$$,
-  'nonconsecutive periods can be created'
+  '23514',
+  'double_period_slots_not_consecutive',
+  'double-period slots must be consecutive on a day'
 );
-select is(
-  (select string_agg(s.day_type::text || s.period_number::text, ',' order by s.day_type, s.period_number)
-   from public.class_meeting_slots s join public.classes c on c.id = s.class_id join public.course_names cn on cn.id = c.course_name_id
-   where cn.name = 'Grid Nonconsecutive'),
-  'A2,A5',
-  'nonconsecutive periods are stored without inferred slots'
+select throws_ok(
+  $$select public.create_class_and_enroll(null, 'Grid Normal Multiple', 'Grid', 'full_year', false,
+    '[{"day_type":"A","period_number":2},{"day_type":"A","period_number":3}]'::jsonb, true)$$,
+  '23514',
+  'normal_class_multiple_periods',
+  'normal classes cannot use multiple periods on one day'
 );
-select public.remove_enrollment((select e.id from public.class_enrollments e join public.classes c on c.id = e.class_id join public.course_names cn on cn.id = c.course_name_id where e.active and cn.name = 'Grid Nonconsecutive'));
 
 select throws_ok(
   $$select public.create_class_and_enroll(null, 'Grid Empty', 'Grid', 'full_year', false, '[]'::jsonb, true)$$,
@@ -143,7 +144,7 @@ select lives_ok(
     '94000000-0000-4000-8000-000000000020',
     'Updated',
     'full_year',
-    false,
+    true,
     '[{"day_type":"A","period_number":4},{"day_type":"B","period_number":3},{"day_type":"B","period_number":4}]'::jsonb,
     'Test explicit meeting-slot edit'
   )$$,
@@ -155,13 +156,18 @@ select is(
   'A4,B3,B4',
   'editing replaces the existing class slots exactly'
 );
+select is(
+  (select is_double_period from public.classes where id = '94000000-0000-4000-8000-000000000010'),
+  true,
+  'editing synchronizes double-period metadata with independent slots'
+);
 select throws_ok(
   $$select public.admin_update_class(
     '20000000-0000-4000-8000-000000000004',
     (select course_name_id from public.classes where id = '20000000-0000-4000-8000-000000000004'),
     'Johnson',
     'full_year',
-    false,
+    true,
     '[{"day_type":"A","period_number":4},{"day_type":"B","period_number":3},{"day_type":"B","period_number":4}]'::jsonb,
     'Test conflict detection'
   )$$,
