@@ -7,8 +7,8 @@ binding = "AI"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
-id = "00000000000000000000000000000000"
-preview_id = "11111111111111111111111111111111"
+id = "adbf10df0aec463f832dbe4cd8f2e76c""
+preview_id = "50dc62af983a4f69a91a89aed2a56a4e"
 
 [vars]
 RATE_LIMIT_MAX = "6"
