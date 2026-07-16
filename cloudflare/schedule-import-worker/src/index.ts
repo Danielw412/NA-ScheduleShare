@@ -241,7 +241,7 @@ async function fetchCatalog(env: Env, token: string): Promise<CourseRecord[]> {
   const body = await fetchAllPages(`${url}/rest/v1/course_names?select=id,name&status=eq.active&order=name`, env, token, 'catalog')
   const courses = body.filter((value): value is CourseRecord => (
     isRecord(value) && typeof value.id === 'string' && UUID_PATTERN.test(value.id)
-      && typeof value.name === 'string' && value.name.trim().length >= 2
+    && typeof value.name === 'string' && value.name.trim().length >= 2
   ))
   if (courses.length === 0) {
     throw new HttpError(403, 'catalog_forbidden', 'Your account cannot access schedule importing.')
@@ -328,17 +328,16 @@ ACTIVE CATALOGUE:
 ${catalogLines}`
 }
 
-async function fileToDataUrl(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
-  }
-  return `data:${file.type};base64,${btoa(binary)}`
+async function fileToImageBytes(file: File): Promise<number[]> {
+  const buffer = await file.arrayBuffer()
+  return Array.from(new Uint8Array(buffer))
 }
 
-async function runAi(env: Env, image: string, prompt: string): Promise<AiScheduleResult> {
+async function runAi(
+  env: Env,
+  image: number[],
+  prompt: string,
+): Promise<AiScheduleResult> {
   let output: unknown
   try {
     output = await env.AI.run(MODEL, {
@@ -351,11 +350,35 @@ async function runAi(env: Env, image: string, prompt: string): Promise<AiSchedul
       stream: false,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : ''
-    if (message.includes('quota') || message.includes('rate limit') || message.includes('429')) {
-      throw new HttpError(503, 'ai_quota_exceeded', 'Schedule recognition is temporarily at capacity. Try again later.')
+    const message = error instanceof Error
+      ? error.message
+      : String(error)
+
+    console.error('Workers AI invocation failed:', {
+      name: error instanceof Error ? error.name : 'UnknownError',
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
+    const normalized = message.toLowerCase()
+
+    if (
+      normalized.includes('quota')
+      || normalized.includes('rate limit')
+      || normalized.includes('429')
+    ) {
+      throw new HttpError(
+        503,
+        'ai_quota_exceeded',
+        'Schedule recognition is temporarily at capacity. Try again later.',
+      )
     }
-    throw new HttpError(503, 'ai_unavailable', 'Schedule recognition is temporarily unavailable.')
+
+    throw new HttpError(
+      503,
+      'ai_unavailable',
+      'Schedule recognition is temporarily unavailable.',
+    )
   }
   if (!isRecord(output) || typeof output.answer !== 'string') {
     throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid response.')
@@ -364,7 +387,7 @@ async function runAi(env: Env, image: string, prompt: string): Promise<AiSchedul
 }
 
 async function extractImage(env: Env, file: File, catalog: CourseRecord[]): Promise<AiScheduleResult> {
-  const image = await fileToDataUrl(file)
+  const image = await fileToImageBytes(file)
   const completePrompt = buildPrompt(catalog)
   if (completePrompt.length <= MAX_CATALOG_PROMPT_CHARS) return runAi(env, image, completePrompt)
 
