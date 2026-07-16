@@ -49,6 +49,11 @@ function aiResult(entries = [validEntry], overrides: Record<string, unknown> = {
   }
 }
 
+interface AiRunCall {
+  model: string
+  input: unknown
+}
+
 class MemoryKv {
   values = new Map<string, string>()
 
@@ -61,11 +66,16 @@ class MemoryKv {
   }
 }
 
-function createEnv(answers: unknown[] = [aiResult()], existingClasses: unknown[] = []): Env {
+function createEnv(
+  answers: unknown[] = [aiResult()],
+  existingClasses: unknown[] = [],
+  calls: AiRunCall[] = [],
+): Env {
   let index = 0
   return {
     AI: {
-      async run() {
+      async run(model, input) {
+        calls.push({ model, input })
         const answer = answers[Math.min(index, answers.length - 1)]
         index += 1
         if (answer instanceof Error) throw answer
@@ -148,6 +158,32 @@ describe('image input and rate limiting', () => {
     const response = await handleRequest(requestWithImages([image()]), createEnv())
     expect(response.status).toBe(200)
     expect(await body(response)).toMatchObject({ image_count: 1 })
+  })
+
+  it('passes uploaded bytes and the expected query input to Moondream', async () => {
+    const uploadedBytes = [0, 1, 2, 127, 128, 254, 255]
+    const calls: AiRunCall[] = []
+    const uploadedImage = new File([Uint8Array.from(uploadedBytes)], 'schedule.png', { type: 'image/png' })
+    const response = await handleRequest(
+      requestWithImages([uploadedImage]),
+      createEnv([aiResult()], [], calls),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBe('@cf/moondream/moondream3.1-9B-A2B')
+    expect(calls[0].input).toMatchObject({
+      task: 'query',
+      question: expect.any(String),
+      reasoning: false,
+      temperature: 0,
+      max_tokens: 8_000,
+      stream: false,
+    })
+    const input = calls[0].input as { image: unknown }
+    expect(typeof input.image).not.toBe('string')
+    expect(Array.isArray(input.image)).toBe(true)
+    expect(input.image).toEqual(uploadedBytes)
   })
 
   it('processes two images and merges overlapping entries without duplicates', async () => {

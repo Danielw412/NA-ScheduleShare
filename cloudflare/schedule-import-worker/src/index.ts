@@ -85,8 +85,18 @@ export interface ScheduleImportResponse {
   image_count: number
 }
 
+interface MoondreamQueryInput {
+  task: 'query'
+  image: number[]
+  question: string
+  reasoning: boolean
+  temperature: number
+  max_tokens: number
+  stream: boolean
+}
+
 interface AiBinding {
-  run(model: string, input: Record<string, unknown>): Promise<unknown>
+  run(model: string, input: MoondreamQueryInput): Promise<unknown>
 }
 
 interface KvBinding {
@@ -329,7 +339,8 @@ ${catalogLines}`
 }
 
 async function fileToImageBytes(file: File): Promise<number[]> {
-  return Array.from(new Uint8Array(await file.arrayBuffer()))
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  return Array.from(bytes)
 }
 
 async function runAi(
