@@ -1,6 +1,6 @@
 import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
 import { termLabels, type AcademicTerm, type DayType, type ScheduleEnrollment } from '../../lib/domain'
-import { enrollmentAtSlot, findScheduleConflicts, PERIOD_NUMBERS } from '../../lib/schedule'
+import { enrollmentAtSlot, findScheduleConflicts, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
 
 interface ScheduleGridProps {
   enrollments: ScheduleEnrollment[]
@@ -10,12 +10,6 @@ interface ScheduleGridProps {
   onReplace: (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => void
   onTermChange: (enrollment: ScheduleEnrollment, term: AcademicTerm) => void
   readOnly?: boolean
-}
-
-function isContinuation(enrollment: ScheduleEnrollment, dayType: DayType, period: number): boolean {
-  return enrollment.class.is_double_period && enrollment.class.meeting_slots.some(
-    (slot) => slot.day_type === dayType && slot.period_number === period - 1,
-  )
 }
 
 export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, onTermChange, readOnly = false }: ScheduleGridProps) {
@@ -42,15 +36,17 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
                   </button>
                 )
               }
-              const continuation = isContinuation(enrollment, dayType, period)
+              const daySlots = meetingSlotsForDay(enrollment.class.meeting_slots, dayType)
+              const hasMultiplePeriods = daySlots.length > 1
+              const continuation = isMeetingSlotContinuation(enrollment.class.meeting_slots, { day_type: dayType, period_number: period })
               const conflicted = conflictedIds.has(enrollment.id)
               return (
-                <div className={`schedule-cell filled-cell ${enrollment.class.is_double_period ? 'is-double' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
+                <div className={`schedule-cell filled-cell ${hasMultiplePeriods ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
                   {conflicted ? <AlertTriangle className="conflict-icon" size={18} aria-label="Schedule conflict" /> : null}
                   <div className="class-cell-copy">
                     <strong>{continuation ? `${enrollment.class.course_name} — continues` : enrollment.class.course_name}</strong>
-                    <span>{continuation ? 'Double period' : enrollment.class.teacher_last_name}</span>
-                    {enrollment.class.is_double_period && !continuation ? <small>{dayType} Day · {enrollment.class.meeting_slots.filter((slot) => slot.day_type === dayType).map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
+                    <span>{continuation ? 'Continues from previous period' : enrollment.class.teacher_last_name}</span>
+                    {hasMultiplePeriods && !continuation ? <small>{dayType} Day · {daySlots.map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
                   </div>
                   {!readOnly ? <details className="cell-menu">
                     <summary aria-label={`Actions for ${enrollment.class.course_name}`}><MoreVertical size={18} aria-hidden="true" /></summary>
@@ -72,7 +68,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
           </div>
         ))}
       </div>
-      {!readOnly ? <p className="schedule-help">Click “Add class” to search and add. Double-period classes appear in both affected cells.</p> : null}
+      {!readOnly ? <p className="schedule-help">Click “Add class” to search and add. Classes with multiple meeting slots appear in every selected cell.</p> : null}
     </div>
   )
 }

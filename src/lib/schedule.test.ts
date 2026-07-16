@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { ScheduleEnrollment } from './domain'
-import { buildMeetingSlots, findScheduleConflicts, suggestedDoubleSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
+import type { MeetingSlot, ScheduleEnrollment } from './domain'
+import { defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
 
-function enrollment(id: string, term: ScheduleEnrollment['academic_term'], period: number): ScheduleEnrollment {
+function enrollment(id: string, term: ScheduleEnrollment['academic_term'], meetingSlots: MeetingSlot[]): ScheduleEnrollment {
   return {
     id,
     student_id: 'student',
@@ -17,8 +17,8 @@ function enrollment(id: string, term: ScheduleEnrollment['academic_term'], perio
       course_name: `Course ${id}`,
       teacher_last_name: 'Teacher',
       default_academic_term: term,
-      is_double_period: false,
-      meeting_slots: [{ day_type: 'A', period_number: period }],
+      is_double_period: hasMultiplePeriodsOnAnyDay(meetingSlots),
+      meeting_slots: meetingSlots,
     },
   }
 }
@@ -36,54 +36,80 @@ describe('term matching', () => {
 })
 
 describe('schedule conflicts', () => {
-  it('finds same-slot classes whose terms overlap', () => {
-    expect(findScheduleConflicts([enrollment('a', 'full_year', 2), enrollment('b', 'semester_2', 2)])).toHaveLength(1)
+  it('finds any shared explicit slot when terms overlap', () => {
+    const flexible = enrollment('a', 'full_year', [
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 3 },
+      { day_type: 'B', period_number: 4 },
+    ])
+    const overlapping = enrollment('b', 'semester_2', [{ day_type: 'B', period_number: 3 }])
+    expect(findScheduleConflicts([flexible, overlapping])).toHaveLength(1)
+  })
+
+  it('does not conflict when only the period matches on different days', () => {
+    expect(findScheduleConflicts([
+      enrollment('a', 'full_year', [{ day_type: 'A', period_number: 2 }]),
+      enrollment('b', 'full_year', [{ day_type: 'B', period_number: 2 }]),
+    ])).toHaveLength(0)
   })
 
   it('allows opposite-semester classes in the same slot', () => {
-    expect(findScheduleConflicts([enrollment('a', 'semester_1', 2), enrollment('b', 'semester_2', 2)])).toHaveLength(0)
+    expect(findScheduleConflicts([
+      enrollment('a', 'semester_1', [{ day_type: 'A', period_number: 2 }]),
+      enrollment('b', 'semester_2', [{ day_type: 'A', period_number: 2 }]),
+    ])).toHaveLength(0)
   })
 })
 
-describe('double-period suggestions', () => {
-  it('suggests the next consecutive period', () => {
-    expect(suggestedDoubleSlots({ day_type: 'B', period_number: 4 })).toEqual([
-      { day_type: 'B', period_number: 4 },
-      { day_type: 'B', period_number: 5 },
-    ])
-  })
-
-  it('keeps a period-nine selection in range', () => {
-    expect(suggestedDoubleSlots({ day_type: 'A', period_number: 9 })).toEqual([
-      { day_type: 'A', period_number: 8 },
-      { day_type: 'A', period_number: 9 },
-    ])
-  })
-
-  it('defaults a normal class to the selected period on both A and B days', () => {
-    expect(buildMeetingSlots('both', 9, false)).toEqual([
-      { day_type: 'A', period_number: 9 },
-      { day_type: 'B', period_number: 9 },
-    ])
-  })
-
-  it('builds consecutive double-period slots for every selected meeting day', () => {
-    expect(buildMeetingSlots('both', 4, true)).toEqual([
+describe('explicit meeting-slot selections', () => {
+  it('defaults a normal class to the clicked period on both days', () => {
+    expect(defaultMeetingSlots('B', 4)).toEqual([
       { day_type: 'A', period_number: 4 },
-      { day_type: 'A', period_number: 5 },
       { day_type: 'B', period_number: 4 },
-      { day_type: 'B', period_number: 5 },
     ])
   })
 
-  it('rejects invalid single and double-period meeting-slot combinations', () => {
+  it.each([
+    ['one period on both days', [
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 4 },
+    ]],
+    ['two periods on both days', [
+      { day_type: 'A', period_number: 3 },
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 3 },
+      { day_type: 'B', period_number: 4 },
+    ]],
+    ['different periods on A and B days', [
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 3 },
+      { day_type: 'B', period_number: 4 },
+    ]],
+    ['an A-day-only class', [{ day_type: 'A', period_number: 6 }]],
+    ['a B-day-only class', [{ day_type: 'B', period_number: 7 }]],
+    ['nonconsecutive periods', [
+      { day_type: 'A', period_number: 2 },
+      { day_type: 'A', period_number: 5 },
+    ]],
+  ] satisfies Array<[string, MeetingSlot[]]>)('accepts %s', (_label, meetingSlots) => {
+    expect(validateMeetingSlots(meetingSlots)).toBeNull()
+  })
+
+  it('requires at least one unique, valid slot', () => {
+    expect(validateMeetingSlots([])).toBe('Select at least one meeting slot.')
     expect(validateMeetingSlots([
       { day_type: 'A', period_number: 2 },
-      { day_type: 'A', period_number: 3 },
-    ], false)).toContain('one A-day period')
-    expect(validateMeetingSlots([
-      { day_type: 'B', period_number: 2 },
+      { day_type: 'A', period_number: 2 },
+    ])).toBe('Meeting slots cannot be duplicated.')
+    expect(validateMeetingSlots([{ day_type: 'B', period_number: 10 }])).toContain('1 through 9')
+  })
+
+  it('derives legacy multiple-period metadata from either day independently', () => {
+    expect(hasMultiplePeriodsOnAnyDay([
+      { day_type: 'A', period_number: 4 },
+      { day_type: 'B', period_number: 3 },
       { day_type: 'B', period_number: 4 },
-    ], true)).toContain('two consecutive B-day periods')
+    ])).toBe(true)
+    expect(hasMultiplePeriodsOnAnyDay(defaultMeetingSlots('A', 4))).toBe(false)
   })
 })

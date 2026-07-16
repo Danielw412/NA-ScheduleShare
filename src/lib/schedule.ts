@@ -1,6 +1,5 @@
 import type { AcademicTerm, DayType, MeetingSlot, ScheduleEnrollment } from './domain'
 
-export type MeetingDaySelection = 'both' | DayType
 export const PERIOD_NUMBERS = Array.from({ length: 9 }, (_, index) => index + 1)
 const MAX_PERIOD = PERIOD_NUMBERS.length
 
@@ -46,22 +45,50 @@ export function enrollmentAtSlot(
   )
 }
 
-export function suggestedDoubleSlots(initial: MeetingSlot): MeetingSlot[] {
-  if (initial.period_number >= MAX_PERIOD) return [initial, { ...initial, period_number: MAX_PERIOD - 1 }].sort(
-    (a, b) => a.period_number - b.period_number,
+export function sortMeetingSlots(meetingSlots: MeetingSlot[]): MeetingSlot[] {
+  return [...meetingSlots].sort(
+    (left, right) => left.day_type.localeCompare(right.day_type) || left.period_number - right.period_number,
   )
-  return [initial, { ...initial, period_number: initial.period_number + 1 }]
 }
 
-export function buildMeetingSlots(daySelection: MeetingDaySelection, period: number, isDouble: boolean): MeetingSlot[] {
+export function defaultMeetingSlots(dayType: DayType, period: number): MeetingSlot[] {
   if (!Number.isInteger(period) || period < 1 || period > MAX_PERIOD) throw new Error('invalid_period')
-  const days: DayType[] = daySelection === 'both' ? ['A', 'B'] : [daySelection]
-  return days.flatMap((dayType) => isDouble
-    ? suggestedDoubleSlots({ day_type: dayType, period_number: period })
-    : [{ day_type: dayType, period_number: period }])
+  const otherDay: DayType = dayType === 'A' ? 'B' : 'A'
+  return sortMeetingSlots([
+    { day_type: dayType, period_number: period },
+    { day_type: otherDay, period_number: period },
+  ])
 }
 
-export function validateMeetingSlots(meetingSlots: MeetingSlot[], isDouble: boolean): string | null {
+export function toggleMeetingSlot(meetingSlots: MeetingSlot[], slot: MeetingSlot): MeetingSlot[] {
+  return meetingSlots.some((candidate) => sameSlot(candidate, slot))
+    ? meetingSlots.filter((candidate) => !sameSlot(candidate, slot))
+    : sortMeetingSlots([...meetingSlots, slot])
+}
+
+export function meetingSlotsForDay(meetingSlots: MeetingSlot[], dayType: DayType): MeetingSlot[] {
+  return meetingSlots
+    .filter((slot) => slot.day_type === dayType)
+    .sort((left, right) => left.period_number - right.period_number)
+}
+
+export function hasMultiplePeriodsOnAnyDay(meetingSlots: MeetingSlot[]): boolean {
+  return (['A', 'B'] as DayType[]).some((dayType) => meetingSlotsForDay(meetingSlots, dayType).length > 1)
+}
+
+export function isMeetingSlotContinuation(meetingSlots: MeetingSlot[], slot: MeetingSlot): boolean {
+  return meetingSlots.some(
+    (candidate) => candidate.day_type === slot.day_type && candidate.period_number === slot.period_number - 1,
+  )
+}
+
+export function formatMeetingSlotSummary(meetingSlots: MeetingSlot[]): string {
+  return sortMeetingSlots(meetingSlots)
+    .map((slot) => `${slot.day_type} Day · P${slot.period_number}`)
+    .join(' · ')
+}
+
+export function validateMeetingSlots(meetingSlots: MeetingSlot[]): string | null {
   if (meetingSlots.length === 0) return 'Select at least one meeting slot.'
   const uniqueSlots = new Set<string>()
   for (const slot of meetingSlots) {
@@ -71,18 +98,6 @@ export function validateMeetingSlots(meetingSlots: MeetingSlot[], isDouble: bool
     const key = `${slot.day_type}-${slot.period_number}`
     if (uniqueSlots.has(key)) return 'Meeting slots cannot be duplicated.'
     uniqueSlots.add(key)
-  }
-
-  for (const dayType of ['A', 'B'] as DayType[]) {
-    const periods = meetingSlots
-      .filter((slot) => slot.day_type === dayType)
-      .map((slot) => slot.period_number)
-      .sort((left, right) => left - right)
-    if (periods.length === 0) continue
-    if (!isDouble && periods.length !== 1) return `Select one ${dayType}-day period for a single-period class.`
-    if (isDouble && (periods.length !== 2 || periods[1] !== periods[0] + 1)) {
-      return `Select exactly two consecutive ${dayType}-day periods for a double-period class.`
-    }
   }
   return null
 }

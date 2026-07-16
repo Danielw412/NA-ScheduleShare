@@ -14,6 +14,7 @@ export interface ClassDefinition {
   course_name: string
   teacher_last_name: string
   default_academic_term: AcademicTerm
+  /** Legacy compatibility metadata; meeting_slots is the schedule source of truth. */
   is_double_period: boolean
   meeting_slots: MeetingSlot[]
 }

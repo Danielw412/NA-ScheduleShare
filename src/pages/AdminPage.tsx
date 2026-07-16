@@ -1,8 +1,9 @@
 import { FileClock, Flag, GraduationCap, History, Merge, Plus, ShieldCheck, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { MeetingSlotGrid } from '../components/schedule/MeetingSlotGrid'
 import { useAuth } from '../features/auth/AuthProvider'
-import type { AcademicTerm, AdminClassRecord, AdminCourseNameRecord, AdminReportRecord, DayType, MeetingSlot } from '../lib/domain'
-import { PERIOD_NUMBERS, validateMeetingSlots } from '../lib/schedule'
+import type { AcademicTerm, AdminClassRecord, AdminCourseNameRecord, AdminReportRecord, MeetingSlot } from '../lib/domain'
+import { validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
 import { adminListClasses, adminListCourseNames, adminListReports, adminListUsers, adminUpdateClass, callAdminAction } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
@@ -81,8 +82,7 @@ const reportReasonLabels: Record<AdminReportRecord['reason_category'], string> =
 function classEditErrorMessage(caught: unknown) {
   const message = caught instanceof Error ? caught.message : ''
   if (message.includes('class_edit_schedule_conflict')) return 'This edit would create a schedule conflict for at least one enrolled student. Choose different meeting slots.'
-  if (message.includes('double_period_requires_two_consecutive_slots_per_day')) return 'Each selected day for a double-period class needs exactly two consecutive periods.'
-  if (message.includes('single_period_requires_one_slot_per_day')) return 'A single-period class can have only one selected period on each meeting day.'
+  if (message.includes('meeting_slots_required')) return 'Select at least one meeting slot.'
   if (message.includes('only_active_classes_can_be_edited')) return 'Only active classes can be edited.'
   if (message.includes('active_course_name_not_found')) return 'Select an active course name from the catalog.'
   if (message.includes('invalid_teacher_last_name')) return 'Enter only a valid teacher last name without a title.'
@@ -155,7 +155,6 @@ export function AdminPage() {
     courseNameId: string
     teacherLastName: string
     term: AcademicTerm
-    isDouble: boolean
     meetingSlots: MeetingSlot[]
     reason: string
   }) {
@@ -297,31 +296,24 @@ function AdminClassEditDialog({
   courseNames: AdminCourseNameRecord[]
   saving: boolean
   onClose: () => void
-  onSave: (input: { courseNameId: string; teacherLastName: string; term: AcademicTerm; isDouble: boolean; meetingSlots: MeetingSlot[]; reason: string }) => Promise<void>
+  onSave: (input: { courseNameId: string; teacherLastName: string; term: AcademicTerm; meetingSlots: MeetingSlot[]; reason: string }) => Promise<void>
 }) {
   const [courseNameId, setCourseNameId] = useState(course.course_name_id)
   const [teacherLastName, setTeacherLastName] = useState(course.teacher_last_name)
   const [term, setTerm] = useState<AcademicTerm>(course.default_academic_term)
-  const [isDouble, setIsDouble] = useState(course.is_double_period)
   const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(course.meeting_slots)
   const [reason, setReason] = useState('Corrected from admin class management')
-  const slotError = validateMeetingSlots(meetingSlots, isDouble)
+  const slotError = validateMeetingSlots(meetingSlots)
   const teacherError = teacherLastNameError(teacherLastName)
   const canSave = Boolean(courseNameId) && !teacherError && reason.trim().length >= 3 && !slotError
-
-  function toggleSlot(slot: MeetingSlot) {
-    setMeetingSlots((current) => current.some((item) => item.day_type === slot.day_type && item.period_number === slot.period_number)
-      ? current.filter((item) => item.day_type !== slot.day_type || item.period_number !== slot.period_number)
-      : [...current, slot].sort((left, right) => left.day_type.localeCompare(right.day_type) || left.period_number - right.period_number))
-  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canSave) return
-    void onSave({ courseNameId, teacherLastName, term, isDouble, meetingSlots, reason })
+    void onSave({ courseNameId, teacherLastName, term, meetingSlots, reason })
   }
 
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label><label className="checkbox-row"><input type="checkbox" checked={isDouble} onChange={(event) => setIsDouble(event.target.checked)} /><span><strong>Double-period class</strong><small>Each selected meeting day must use two consecutive periods.</small></span></label><fieldset className="slot-picker"><legend>A-day and B-day meeting slots</legend>{(['A', 'B'] as DayType[]).map((day) => <div key={day}><strong>{day} Day</strong>{PERIOD_NUMBERS.map((period) => <label key={period}><input type="checkbox" checked={meetingSlots.some((slot) => slot.day_type === day && slot.period_number === period)} onChange={() => toggleSlot({ day_type: day, period_number: period })} />P{period}</label>)}</div>)}</fieldset>{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label><MeetingSlotGrid meetingSlots={meetingSlots} onChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
 }
 
 function AdminLogTable({ title, rows, primary, target }: { title: string; rows: Array<Record<string, unknown>>; primary: string; target: string }) {
