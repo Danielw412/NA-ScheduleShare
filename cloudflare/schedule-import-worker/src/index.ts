@@ -87,7 +87,7 @@ export interface ScheduleImportResponse {
 
 interface MoondreamQueryInput {
   task: 'query'
-  image: ArrayBuffer
+  image: number[]
   question: string
   reasoning: boolean
   temperature: number
@@ -338,13 +338,13 @@ ACTIVE CATALOGUE:
 ${catalogLines}`
 }
 
-async function fileToImageBytes(file: File): Promise<ArrayBuffer> {
-  return file.arrayBuffer()
+async function fileToImageBytes(file: File): Promise<number[]> {
+  return Array.from(new Uint8Array(await file.arrayBuffer()))
 }
 
 async function runAi(
   env: Env,
-  image: ArrayBuffer,
+  image: number[],
   prompt: string,
 ): Promise<AiScheduleResult> {
   let output: unknown

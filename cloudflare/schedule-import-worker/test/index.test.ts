@@ -182,8 +182,8 @@ describe('image input and rate limiting', () => {
     })
     const input = calls[0].input as { image: unknown }
     expect(typeof input.image).not.toBe('string')
-    expect(input.image).toBeInstanceOf(ArrayBuffer)
-    expect(Array.from(new Uint8Array(input.image as ArrayBuffer))).toEqual(uploadedBytes)
+    expect(Array.isArray(input.image)).toBe(true)
+    expect(input.image).toEqual(uploadedBytes)
   })
 
   it('processes two images and merges overlapping entries without duplicates', async () => {
