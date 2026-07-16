@@ -53,11 +53,11 @@ select throws_ok(
   'a private user full schedule cannot be read by a classmate'
 );
 
--- Direct enrollment query exposes shared rows only, not the rest of a private schedule.
+-- Direct enrollment queries do not expose even a shared row for a Private owner.
 select is(
   (select count(*) from public.class_enrollments where student_id = '90000000-0000-4000-8000-000000000001'),
-  1::bigint,
-  'direct enrollment queries reveal only the specifically shared class for a private user'
+  0::bigint,
+  'direct enrollment queries do not reveal a shared class for a Private user'
 );
 
 reset role;

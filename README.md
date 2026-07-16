@@ -25,7 +25,7 @@ The central model separates three concepts:
 2. `class_meeting_slots` stores one validated A/B day + period row per explicit meeting slot. Nothing is packed into an unvalidated text field.
 3. `class_enrollments` connects a student to a shared class and stores that student’s term and active status. Removing an enrollment never deletes the shared class.
 
-`profiles` stores safe student-facing data. Administrative roles and suspension/deletion metadata live in the non-exposed `private` schema. History, reports, and audit tables preserve their own records when a user is deleted by using nullable references where appropriate.
+`profiles` stores privacy-filtered student-facing data. Administrative roles and suspension/deletion metadata live in the non-exposed `private` schema. History, reports, and audit tables preserve their own records when a user is deleted by using nullable references where appropriate.
 
 The browser never receives a service-role key. Student writes and every admin action use functions that derive the actor from `auth.uid()`. Base-table grants are minimized, all relevant tables have RLS enabled, and `private` schema tables are not exposed through the Data API.
 
@@ -73,7 +73,7 @@ pnpm build
 pnpm preview
 ```
 
-`pnpm test:privacy` expects the local Supabase stack to be running. The pgTAP suite verifies private, classmates, and school schedule visibility; suspended-user denial; admin-operation denial; self-promotion prevention; direct enrollment-table protection; and transactional class merging.
+`pnpm test:privacy` expects the local Supabase stack to be running. The pgTAP suite verifies Private, Classmates, and Anyone roster/schedule visibility; cross-roster shared-class access; suspended-user denial; admin access; direct Data API and RPC protection; self-promotion prevention; and transactional class merging.
 
 ## Supabase project setup
 
@@ -150,8 +150,8 @@ Always review generated type changes. Never edit an already-applied production m
 ## Security model
 
 - `private.require_active_user()` is the gate used by protected application RPCs. RLS policies also call active-user helpers, so suspensions block direct Data API reads and writes.
-- `private.can_view_full_schedule(viewer, owner)` implements self/admin, Classmates, and School visibility. Private users expose only membership in a class the viewer also attends.
-- Direct `class_enrollments` reads are RLS-limited. A private student’s other enrollments cannot be used to reconstruct their schedule.
+- `private.can_view_roster_member(viewer, owner)` is the shared owner-based rule for roster RPCs, profile discovery, and direct enrollment reads: self/admin, Anyone, or Classmates when any active class is shared.
+- Private students are hidden from other regular users in all rosters. Direct `class_enrollments` reads use the same predicate and expose only active rows to regular viewers, so a shared class cannot bypass that choice or reveal inactive schedule history.
 - Discovery RPCs require the current student to have at least one active enrollment, except administrators.
 - Role and moderation records live in `private`; only safe public wrappers are executable by `authenticated`.
 - Class creation and report creation use database-backed rate limits. Names are normalized and exact duplicate creation is rejected; fuzzy suggestions never merge automatically.
@@ -163,7 +163,7 @@ See the official Supabase guidance for [Row Level Security](https://supabase.com
 
 ## Brand changes
 
-Update `src/config/brand.ts` for the site name, organization, attribution, repository URL, or logo path. Replace `public/na-club-logo.png` to change the current temporary logo without editing page components. `BrandLogo` is the only component responsible for rendering it. Design colors and layout tokens are centralized at the top of `src/styles.css`.
+Update `src/config/brand.ts` for the site name, organization, attribution, repository URL, or logo path. Replace `public/na-club-logo.png` to change the logo without editing page components. `BrandLogo` is the only component responsible for rendering it, and the same square asset is used for the browser and mobile touch icons. Design colors and layout tokens are centralized at the top of `src/styles.css`.
 
 ## Repository guide
 

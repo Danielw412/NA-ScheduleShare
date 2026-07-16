@@ -39,7 +39,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `supabase/seed.sql` — local-only Auth users, profiles, classes, slots, and enrollments.
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.
 - `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ScheduleShare/` base path.
-- `public/na-club-logo.png` — replaceable temporary logo asset.
+- `public/na-club-logo.png` — square site logo, favicon, and mobile touch-icon asset.
 - `docs/design/` — generated visual direction references used to validate desktop and mobile implementation.
 
 Update this map whenever the structure changes.

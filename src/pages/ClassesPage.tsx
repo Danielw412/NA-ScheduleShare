@@ -40,7 +40,7 @@ export function ClassesPage() {
     if (isDemo) {
       setMembers([
         { student_id: 'a', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'school', can_view_schedule: true },
-        { student_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', can_view_schedule: false },
+        { student_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'classmates', can_view_schedule: true },
       ])
       return
     }
@@ -77,7 +77,8 @@ export function ClassesPage() {
                 <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
                 <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{selected.meeting_slots.map((slot) => `${slot.day_type} Day, Period ${slot.period_number}`).join(' · ')}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
                 <div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{members.length}</span></div>
-                <div className="member-list">{members.map((member) => <div key={member.student_id}><span className="avatar">{member.full_name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Shared class only</span>}</div>)}</div>
+                <div className="member-list">{members.map((member) => <div key={member.student_id}><span className="avatar">{member.full_name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Schedule hidden</span>}</div>)}</div>
+                {members.length === 0 ? <p className="empty-inline">No students in this class are visible under their privacy settings.</p> : null}
               </>
             ) : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Open a result to see its meeting slots and classmates.</p></div>}
           </section>

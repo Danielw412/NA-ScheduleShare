@@ -65,7 +65,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 .notice-box.error { border-left-color: var(--danger); color: #861111; background: #fff6f6; }
 
 .brand-logo { display: inline-flex; align-items: center; gap: 14px; font-weight: 850; font-size: 23px; letter-spacing: -.03em; white-space: nowrap; }
-.brand-logo img { width: 72px; height: 52px; display: block; flex: 0 0 auto; object-fit: contain; object-position: center; border-radius: 2px; }
+.brand-logo img { width: 56px; height: 56px; aspect-ratio: 1; display: block; flex: 0 0 auto; object-fit: contain; object-position: center; border-radius: 2px; }
 .brand-link { text-decoration: none; }
 
 .app-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
@@ -387,7 +387,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 
 @media (max-width: 900px) {
   .site-header { min-height: 72px; grid-template-columns: 1fr auto; }
-  .site-header .brand-logo img { width: 58px; height: 42px; }
+  .site-header .brand-logo img { width: 44px; height: 44px; }
   .site-header .brand-logo span { font-size: 20px; }
   .mobile-menu-button { display: grid; place-items: center; }
   .primary-nav { position: absolute; inset: 71px 0 auto; display: none; height: auto; padding: 12px var(--page-gutter) 20px; flex-direction: column; gap: 0; border-bottom: 2px solid var(--ink); background: var(--white); box-shadow: var(--shadow-lg); }
@@ -424,7 +424,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 @media (max-width: 650px) {
   :root { --page-gutter: 16px; }
   .page-container { padding-top: 24px; padding-bottom: 42px; }
-  .site-header .brand-logo img { width: 64px; height: 46px; }
+  .site-header .brand-logo img { width: 46px; height: 46px; }
   .page-heading { display: grid; gap: 16px; }
   .page-heading h1 { font-size: 42px; }
   .page-heading .button { justify-self: start; }

@@ -140,5 +140,5 @@ export const termLabels: Record<AcademicTerm, string> = {
 export const privacyLabels: Record<PrivacySetting, string> = {
   private: 'Private',
   classmates: 'Classmates',
-  school: 'School',
+  school: 'Anyone',
 }

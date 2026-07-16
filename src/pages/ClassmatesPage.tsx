@@ -8,7 +8,6 @@ import { getClassmates } from '../lib/supabase/data'
 
 const demoClassmates: ClassmateResult[] = [
   { student_id: '40000000-0000-4000-8000-000000000001', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'classmates', shared_course_names: ['AP Language', 'Academic Chemistry', 'Honors Algebra 2'], can_view_schedule: true },
-  { student_id: '40000000-0000-4000-8000-000000000002', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', shared_course_names: ['Honors Spanish 3'], can_view_schedule: false },
   { student_id: '40000000-0000-4000-8000-000000000003', full_name: 'Sam Rivera', grade: 10, privacy_setting: 'school', shared_course_names: ['Academic Chemistry'], can_view_schedule: true },
 ]
 
