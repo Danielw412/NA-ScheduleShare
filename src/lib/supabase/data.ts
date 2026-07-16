@@ -343,10 +343,19 @@ export async function adminUpdateClass(input: {
   if (error) throw error
 }
 
-export async function callAdminAction(functionName: string, args: Record<string, unknown>): Promise<unknown> {
+export async function callAdminAction(
+  functionName: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
   const client = requireClient()
-  const rpc = client.rpc as unknown as (name: string, parameters: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>
+
+  const rpc = client.rpc.bind(client) as unknown as (
+    name: string,
+    parameters: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: Error | null }>
+
   const { data, error } = await rpc(functionName, args)
+
   if (error) throw error
   return data
 }
