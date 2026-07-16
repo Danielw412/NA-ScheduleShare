@@ -10,6 +10,7 @@ The frontend is React 19 + TypeScript + Vite and uses a `HashRouter`, so nested 
 - Required full-name, grade, and privacy onboarding
 - Immediate protected-data lockout for suspended accounts
 - Fast A/B schedule-cell workflow with term selection, double-period support, conflict warnings, replace/remove actions, and immutable history
+- AI-assisted import of one or two PowerSchool schedule screenshots with upload, drag-and-drop, clipboard paste, explicit review, and catalogue-only course matching
 - Shared class definitions with explicit normalized meeting-slot rows
 - Privacy-aware class members, classmates, student schedules, and searchable school directory
 - Reports with moderation workflows
@@ -35,6 +36,7 @@ The browser never receives a service-role key. Student writes and every admin ac
 - pnpm 11.7.0
 - Docker Desktop for the local Supabase stack
 - Supabase CLI (installed as a pinned development dependency)
+- A Cloudflare account with Workers AI and KV for screenshot importing
 
 ## Local development
 
@@ -51,8 +53,11 @@ Copy the local API URL and publishable/anonymous key printed by `pnpm supabase:s
 ```dotenv
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=your-local-public-key
+VITE_SCHEDULE_IMPORT_API_URL=http://127.0.0.1:8787
 VITE_ENABLE_DEMO_MODE=false
 ```
+
+To exercise screenshot importing locally, also copy `cloudflare/schedule-import-worker/.dev.vars.example` to `.dev.vars`, fill in the same Supabase URL and publishable key, configure the KV IDs described in the [Worker setup guide](cloudflare/schedule-import-worker/README.md), and run `pnpm worker:dev` in another terminal.
 
 Open `http://127.0.0.1:5173/NA-ScheduleShare/`. Local seed accounts all use `ScheduleShare123!`:
 
@@ -68,12 +73,24 @@ For UI-only work without Supabase, set `VITE_ENABLE_DEMO_MODE=true` and leave th
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm worker:typecheck
+pnpm test:worker
 pnpm test:privacy
 pnpm build
 pnpm preview
 ```
 
 `pnpm test:privacy` expects the local Supabase stack to be running. The pgTAP suite verifies Private, Classmates, and Anyone roster/schedule visibility; cross-roster shared-class access; suspended-user denial; admin access; direct Data API and RPC protection; self-promotion prevention; and transactional class merging.
+
+## Screenshot importer
+
+The schedule page accepts up to two PNG, JPEG, or WebP screenshots by file picker, drag-and-drop, or clipboard paste. Students are asked to crop out personal details. Large browser images are resized when appropriate, but the Worker independently enforces a 5 MB limit per file.
+
+The Worker uses the `AI` binding with `@cf/moondream/moondream3.1-9B-A2B`. It validates the Supabase access token server-side, derives the actor from Supabase Auth, loads the active course catalogue and visible classes under that same token, applies a per-user KV rate limit, and validates every model response against an exact runtime schema. Images are not written to Supabase, KV, or persistent Worker storage.
+
+Extraction never writes data. Valid rows open in an editable review grid; unresolved courses require the student to select an existing catalogue entry. The UI labels existing-class matches and new-class proposals, detects current-schedule/import conflicts and duplicates, and saves only after explicit confirmation. Confirmation rechecks class duplicates, calls the existing `create_class_and_enroll` RPC only with an existing course UUID when needed, or uses the existing enrollment RPC. Current RLS, validation, schedule history, and audit behavior therefore remain authoritative.
+
+See [`cloudflare/schedule-import-worker/README.md`](cloudflare/schedule-import-worker/README.md) for KV creation, local secrets, Cloudflare deployment, and GitHub Actions configuration.
 
 ## Supabase project setup
 
@@ -128,9 +145,12 @@ The deployment workflow is `.github/workflows/deploy.yml`. In GitHub:
 2. Add Actions secrets:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
+   - `VITE_SCHEDULE_IMPORT_API_URL` (the deployed Worker origin)
 3. Push to `main` or run the workflow manually.
 
 The workflow installs the locked dependencies, runs typechecking, linting, unit tests, and the production build, then deploys `dist`. Privacy tests run separately because they require Docker/Supabase services.
+
+The Worker has a separate manually triggered `.github/workflows/deploy-worker.yml` workflow. Configure its Cloudflare and Supabase secrets and deploy the Worker before building Pages with its URL. The workflow is manual so an unconfigured Cloudflare account cannot block normal Pages deployments.
 
 ## Database commands
 

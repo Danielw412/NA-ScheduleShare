@@ -29,6 +29,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `src/lib/domain.ts` — shared application domain types and labels.
 - `src/lib/schedule.ts` — term overlap, slot lookup, double-period, and conflict logic.
 - `src/lib/teacher.ts` — teacher last-name normalization and practical invalid-input checks shared by forms and tests.
+- `src/lib/scheduleImport.ts` and `src/components/schedule/ScheduleImportDialog.tsx` — screenshot preparation, Worker client, editable import review, duplicate recheck, and confirmation through existing schedule mutations.
 - `src/pages/AdminPage.tsx` — admin user/report/class/history/role/audit workflows; the database still authorizes every action.
 - `src/config/brand.ts` — single source for site name, organization, attribution, URLs, and temporary logo path.
 - `src/styles.css` — centralized design tokens and responsive styles.
@@ -39,6 +40,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `supabase/seed.sql` — local-only Auth users, profiles, classes, slots, and enrollments.
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.
 - `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ScheduleShare/` base path.
+- `cloudflare/schedule-import-worker/` and `.github/workflows/deploy-worker.yml` — authenticated screenshot extraction Worker, strict AI-output validation, KV rate limiting, tests, and manual deployment.
 - `public/na-club-logo.png` — square site logo, favicon, and mobile touch-icon asset.
 - `docs/design/` — generated visual direction references used to validate desktop and mobile implementation.
 
@@ -54,11 +56,15 @@ pnpm dev                        # start local Vite development
 pnpm typecheck                  # run TypeScript project checks
 pnpm lint                       # run ESLint
 pnpm test                       # run frontend unit tests
+pnpm test:worker                # run Cloudflare Worker unit tests
+pnpm worker:typecheck           # typecheck the Cloudflare Worker
 pnpm test:privacy               # run pgTAP privacy/integration tests; local Supabase must be running
 pnpm build                      # create the production build in dist
 pnpm preview                    # preview the production build
 pnpm db:push                    # apply migrations to the linked Supabase project
 pnpm types:generate             # regenerate src/lib/supabase/database.types.ts from local Supabase
+pnpm worker:dev                 # start the local Cloudflare Worker
+pnpm worker:deploy              # deploy the Cloudflare Worker
 ```
 
 Local database setup commands:

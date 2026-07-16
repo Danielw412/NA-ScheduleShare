@@ -4,6 +4,7 @@ dist/
 .env
 .env.local
 .env.*.local
+cloudflare/schedule-import-worker/.dev.vars
 .supabase/
 supabase/.temp/
 coverage/

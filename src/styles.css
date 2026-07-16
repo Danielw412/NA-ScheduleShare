@@ -170,6 +170,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .home-links span { margin-top: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 800; }
 
 .schedule-heading { align-items: flex-end; }
+.schedule-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .term-selector { width: min(430px, 100%); display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 18px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .term-selector button { min-height: 44px; border: 0; border-right: 1px solid var(--border-strong); background: var(--white); font-size: 13px; font-weight: 700; }
 .term-selector button:last-child { border-right: 0; }
@@ -265,6 +266,50 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .duplicate-warning button { border: 0; padding: 6px 0; background: transparent; text-align: left; text-decoration: underline; font-size: 12px; }
 .confirmation { background: var(--surface-subtle); }
 .form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+
+.schedule-import-dialog { width: min(1180px, 100%); max-height: calc(100vh - 32px); }
+.import-upload-step, .import-review-step { display: grid; gap: 18px; }
+.import-privacy-note { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 15px; border: 1px solid #dfb04c; background: #fff9ec; }
+.import-privacy-note > svg { color: var(--brand-gold-dark); }
+.import-privacy-note p { display: grid; gap: 3px; margin: 0; }
+.import-privacy-note span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.import-drop-zone { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 22px; border: 2px dashed var(--border-strong); background: var(--surface-subtle); text-align: center; }
+.import-drop-zone > svg { width: 34px; height: 34px; color: var(--brand-gold-dark); }
+.import-drop-zone > span { color: var(--muted); font-size: 12px; }
+.import-drop-zone > small { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--ink-soft); font-weight: 700; }
+.import-image-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.import-image-slot { min-height: 170px; display: grid; grid-template-rows: 1fr auto auto; place-items: center; gap: 9px; padding: 12px; border: 1px solid var(--border); background: var(--white); }
+.import-image-slot > svg { width: 42px; height: 42px; color: var(--muted); align-self: end; }
+.import-image-slot > img { width: 100%; height: 150px; object-fit: contain; background: #111; }
+.import-image-slot > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.import-image-slot > div { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.import-image-slot > div > button { border: 0; background: transparent; color: var(--danger); font-size: 12px; font-weight: 750; text-decoration: underline; }
+.import-review-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--ink); }
+.import-review-heading h3 { margin: 0; font-size: 24px; }
+.import-review-heading p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.import-review-grid { display: grid; gap: 14px; }
+.import-review-row { display: grid; gap: 15px; padding: 17px; border: 1px solid var(--border-strong); border-left: 5px solid var(--brand-gold); background: var(--white); }
+.import-review-row.has-error { border-left-color: var(--danger); }
+.import-review-row > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.import-review-row > header .checkbox-row { flex: 1; padding: 0; border: 0; }
+.import-flags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.import-flags span { padding: 4px 7px; border: 1px solid #dfb04c; background: #fff9ec; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .035em; }
+.import-flags span.danger { border-color: #ed9c9c; background: #fff1f1; color: var(--danger); }
+.import-review-fields { display: grid; grid-template-columns: minmax(240px, 1.4fr) minmax(150px, .7fr) minmax(150px, .65fr) minmax(240px, 1fr); gap: 11px; align-items: start; }
+.import-review-fields > label, .import-course-picker > label { min-width: 0; display: grid; gap: 6px; }
+.import-course-picker { min-width: 0; display: grid; gap: 7px; }
+.import-course-results { max-height: 120px; overflow: auto; display: flex; flex-wrap: wrap; gap: 5px; }
+.import-course-results button { min-height: 30px; padding: 4px 8px; border: 1px solid var(--border); background: var(--white); font-size: 11px; font-weight: 700; }
+.import-course-results button.is-selected { border-color: var(--focus); background: #eef5ff; }
+.import-course-picker p { margin: 0; }
+.import-resolution { margin: 0; padding: 10px 12px; border-left: 4px solid var(--brand-gold); background: var(--surface-subtle); font-size: 12px; font-weight: 750; }
+.import-slot-editor .meeting-slot-picker { padding: 10px; }
+.import-slot-editor .meeting-slot-grid { min-width: 500px; }
+.import-slot-editor .meeting-slot-toggle { min-height: 34px; font-size: 15px; }
+.import-row-warning { margin: 0; color: #795300; font-size: 12px; }
+.import-confidence { color: var(--muted); }
+.import-confirm-bar { position: sticky; bottom: -26px; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 3px -26px -26px; padding: 16px 26px; border-top: 2px solid var(--ink); background: var(--white); box-shadow: 0 -8px 20px rgb(0 0 0 / 8%); }
+.import-confirm-bar p { margin: 0; font-size: 13px; }
 
 .class-browser { min-height: 620px; display: grid; grid-template-columns: minmax(420px, .9fr) minmax(480px, 1.1fr); border: 1px solid var(--border-strong); }
 .class-list-panel { border-right: 1px solid var(--border-strong); }
@@ -419,6 +464,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .merge-tool { grid-template-columns: 1fr; }
   .merge-tool > svg { display: none; }
   .report-detail-panel dl { grid-template-columns: repeat(2, 1fr); }
+  .import-review-fields { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 650px) {
@@ -445,6 +491,8 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .completion-callout a { grid-column: 2; }
   .home-links { grid-template-columns: 1fr; }
   .schedule-heading { margin-bottom: 18px; }
+  .schedule-heading-actions { justify-content: flex-start; }
+  .schedule-heading-actions .button { width: 100%; justify-content: center; }
   .term-selector { width: 100%; }
   .term-long { display: none; }
   .term-short { display: inline; }
@@ -456,6 +504,15 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .class-dialog { width: 100%; max-height: 84vh; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); border: 0; border-radius: 24px 24px 0 0; }
   .class-dialog > header { margin-bottom: 18px; }
   .class-dialog h2 { font-size: 32px; }
+  .schedule-import-dialog { max-height: 94vh; border-radius: 18px 18px 0 0; }
+  .import-image-slots { grid-template-columns: 1fr; }
+  .import-image-slot { min-height: 145px; }
+  .import-image-slot > img { height: 125px; }
+  .import-review-heading, .import-review-row > header, .import-confirm-bar { align-items: stretch; flex-direction: column; }
+  .import-review-fields { grid-template-columns: 1fr; }
+  .import-flags { justify-content: flex-start; }
+  .import-confirm-bar { bottom: calc(-20px - env(safe-area-inset-bottom)); margin: 3px -20px calc(-20px - env(safe-area-inset-bottom)); padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); }
+  .import-confirm-bar .button { width: 100%; }
   .sheet-handle { display: block; width: 70px; height: 7px; border-radius: 99px; background: #d2d2d2; margin: -8px auto 18px; }
   .dialog-search-row { grid-template-columns: 1fr auto; }
   .dialog-search-row .button { padding-inline: 12px; }

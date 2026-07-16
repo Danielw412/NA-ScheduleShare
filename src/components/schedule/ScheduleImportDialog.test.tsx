@@ -1,0 +1,203 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CourseNameSearchResult, ScheduleEnrollment } from '../../lib/domain'
+import type { EditableScheduleImportRow, ScheduleImportResult } from '../../lib/scheduleImport'
+import { ScheduleImportDialog, type ScheduleImportDialogProps } from './ScheduleImportDialog'
+
+const COURSE_ID = '11111111-1111-4111-8111-111111111111'
+
+function scheduleFile(name = 'schedule.png') {
+  return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/png' })
+}
+
+function importResult(overrides: Partial<ScheduleImportResult['rows'][number]> = {}): ScheduleImportResult {
+  return {
+    image_count: 1,
+    warnings: [],
+    rows: [{
+      id: 'import-1',
+      source_course_name: 'AP Statistics (CHS)',
+      course: { id: COURSE_ID, name: 'AP Statistics', confidence: 0.98 },
+      teacher_last_name: 'Lester',
+      term: 'full_year',
+      meeting_slots: [{ day_type: 'A', period_number: 1 }, { day_type: 'B', period_number: 1 }],
+      confidence: 0.97,
+      warnings: [],
+      flags: [],
+      resolution: 'new_class',
+      existing_class_id: null,
+      class_options: [],
+      ...overrides,
+    }],
+  }
+}
+
+function currentEnrollment(): ScheduleEnrollment {
+  return {
+    id: 'enrollment-current',
+    class_id: 'class-current',
+    student_id: 'student-current',
+    academic_term: 'full_year',
+    active: true,
+    created_at: '2026-07-16T00:00:00Z',
+    updated_at: '2026-07-16T00:00:00Z',
+    class: {
+      id: 'class-current',
+      course_name_id: 'course-current',
+      course_name: 'Current Course',
+      teacher_last_name: 'Current',
+      default_academic_term: 'full_year',
+      is_double_period: false,
+      meeting_slots: [{ day_type: 'A', period_number: 1 }],
+    },
+  }
+}
+
+function renderDialog(overrides: Partial<ScheduleImportDialogProps> = {}) {
+  const props: ScheduleImportDialogProps = {
+    open: true,
+    currentEnrollments: [],
+    onClose: vi.fn(),
+    onImported: vi.fn(async () => undefined),
+    importScreenshots: vi.fn(async () => importResult()),
+    searchCourses: vi.fn(async () => []),
+    loadClassOptions: vi.fn(async () => []),
+    confirmImport: vi.fn(async () => ({ added: 1, skipped: 0 })),
+    ...overrides,
+  }
+  return { ...render(<ScheduleImportDialog {...props} />), props }
+}
+
+function clipboardWith(file: File) {
+  return {
+    items: [{ kind: 'file', type: file.type, getAsFile: () => file }],
+  }
+}
+
+beforeEach(() => {
+  let objectUrl = 0
+  vi.stubGlobal('createImageBitmap', undefined)
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:preview-${++objectUrl}`)
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+})
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+describe('ScheduleImportDialog image input', () => {
+  it('supports file upload, clipboard paste into the first empty slot, and two previews', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile('first.png'))
+    expect(await screen.findByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
+
+    fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('pasted.png')) })
+    expect(await screen.findByAltText('Schedule screenshot 2 preview')).toBeInTheDocument()
+    expect(screen.getByText('pasted.png')).toBeInTheDocument()
+
+    fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('third.png')) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Both screenshot slots are full')
+  })
+
+  it('supports drag-and-drop and sends both selected images in one request', async () => {
+    const importScreenshots = vi.fn(async () => importResult())
+    renderDialog({ importScreenshots })
+    const dropZone = screen.getByText('Drop screenshots here').parentElement!
+    fireEvent.drop(dropZone, { dataTransfer: { files: [scheduleFile('one.png'), scheduleFile('two.png')] } })
+    expect(await screen.findAllByRole('img', { name: /Schedule screenshot/ })).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await waitFor(() => expect(importScreenshots).toHaveBeenCalledWith([
+      expect.objectContaining({ name: 'one.png' }),
+      expect.objectContaining({ name: 'two.png' }),
+    ]))
+  })
+
+  it('keeps previews visible after a structured rejection so users can replace an image', async () => {
+    const user = userEvent.setup()
+    renderDialog({ importScreenshots: vi.fn(async () => { throw new Error('The screenshot shows classes but not their period numbers.') }) })
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('not their period numbers')
+    expect(screen.getByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
+    expect(screen.queryByText('Review every class')).not.toBeInTheDocument()
+  })
+
+  it('removes the paste listener when the dialog closes', async () => {
+    const rendered = renderDialog()
+    rendered.rerender(<ScheduleImportDialog {...rendered.props} open={false} />)
+    fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile()) })
+    expect(screen.queryByAltText(/Schedule screenshot/)).not.toBeInTheDocument()
+  })
+})
+
+describe('ScheduleImportDialog review and confirmation', () => {
+  it('requires manual catalogue selection for unresolved courses and submits edited new-class details only on confirmation', async () => {
+    const user = userEvent.setup()
+    const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100 }
+    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; skipped: number }>>(async () => ({ added: 1, skipped: 0 }))
+    renderDialog({
+      importScreenshots: vi.fn(async () => importResult({
+        course: null,
+        resolution: 'unresolved_course',
+        flags: ['unresolved_course'],
+        teacher_last_name: 'Unknown',
+        term: 'unknown',
+      })),
+      searchCourses: vi.fn(async () => [course]),
+      confirmImport,
+    })
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    expect(await screen.findByText('Review every class')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm and add classes' })).toBeDisabled()
+
+    await user.click(await screen.findByRole('button', { name: 'AP Statistics' }))
+    await user.clear(screen.getByLabelText('Teacher last name'))
+    await user.type(screen.getByLabelText('Teacher last name'), 'Lester')
+    await user.selectOptions(screen.getByLabelText('Academic term'), 'full_year')
+    await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
+    expect(screen.getByText(/Will propose a new class for existing course “AP Statistics”/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Confirm and add classes' }))
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
+    const rows = confirmImport.mock.calls[0][0]
+    expect(rows[0]).toMatchObject({
+      course: { id: COURSE_ID, name: 'AP Statistics' },
+      teacher_last_name: 'Lester',
+      term: 'full_year',
+      resolution: 'new_class',
+    })
+    expect(rows[0].meeting_slots).toContainEqual({ day_type: 'A', period_number: 2 })
+  })
+
+  it('loads and lets the student choose an existing class for the selected course', async () => {
+    const user = userEvent.setup()
+    const existing = {
+      id: 'class-existing',
+      course_id: COURSE_ID,
+      teacher_last_name: 'Smith',
+      term: 'semester_1' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 3 }],
+    }
+    renderDialog({ importScreenshots: vi.fn(async () => importResult({ class_options: [existing] })) })
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.selectOptions(await screen.findByLabelText('Class action'), 'class-existing')
+    expect(screen.getByText('Will use an existing class.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Teacher last name')).toHaveValue('Smith')
+    expect(screen.getByLabelText('Academic term')).toHaveValue('semester_1')
+  })
+
+  it('flags current-schedule conflicts and blocks final confirmation until resolved or excluded', async () => {
+    const user = userEvent.setup()
+    renderDialog({ currentEnrollments: [currentEnrollment()] })
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    expect(await screen.findByText('Schedule conflict')).toBeInTheDocument()
+    expect(screen.getByText(/conflicts with another class/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm and add classes' })).toBeDisabled()
+  })
+})

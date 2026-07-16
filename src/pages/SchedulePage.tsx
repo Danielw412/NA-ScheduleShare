@@ -1,7 +1,8 @@
-import { Share2 } from 'lucide-react'
+import { ImagePlus, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
+import { ScheduleImportDialog } from '../components/schedule/ScheduleImportDialog'
 import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -16,6 +17,7 @@ export function SchedulePage() {
   const schedule = useSchedule()
   const [selectedTerm, setSelectedTerm] = useState<AcademicTerm>('full_year')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   async function remove(enrollment: ScheduleEnrollment) {
@@ -52,7 +54,10 @@ export function SchedulePage() {
     <div className="schedule-page">
       <header className="page-heading schedule-heading">
         <div><h1>My Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
-        <button className="button button-secondary" type="button" onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> Share schedule</button>
+        <div className="schedule-heading-actions">
+          <button className="button button-secondary" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => setImportOpen(true)}><ImagePlus size={18} aria-hidden="true" /> Import screenshots</button>
+          <button className="button button-secondary" type="button" onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> Share schedule</button>
+        </div>
       </header>
       {message ? <div className="toast-message" role="status">{message}<button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
       {schedule.error ? <div className="notice-box error" role="alert">{schedule.error}</div> : null}
@@ -75,6 +80,12 @@ export function SchedulePage() {
         onClose={() => setActiveCell(null)}
         onChanged={schedule.reload}
         onDemoAdd={(classDefinition: ClassDefinition, term) => schedule.addDemoEnrollment(classDefinition, term)}
+      /> : null}
+      {importOpen ? <ScheduleImportDialog
+        open
+        currentEnrollments={schedule.enrollments}
+        onClose={() => setImportOpen(false)}
+        onImported={schedule.reload}
       /> : null}
     </div>
   )

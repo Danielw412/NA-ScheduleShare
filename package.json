@@ -12,9 +12,13 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:worker": "vitest run --config cloudflare/schedule-import-worker/vitest.config.ts",
     "test:watch": "vitest",
     "test:privacy": "supabase test db --local supabase/tests/database",
     "build": "tsc -b && vite build",
+    "worker:typecheck": "tsc -p cloudflare/schedule-import-worker/tsconfig.json",
+    "worker:dev": "wrangler dev --config cloudflare/schedule-import-worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config cloudflare/schedule-import-worker/wrangler.toml",
     "preview": "vite preview",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
@@ -44,6 +48,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.64.0",
     "vite": "8.1.4",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "4.111.0"
   }
 }
