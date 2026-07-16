@@ -32,7 +32,7 @@ export function OnboardingPage() {
 
   return (
     <main className="onboarding-page">
-      <BrandLogo />
+      <BrandLogo logoPath="na-club-logo-dark.png" />
       <form className="onboarding-form" onSubmit={(event) => void submit(event)}>
         <span className="step-label">Step 1 of 1</span>
         <h1>Set up your student profile</h1>
