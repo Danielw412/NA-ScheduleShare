@@ -43,7 +43,7 @@ export function AppShell() {
         <nav aria-label="Footer navigation">
           <NavLink to="/privacy">Privacy</NavLink>
           <NavLink to="/report">Report an issue</NavLink>
-          <a href={brand.repositoryUrl}>GitHub</a>
+          <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>
     </div>
