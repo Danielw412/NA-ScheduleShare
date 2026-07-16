@@ -329,8 +329,7 @@ ${catalogLines}`
 }
 
 async function fileToImageBytes(file: File): Promise<number[]> {
-  const buffer = await file.arrayBuffer()
-  return Array.from(new Uint8Array(buffer))
+  return Array.from(new Uint8Array(await file.arrayBuffer()))
 }
 
 async function runAi(
