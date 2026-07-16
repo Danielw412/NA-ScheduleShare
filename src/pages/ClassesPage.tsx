@@ -6,7 +6,7 @@ import { useAuth } from '../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../hooks/useClassSearch'
 import { demoEnrollments } from '../lib/demo-data'
 import type { ClassMemberResult, ClassSearchResult, DayType } from '../lib/domain'
-import { PERIOD_NUMBERS } from '../lib/schedule'
+import { hasMultiplePeriodsOnAnyDay, PERIOD_NUMBERS } from '../lib/schedule'
 import { getClassMembers, searchClasses } from '../lib/supabase/data'
 
 const demoClasses: ClassSearchResult[] = demoEnrollments.map((enrollment, index) => ({ ...enrollment.class, score: 100 - index }))
@@ -74,7 +74,7 @@ export function ClassesPage() {
           <section className="class-detail-panel">
             {selected ? (
               <>
-                <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{selected.is_double_period ? <span className="status-tag">Double period</span> : null}</div>
+                <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
                 <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{selected.meeting_slots.map((slot) => `${slot.day_type} Day, Period ${slot.period_number}`).join(' · ')}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
                 <div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{members.length}</span></div>
                 <div className="member-list">{members.map((member) => <div key={member.student_id}><span className="avatar">{member.full_name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Shared class only</span>}</div>)}</div>

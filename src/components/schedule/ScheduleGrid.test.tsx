@@ -52,11 +52,77 @@ describe('ScheduleGrid borders', () => {
 
     expect(styles).toContain('row-gap: 0')
     expect(styles).toContain('.schedule-row > .period-label, .schedule-row > .schedule-cell { border-top: 1px solid var(--border-strong); }')
+    expect(styles).toContain('.filled-cell.is-multi-period { box-shadow: inset 5px 0 0 var(--focus); background: #f7faff; }')
     expect(styles).toContain('.filled-cell.is-continuation { border-top: 2px dashed #8dbbf0; }')
 
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_2" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
+  })
+
+  it('renders asymmetric per-day slots and only marks consecutive cells as continuations', () => {
+    const asymmetric: ScheduleEnrollment = {
+      ...doublePeriod,
+      id: 'enrollment-asymmetric',
+      class_id: 'class-asymmetric',
+      class: {
+        ...doublePeriod.class,
+        id: 'class-asymmetric',
+        is_double_period: true,
+        meeting_slots: [
+          { day_type: 'A', period_number: 4 },
+          { day_type: 'B', period_number: 3 },
+          { day_type: 'B', period_number: 4 },
+        ],
+      },
+    }
+    const { container } = render(<ScheduleGrid enrollments={[asymmetric]} selectedTerm="full_year" {...callbacks} />)
+
+    expect(container.querySelector('[data-day="A"][data-period="4"]')).not.toHaveAttribute('data-continuation')
+    expect(container.querySelector('[data-day="B"][data-period="3"]')).not.toHaveAttribute('data-continuation')
+    expect(container.querySelector('[data-day="B"][data-period="4"]')).toHaveAttribute('data-continuation', 'true')
+    expect(container.querySelector('[data-day="A"][data-period="4"]')).toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="B"][data-period="3"]')).toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="B"][data-period="4"]')).toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="A"][data-period="3"]')).toHaveClass('empty-cell')
+    expect(screen.getByText('B Day · P3 + P4')).toBeInTheDocument()
+  })
+
+  it('derives multi-period styling from slots when the stored flag is stale, but not for normal classes', () => {
+    const derivedDouble: ScheduleEnrollment = {
+      ...doublePeriod,
+      id: 'enrollment-derived-double',
+      class_id: 'class-derived-double',
+      class: {
+        ...doublePeriod.class,
+        id: 'class-derived-double',
+        is_double_period: false,
+        meeting_slots: [
+          { day_type: 'A', period_number: 2 },
+          { day_type: 'A', period_number: 3 },
+        ],
+      },
+    }
+    const normal: ScheduleEnrollment = {
+      ...doublePeriod,
+      id: 'enrollment-normal',
+      class_id: 'class-normal',
+      class: {
+        ...doublePeriod.class,
+        id: 'class-normal',
+        is_double_period: false,
+        meeting_slots: [
+          { day_type: 'A', period_number: 5 },
+          { day_type: 'B', period_number: 5 },
+        ],
+      },
+    }
+    const { container } = render(<ScheduleGrid enrollments={[derivedDouble, normal]} selectedTerm="full_year" {...callbacks} />)
+
+    expect(container.querySelector('[data-day="A"][data-period="2"]')).toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="A"][data-period="3"]')).toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="A"][data-period="5"]')).not.toHaveClass('is-multi-period')
+    expect(container.querySelector('[data-day="B"][data-period="5"]')).not.toHaveClass('is-multi-period')
   })
 })

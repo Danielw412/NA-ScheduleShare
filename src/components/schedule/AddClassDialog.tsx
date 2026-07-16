@@ -4,9 +4,10 @@ import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { AcademicTerm, ClassDefinition, ClassSearchResult, CourseNameSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
-import { buildMeetingSlots, PERIOD_NUMBERS, validateMeetingSlots, type MeetingDaySelection } from '../../lib/schedule'
+import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, type MeetingDaySelection, validateMeetingSlots } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
 import { normalizeTeacherLastName, teacherLastNameError } from '../../lib/teacher'
+import { MeetingSlotEditor } from './MeetingSlotEditor'
 
 interface AddClassDialogProps {
   open: boolean
@@ -59,9 +60,10 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const [courseQuery, setCourseQuery] = useState('')
   const [selectedCourseName, setSelectedCourseName] = useState<CourseNameSearchResult | null>(null)
   const [teacherLastName, setTeacherLastName] = useState('')
-  const [isDouble, setIsDouble] = useState(false)
+  const [isDoublePeriod, setIsDoublePeriod] = useState(false)
   const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>('both')
   const [meetingPeriod, setMeetingPeriod] = useState(period)
+  const [meetingSlots, setMeetingSlots] = useState(() => defaultMeetingSlots(dayType, period))
   const [confirmedNoCourseMatch, setConfirmedNoCourseMatch] = useState(false)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoResults
@@ -97,9 +99,10 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
     setCourseQuery('')
     setSelectedCourseName(null)
     setTeacherLastName('')
-    setIsDouble(false)
+    setIsDoublePeriod(false)
     setMeetingDays('both')
     setMeetingPeriod(period)
+    setMeetingSlots(defaultMeetingSlots(dayType, period))
     setConfirmedNoCourseMatch(false)
   }, [dayType, open, period, replacing?.academic_term])
 
@@ -108,13 +111,29 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   }, [results])
 
   const context = `${dayType} Day · Period ${period}`
-  const meetingSlots = buildMeetingSlots(meetingDays, meetingPeriod, isDouble)
-  const meetingSlotError = validateMeetingSlots(meetingSlots, isDouble)
+  const normalMeetingSlots = buildNormalMeetingSlots(meetingDays, meetingPeriod)
+  const activeMeetingSlots = isDoublePeriod ? meetingSlots : normalMeetingSlots
+  const meetingSlotError = validateMeetingSlots(activeMeetingSlots, isDoublePeriod)
   const teacherError = teacherLastName ? teacherLastNameError(teacherLastName) : null
   const newCourseName = courseQuery.trim().replace(/\s+/g, ' ')
   const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
     && !teacherLastNameError(teacherLastName)
     && !meetingSlotError
+
+  function changeDoublePeriod(nextIsDoublePeriod: boolean) {
+    setIsDoublePeriod(nextIsDoublePeriod)
+    setMeetingSlots(nextIsDoublePeriod ? defaultDoubleMeetingSlots(dayType, meetingPeriod) : normalMeetingSlots)
+  }
+
+  function changeMeetingDays(nextMeetingDays: MeetingDaySelection) {
+    setMeetingDays(nextMeetingDays)
+    if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(nextMeetingDays, meetingPeriod))
+  }
+
+  function changeMeetingPeriod(nextMeetingPeriod: number) {
+    setMeetingPeriod(nextMeetingPeriod)
+    if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(meetingDays, nextMeetingPeriod))
+  }
 
   async function confirmSelection() {
     if (!selected) return
@@ -149,8 +168,8 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
         course_name: selectedCourseName?.course_name ?? newCourseName,
         teacher_last_name: normalizeTeacherLastName(teacherLastName),
         default_academic_term: term,
-        is_double_period: isDouble,
-        meeting_slots: meetingSlots,
+        is_double_period: isDoublePeriod,
+        meeting_slots: activeMeetingSlots,
       }
       if (isDemo) onDemoAdd(definition, term)
       else await createClassAndEnroll({
@@ -158,8 +177,8 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
         newCourseName: selectedCourseName ? undefined : newCourseName,
         teacherLastName,
         term,
-        isDouble,
-        meetingSlots,
+        isDoublePeriod,
+        meetingSlots: activeMeetingSlots,
         confirmedNoCourseMatch,
       })
       await onChanged()
@@ -237,9 +256,16 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
             </label>
             {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
             <label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label>
-            <div className="two-field-row"><label>Meeting days<select value={meetingDays} onChange={(event) => setMeetingDays(event.target.value as MeetingDaySelection)}><option value="both">Both A and B days</option><option value="A">A day only</option><option value="B">B day only</option></select></label><label>{isDouble ? 'Primary period' : 'Period'}<select value={meetingPeriod} onChange={(event) => setMeetingPeriod(Number(event.target.value))}>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label></div>
-            <label className="checkbox-row"><input type="checkbox" checked={isDouble} onChange={(event) => setIsDouble(event.target.checked)} /><span><strong>Double-period class</strong><small>Uses two consecutive periods on each selected meeting day.</small></span></label>
-            <p className="inferred-slot">Meeting slots: <strong>{meetingSlots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')}</strong></p>
+            <MeetingSlotEditor
+              isDoublePeriod={isDoublePeriod}
+              meetingSlots={meetingSlots}
+              meetingDays={meetingDays}
+              meetingPeriod={meetingPeriod}
+              onDoublePeriodChange={changeDoublePeriod}
+              onMeetingDaysChange={changeMeetingDays}
+              onMeetingPeriodChange={changeMeetingPeriod}
+              onMeetingSlotsChange={setMeetingSlots}
+            />
             {meetingSlotError ? <p className="form-error" role="alert">{meetingSlotError}</p> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             <div className="form-actions"><button className="button button-secondary" type="button" onClick={() => setMode('search')}>Back to search</button><button className="button button-primary" disabled={!canCreate || saving}>{saving ? 'Creating…' : 'Create and add class'}</button></div>
