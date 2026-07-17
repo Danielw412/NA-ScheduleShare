@@ -34,12 +34,13 @@ afterEach(() => {
 })
 
 describe('HomePage hero', () => {
-  it('opens registration for a guest upload and keeps exploration public', () => {
+  it('opens registration for a guest upload and keeps exploration public without showing the schedule preview', () => {
     renderPage()
     expect(screen.getByRole('heading', { name: 'Find out who’s in your classes.' })).toBeInTheDocument()
     expect(screen.getByText('Upload a picture of your schedule, find classmates, and compare schedules with friends.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/auth?mode=sign-up&next=/schedule')
     expect(screen.getByRole('link', { name: 'Explore ScheduleShare' })).toHaveAttribute('href', '/students')
+    expect(screen.queryByLabelText('Schedule summary')).not.toBeInTheDocument()
   })
 
   it('shows only the upload action when guest exploration is disabled', () => {
@@ -51,10 +52,11 @@ describe('HomePage hero', () => {
     expect(screen.queryByLabelText('Major features')).not.toBeInTheDocument()
   })
 
-  it('takes an authenticated user directly to the Schedule tab', () => {
+  it('takes an authenticated user directly to the Schedule tab and shows schedule progress', () => {
     mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })
     renderPage()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
+    expect(screen.getByLabelText('Schedule summary')).toBeInTheDocument()
   })
 
   it('renders only the real statistic returned by the database', async () => {
