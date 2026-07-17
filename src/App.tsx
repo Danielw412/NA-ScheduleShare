@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { AdminGuestAccessControl } from './components/admin/AdminGuestAccessControl'
 import { AllowGuest, RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
 import { AppShell } from './components/layout/AppShell'
 import { AdminPage } from './pages/AdminPage'
@@ -35,7 +36,7 @@ export function App() {
             <Route path="privacy" element={<Navigate to="/profile" replace />} />
             <Route path="report" element={<ReportPage />} />
             <Route element={<RequireAdmin />}>
-              <Route path="admin" element={<AdminPage />} />
+              <Route path="admin" element={<><AdminGuestAccessControl /><AdminPage /></>} />
             </Route>
           </Route>
         </Route>
