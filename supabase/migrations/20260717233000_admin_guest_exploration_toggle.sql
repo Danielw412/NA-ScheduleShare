@@ -14,7 +14,7 @@ insert into private.guest_access_settings (singleton, exploration_enabled)
 values (true, true)
 on conflict (singleton) do nothing;
 
-create or replace function private.get_guest_exploration_enabled()
+create or replace function public.get_guest_exploration_enabled()
 returns boolean
 language sql
 stable
@@ -28,17 +28,7 @@ as $$
   ), true);
 $$;
 
-create or replace function public.get_guest_exploration_enabled()
-returns boolean
-language sql
-stable
-security invoker
-set search_path = ''
-as $$
-  select private.get_guest_exploration_enabled();
-$$;
-
-create or replace function private.admin_update_guest_exploration_enabled(next_enabled boolean)
+create or replace function public.admin_update_guest_exploration_enabled(p_enabled boolean)
 returns void
 language plpgsql
 volatile
@@ -58,7 +48,7 @@ begin
   for update;
 
   update private.guest_access_settings
-  set exploration_enabled = next_enabled,
+  set exploration_enabled = p_enabled,
       updated_by = actor_id,
       updated_at = now()
   where singleton;
@@ -74,7 +64,7 @@ begin
     'guest-exploration',
     before_data,
     after_data,
-    case when next_enabled
+    case when p_enabled
       then 'Enabled guest exploration'
       else 'Disabled guest exploration'
     end
@@ -82,28 +72,13 @@ begin
 end;
 $$;
 
-create or replace function public.admin_update_guest_exploration_enabled(p_enabled boolean)
-returns void
-language sql
-volatile
-security invoker
-set search_path = ''
-as $$
-  select private.admin_update_guest_exploration_enabled(p_enabled);
-$$;
-
-revoke all on function private.get_guest_exploration_enabled() from public, anon, authenticated;
-revoke all on function private.admin_update_guest_exploration_enabled(boolean) from public, anon, authenticated;
 revoke all on function public.get_guest_exploration_enabled() from public, anon, authenticated;
 revoke all on function public.admin_update_guest_exploration_enabled(boolean) from public, anon, authenticated;
 
-grant usage on schema private to anon, authenticated;
-grant execute on function private.get_guest_exploration_enabled() to anon, authenticated;
-grant execute on function private.admin_update_guest_exploration_enabled(boolean) to authenticated;
 grant execute on function public.get_guest_exploration_enabled() to anon, authenticated;
 grant execute on function public.admin_update_guest_exploration_enabled(boolean) to authenticated;
 
 comment on function public.get_guest_exploration_enabled() is
-  'Returns whether signed-out visitors may browse guest discovery routes and controls.';
+  'Returns whether signed-out visitors may browse guest discovery routes and controls without exposing the private settings table.';
 comment on function public.admin_update_guest_exploration_enabled(boolean) is
   'Administrator-only audited update for guest exploration access.';
