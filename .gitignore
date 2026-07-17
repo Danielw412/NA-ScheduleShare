@@ -8,6 +8,7 @@ cloudflare/schedule-import-worker/.dev.vars
 .supabase/
 supabase/.temp/
 coverage/
+.wrangler/
 playwright-report/
 test-results/
 *.log

@@ -1,9 +1,8 @@
-const MODEL = '@cf/moondream/moondream3.1-9B-A2B'
+export const MOONDREAM_MODEL = '@cf/moondream/moondream3.1-9B-A2B'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGES = 2
 const DEFAULT_RATE_LIMIT = 6
 const DEFAULT_RATE_WINDOW_SECONDS = 60 * 60
-const MAX_CATALOG_PROMPT_CHARS = 60_000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
@@ -43,9 +42,6 @@ interface AiEntry {
   meeting_slots: MeetingSlot[]
   confidence: number
   warnings: string[]
-  course_id: string | null
-  canonical_course_name: string | null
-  course_match_confidence: number
 }
 
 interface AiScheduleResult {
@@ -87,7 +83,7 @@ export interface ScheduleImportResponse {
 
 interface MoondreamQueryInput {
   task: 'query'
-  image: number[]
+  image: string
   question: string
   reasoning: boolean
   temperature: number
@@ -95,8 +91,13 @@ interface MoondreamQueryInput {
   stream: boolean
 }
 
-interface AiBinding {
+export interface AiBinding {
   run(model: string, input: MoondreamQueryInput): Promise<unknown>
+}
+
+export interface MoondreamImageInput {
+  dataUrl: string
+  byteLength: number
 }
 
 interface KvBinding {
@@ -109,8 +110,6 @@ export interface Env {
   RATE_LIMIT: KvBinding
   SUPABASE_URL: string
   SUPABASE_PUBLISHABLE_KEY: string
-  CLOUDFLARE_ACCOUNT_ID: string
-  CLOUDFLARE_AI_API_TOKEN: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
 }
@@ -318,10 +317,9 @@ async function fetchAllPages(
     : 'The class list is too large to import safely.')
 }
 
-function buildPrompt(catalog: CourseRecord[], candidatesOnly = false): string {
-  const catalogLines = catalog.map((course) => `${course.id} | ${course.name}`).join('\n')
+export function buildPrompt(): string {
   return `You are reading one screenshot that is one whole or partial view of the same PowerSchool student schedule. Return ONLY one JSON object with exactly this shape:
-{"schedule_detected":boolean,"period_mapping_visible":boolean,"image_quality":"clear"|"usable"|"unusable","warnings":string[],"entries":[{"source_course_name":string,"teacher_raw":string,"term":"full_year"|"semester_1"|"semester_2"|"unknown","meeting_slots":[{"day_type":"A"|"B","period_number":1-9}],"confidence":0-1,"warnings":string[],"course_id":string|null,"canonical_course_name":string|null,"course_match_confidence":0-1}]}
+{"schedule_detected":boolean,"period_mapping_visible":boolean,"image_quality":"clear"|"usable"|"unusable","warnings":string[],"entries":[{"source_course_name":string,"teacher_raw":string,"term":"full_year"|"semester_1"|"semester_2"|"unknown","meeting_slots":[{"day_type":"A"|"B","period_number":1-9}],"confidence":0-1,"warnings":string[]}]}
 
 Rules:
 - Read only rows where the visible course name can be associated with its visible Exp/period text. Never infer periods from row order or position.
@@ -329,99 +327,93 @@ Rules:
 - Preserve each individual A/B meeting slot. Include rows with no slots only when a course is visible but its period mapping is cropped or unreadable; this lets the server reject incomplete combined images.
 - Ignore grade level, case manager, counselor, attendance, room, email link, student name, and student ID rows.
 - teacher_raw should contain the visible teacher text, reconstructed across line wraps. Do not guess a teacher.
-- PowerSchool teacher text is usually Last, First. Lunch and Study Hall still need entries but should be matched only to their catalogue entries.
+- PowerSchool teacher text is usually Last, First. Include every visible schedule row without deciding whether it is a special class.
 - Term is full_year for year text such as 25-26, semester_1 for S1/SEM 1, semester_2 for S2/SEM 2, otherwise unknown.
-- course_id and canonical_course_name must either be an exact pair from the supplied active catalogue or both null. Never invent, rename, or create a course. Use null for ambiguous or weak matches.
+- source_course_name must contain only the course text visibly read from the screenshot. Preserve visible abbreviations and never rename, canonicalize, or invent a course.
 - Handle common visible abbreviations and decorations such as Hon/Honors, AP, CHS, punctuation, spacing, and line wrapping, but do not match vaguely similar names.
 - period_mapping_visible is true only when this image visibly connects at least one included course to explicit period and A/B information.
-- schedule_detected is false for unrelated images. image_quality is unusable for blur, obstruction, or incompleteness that prevents reliable extraction.
-${candidatesOnly ? 'The catalogue below contains fuzzy candidates generated for the visible text. Choose only a reliable pair.' : 'The complete active course catalogue follows.'}
-ACTIVE CATALOGUE:
-${catalogLines}`
+- schedule_detected is false for unrelated images. image_quality is unusable for blur, obstruction, or incompleteness that prevents reliable extraction.`
 }
 
-async function fileToImageBytes(file: File): Promise<number[]> {
-  return Array.from(new Uint8Array(await file.arrayBuffer()))
+export async function fileToMoondreamImage(file: File): Promise<MoondreamImageInput> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return {
+    dataUrl: `data:${file.type};base64,${btoa(binary)}`,
+    byteLength: bytes.byteLength,
+  }
 }
 
-interface CloudflareAiEnvelope {
-  success?: boolean
-  result?: unknown
-  errors?: Array<{
-    code?: number
-    message?: string
-  }>
+export function describeMoondreamImageBoundary(image: MoondreamImageInput) {
+  return {
+    type: typeof image.dataUrl,
+    is_array: Array.isArray(image.dataUrl),
+    constructor: image.dataUrl.constructor.name,
+    byte_length: image.byteLength,
+  }
+}
+
+export async function invokeMoondreamQuery(
+  ai: AiBinding,
+  image: MoondreamImageInput,
+  question: string,
+  maxTokens = 8_000,
+): Promise<unknown> {
+  const boundary = describeMoondreamImageBoundary(image)
+  console.log(JSON.stringify({
+    event: 'workers_ai_inference_boundary',
+    model: MOONDREAM_MODEL,
+    task: 'query',
+    image: boundary,
+    question_length: question.length,
+    max_tokens: maxTokens,
+  }))
+  return ai.run(MOONDREAM_MODEL, {
+    task: 'query',
+    image: image.dataUrl,
+    question,
+    reasoning: false,
+    temperature: 0,
+    max_tokens: maxTokens,
+    stream: false,
+  })
+}
+
+export function moondreamAnswer(output: unknown): string | null {
+  if (!isRecord(output)) return null
+  if (typeof output.answer === 'string') return output.answer
+  return isRecord(output.result) && typeof output.result.answer === 'string'
+    ? output.result.answer
+    : null
 }
 
 async function runAi(
   env: Env,
-  image: number[],
+  image: MoondreamImageInput,
   prompt: string,
 ): Promise<AiScheduleResult> {
-  const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim()
-  const apiToken = env.CLOUDFLARE_AI_API_TOKEN?.trim()
-
-  if (!accountId || !apiToken) {
-    throw new HttpError(
-      503,
-      'ai_not_configured',
-      'Schedule recognition is not configured.',
-    )
-  }
-
-  const model = '@cf/moondream/moondream3.1-9B-A2B'
-  const endpoint =
-    `https://api.cloudflare.com/client/v4/accounts/` +
-    `${encodeURIComponent(accountId)}/ai/run/${model}`
-
-  let response: Response
-
+  let output: unknown
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        task: 'query',
-        image,
-        question: prompt,
-        reasoning: false,
-        temperature: 0,
-        max_tokens: 8_000,
-        stream: false,
-      }),
-    })
+    output = await invokeMoondreamQuery(env.AI, image, prompt)
   } catch (error) {
-    console.error('Workers AI REST request failed:', error)
-
-    throw new HttpError(
-      503,
-      'ai_unavailable',
-      'Schedule recognition is temporarily unavailable.',
-    )
-  }
-
-  const envelope = await response
-    .json()
-    .catch(() => null) as CloudflareAiEnvelope | null
-
-  if (!response.ok || !envelope?.success) {
-    console.error('Workers AI REST response failed:', {
-      status: response.status,
-      errors: envelope?.errors,
-    })
-
-    const errorText = envelope?.errors
-      ?.map((error) => `${error.code ?? ''} ${error.message ?? ''}`)
-      .join(' ')
-      .toLowerCase() ?? ''
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(JSON.stringify({
+      event: 'workers_ai_inference_failed',
+      model: MOONDREAM_MODEL,
+      task: 'query',
+      error_name: error instanceof Error ? error.name : 'UnknownError',
+      error_message: message,
+    }))
+    const normalized = message.toLowerCase()
 
     if (
-      response.status === 429
-      || errorText.includes('quota')
-      || errorText.includes('rate limit')
+      normalized.includes('429')
+      || normalized.includes('quota')
+      || normalized.includes('rate limit')
     ) {
       throw new HttpError(
         503,
@@ -437,10 +429,15 @@ async function runAi(
     )
   }
 
-  const output = envelope.result
-
-  if (!isRecord(output) || typeof output.answer !== 'string') {
-    console.error('Unexpected Workers AI result:', output)
+  const answer = moondreamAnswer(output)
+  if (answer === null) {
+    console.error(JSON.stringify({
+      event: 'workers_ai_invalid_result',
+      model: MOONDREAM_MODEL,
+      task: 'query',
+      result_type: typeof output,
+      result_keys: isRecord(output) ? Object.keys(output) : [],
+    }))
 
     throw new HttpError(
       502,
@@ -449,18 +446,12 @@ async function runAi(
     )
   }
 
-  return parseAiSchedule(output.answer)
+  return parseAiSchedule(answer)
 }
 
-async function extractImage(env: Env, file: File, catalog: CourseRecord[]): Promise<AiScheduleResult> {
-  const image = await fileToImageBytes(file)
-  const completePrompt = buildPrompt(catalog)
-  if (completePrompt.length <= MAX_CATALOG_PROMPT_CHARS) return runAi(env, image, completePrompt)
-
-  const firstPass = await runAi(env, image, buildPrompt([], false))
-  const candidates = uniqueCourses(firstPass.entries.flatMap((entry) => fuzzyCandidates(entry.source_course_name, catalog, 8)))
-  if (candidates.length === 0) return firstPass
-  return runAi(env, image, buildPrompt(candidates, true))
+async function extractImage(env: Env, file: File): Promise<AiScheduleResult> {
+  const image = await fileToMoondreamImage(file)
+  return runAi(env, image, buildPrompt())
 }
 
 function parseAiSchedule(answer: string): AiScheduleResult {
@@ -490,16 +481,13 @@ function parseAiSchedule(answer: string): AiScheduleResult {
 }
 
 function parseAiEntry(value: unknown): AiEntry {
-  const keys = ['source_course_name', 'teacher_raw', 'term', 'meeting_slots', 'confidence', 'warnings', 'course_id', 'canonical_course_name', 'course_match_confidence']
+  const keys = ['source_course_name', 'teacher_raw', 'term', 'meeting_slots', 'confidence', 'warnings']
   if (!isRecord(value) || !hasExactKeys(value, keys)
     || typeof value.source_course_name !== 'string' || value.source_course_name.trim().length < 2
     || value.source_course_name.length > 160 || typeof value.teacher_raw !== 'string' || value.teacher_raw.length > 200
     || !isImportTerm(value.term) || !Array.isArray(value.meeting_slots)
     || typeof value.confidence !== 'number' || !inConfidenceRange(value.confidence)
-    || !isStringArray(value.warnings) || value.warnings.some((warning) => warning.length > 300)
-    || !(value.course_id === null || (typeof value.course_id === 'string' && UUID_PATTERN.test(value.course_id)))
-    || !(value.canonical_course_name === null || (typeof value.canonical_course_name === 'string' && value.canonical_course_name.length <= 120))
-    || typeof value.course_match_confidence !== 'number' || !inConfidenceRange(value.course_match_confidence)) {
+    || !isStringArray(value.warnings) || value.warnings.some((warning) => warning.length > 300)) {
     throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid class entry.')
   }
   const meetingSlots = parseSlots(value.meeting_slots)
@@ -511,9 +499,6 @@ function parseAiEntry(value: unknown): AiEntry {
     meeting_slots: meetingSlots,
     confidence: value.confidence,
     warnings: value.warnings,
-    course_id: value.course_id,
-    canonical_course_name: value.canonical_course_name,
-    course_match_confidence: value.course_match_confidence,
   }
 }
 
@@ -599,27 +584,7 @@ function levenshtein(left: string, right: string): number {
   return previous[right.length]
 }
 
-function fuzzyCandidates(sourceName: string, catalog: CourseRecord[], limit: number): CourseRecord[] {
-  return catalog
-    .map((course) => ({ course, score: courseSimilarity(sourceName, course.name) }))
-    .sort((left, right) => right.score - left.score)
-    .slice(0, limit)
-    .map(({ course }) => course)
-}
-
-function uniqueCourses(courses: CourseRecord[]): CourseRecord[] {
-  return [...new Map(courses.map((course) => [course.id, course])).values()]
-}
-
 function validatedCourseMatch(entry: AiEntry, catalog: CourseRecord[]): { course: CourseRecord; confidence: number } | null {
-  const byId = new Map(catalog.map((course) => [course.id, course]))
-  if (entry.course_id && entry.canonical_course_name) {
-    const course = byId.get(entry.course_id)
-    const similarity = course ? courseSimilarity(entry.source_course_name, course.name) : 0
-    if (course && course.name === entry.canonical_course_name && entry.course_match_confidence >= 0.78 && similarity >= 0.72) {
-      return { course, confidence: Math.min(entry.course_match_confidence, Math.max(similarity, 0.8)) }
-    }
-  }
   const ranked = catalog
     .map((course) => ({ course, score: courseSimilarity(entry.source_course_name, course.name) }))
     .sort((left, right) => right.score - left.score)
@@ -651,7 +616,6 @@ function mergeEntries(results: AiScheduleResult[], catalog: CourseRecord[]): Arr
       ...current,
       meeting_slots: sortSlots(uniqueSlots([...current.meeting_slots, ...entry.meeting_slots])),
       confidence: Math.max(current.confidence, entry.confidence),
-      course_match_confidence: Math.max(current.course_match_confidence, entry.course_match_confidence),
       warnings: [...new Set([...current.warnings, ...entry.warnings, 'Duplicate or overlapping screenshot entry merged.'])],
       duplicate: true,
     })
@@ -737,7 +701,7 @@ async function importSchedule(request: Request, env: Env, context: RequestContex
   const [{ token, userId }, images] = await Promise.all([authenticate(request, env), readImages(request)])
   await consumeRateLimit(env, userId, (context.now ?? Date.now)())
   const [catalog, classes] = await Promise.all([fetchCatalog(env, token), fetchExistingClasses(env, token)])
-  const results = await Promise.all(images.map((image) => extractImage(env, image, catalog)))
+  const results = await Promise.all(images.map((image) => extractImage(env, image)))
   validateCombinedImages(results)
   return {
     rows: buildReviewRows(results, catalog, classes),

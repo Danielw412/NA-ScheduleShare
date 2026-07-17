@@ -40,7 +40,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `supabase/seed.sql` — local-only Auth users, profiles, classes, slots, and enrollments.
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.
 - `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ScheduleShare/` base path.
-- `cloudflare/schedule-import-worker/` and `.github/workflows/deploy-worker.yml` — authenticated screenshot extraction Worker, strict AI-output validation, KV rate limiting, tests, and manual deployment.
+- `cloudflare/schedule-import-worker/` and `.github/workflows/deploy-worker.yml` — authenticated screenshot extraction Worker, strict AI-output validation, KV rate limiting, tests, safe public-logo model diagnostic, and manual deployment.
 - `public/na-club-logo.png` — square site logo, favicon, and mobile touch-icon asset.
 - `docs/design/` — generated visual direction references used to validate desktop and mobile implementation.
 

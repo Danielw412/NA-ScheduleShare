@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "na-scheduleshare-import-ai-diagnostic",
+  "main": "entry.ts",
+  "compatibility_date": "2026-07-16",
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  }
+}
