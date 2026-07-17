@@ -16,7 +16,8 @@ export function HomePage() {
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const navigate = useNavigate()
   const completion = scheduleCompletion(enrollments)
-  const guestLocked = !user && !explorationEnabled
+  const isGuest = !user
+  const guestLocked = isGuest && !explorationEnabled
 
   useEffect(() => {
     if (!user || !hasPendingAuthDestination()) return
@@ -34,7 +35,7 @@ export function HomePage() {
 
   return (
     <div className="home-page">
-      <section className="home-hero" style={guestLocked ? { gridTemplateColumns: 'minmax(0, 720px)', justifyContent: 'start' } : undefined}>
+      <section className="home-hero" style={isGuest ? { gridTemplateColumns: 'minmax(0, 720px)', justifyContent: 'start' } : undefined}>
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
@@ -44,11 +45,11 @@ export function HomePage() {
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
-        {guestLocked ? null : <div className="hero-schedule-preview" aria-label="Schedule summary">
-          <span>{user ? loading ? '…' : `${completion}%` : 'A/B'}</span>
-          <div><strong>{user ? 'Schedule progress' : 'Schedule preview'}</strong><small>{user ? `${enrollments.length} classes added` : 'Upload · Review · Discover'}</small></div>
-          <div className="progress-track"><span style={{ width: user ? `${completion}%` : '72%' }} /></div>
-        </div>}
+        {user ? <div className="hero-schedule-preview" aria-label="Schedule summary">
+          <span>{loading ? '…' : `${completion}%`}</span>
+          <div><strong>Schedule progress</strong><small>{enrollments.length} classes added</small></div>
+          <div className="progress-track"><span style={{ width: `${completion}%` }} /></div>
+        </div> : null}
       </section>
       {user && completion < 100 ? (
         <section className="completion-callout">
