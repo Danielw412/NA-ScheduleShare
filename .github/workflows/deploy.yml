@@ -43,6 +43,7 @@ jobs:
       - run: pnpm worker:typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm test:function
       - run: pnpm test:worker
       - run: pnpm build
       - uses: actions/configure-pages@v5

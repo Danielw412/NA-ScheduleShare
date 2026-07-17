@@ -1,19 +1,23 @@
-import { AlertTriangle, CheckCircle2, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
+import { AlertTriangle, Bug, CheckCircle2, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
-import type { AcademicTerm, CourseNameSearchResult, MeetingSlot, ScheduleEnrollment } from '../../lib/domain'
+import type { AcademicTerm, CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
 import { hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
   findClassesForCourse,
   importRowError,
   prepareScheduleImage,
+  ScheduleImportRequestError,
   submitScheduleScreenshots,
   teacherForImportedCourse,
   type EditableScheduleImportRow,
   type ImportClassOption,
   type ScheduleImportResult,
+  type ScheduleImportDeveloperDiagnostics,
+  type ScheduleImportDeveloperOptions,
 } from '../../lib/scheduleImport'
+import { adminListScheduleImportModels } from '../../lib/supabase/data'
 import { normalizeTeacherLastName } from '../../lib/teacher'
 import { MeetingSlotGrid } from './MeetingSlotGrid'
 
@@ -24,13 +28,38 @@ interface ImportImage {
 
 export interface ScheduleImportDialogProps {
   open: boolean
+  isAdmin?: boolean
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
   onImported: () => Promise<void>
-  importScreenshots?: (files: File[]) => Promise<ScheduleImportResult>
+  importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
   confirmImport?: (rows: EditableScheduleImportRow[]) => Promise<{ added: number; skipped: number }>
+  loadDeveloperModels?: () => Promise<ScheduleImportModelRecord[]>
+}
+
+function DeveloperDiagnosticsPanel({ diagnostics }: { diagnostics: ScheduleImportDeveloperDiagnostics }) {
+  const blocks: Array<{ label: string; value: unknown }> = [
+    { label: 'Exact prompt', value: diagnostics.prompt },
+    { label: 'Raw Gemini output', value: diagnostics.raw_gemini_output },
+    { label: 'Parsed output', value: diagnostics.parsed_output },
+    { label: 'Validation errors', value: diagnostics.validation_errors },
+    { label: 'Image metadata', value: diagnostics.image_metadata },
+    { label: 'Provider error details', value: diagnostics.provider_error },
+  ]
+  return <details className="import-developer-results" open>
+    <summary><Bug size={16} aria-hidden="true" /> AI developer diagnostics</summary>
+    <div className="import-developer-summary">
+      <span><strong>Model</strong>{diagnostics.model}</span>
+      <span><strong>Thinking</strong>{diagnostics.thinking_level}</span>
+      <span><strong>Output limit</strong>{diagnostics.output_token_limit}</span>
+      <span><strong>Timing</strong>{diagnostics.timing_ms} ms</span>
+      <span><strong>Temporary log</strong>{diagnostics.diagnostic_log_id ?? 'not stored'}</span>
+    </div>
+    {diagnostics.diagnostic_log_error ? <p className="form-error">Diagnostic log: {diagnostics.diagnostic_log_error}</p> : null}
+    {blocks.map((block) => <section key={block.label}><h4>{block.label}</h4><pre>{typeof block.value === 'string' ? block.value : JSON.stringify(block.value, null, 2) ?? 'null'}</pre></section>)}
+  </details>
 }
 
 function CoursePicker({
@@ -147,6 +176,7 @@ function conflictingImportIndexes(rows: EditableScheduleImportRow[]): Set<number
 
 export function ScheduleImportDialog({
   open,
+  isAdmin = false,
   currentEnrollments,
   onClose,
   onImported,
@@ -154,12 +184,19 @@ export function ScheduleImportDialog({
   searchCourses,
   loadClassOptions = findClassesForCourse,
   confirmImport = confirmScheduleImport,
+  loadDeveloperModels = adminListScheduleImportModels,
 }: ScheduleImportDialogProps) {
   const [images, setImages] = useState<Array<ImportImage | null>>([null, null])
   const [rows, setRows] = useState<EditableScheduleImportRow[]>([])
   const [phase, setPhase] = useState<'upload' | 'processing' | 'review' | 'saving'>('upload')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [developerMode, setDeveloperMode] = useState(false)
+  const [developerModels, setDeveloperModels] = useState<ScheduleImportModelRecord[]>([])
+  const [developerModelId, setDeveloperModelId] = useState('')
+  const [developerThinkingLevel, setDeveloperThinkingLevel] = useState<NonNullable<ScheduleImportDeveloperOptions['thinkingLevel']>>('low')
+  const [developerData, setDeveloperData] = useState<ScheduleImportDeveloperDiagnostics | null>(null)
+  const [developerModelError, setDeveloperModelError] = useState<string | null>(null)
   const imagesRef = useRef(images)
   imagesRef.current = images
 
@@ -206,6 +243,23 @@ export function ScheduleImportDialog({
     return () => window.removeEventListener('paste', onPaste)
   }, [addFiles, open])
 
+  useEffect(() => {
+    if (!open || !isAdmin || !developerMode || developerModels.length > 0) return
+    let active = true
+    setDeveloperModelError(null)
+    void loadDeveloperModels().then((models) => {
+      if (!active) return
+      const enabled = models.filter((model) => model.enabled && model.supports_image_input && model.supports_structured_output)
+      setDeveloperModels(enabled)
+      const selected = enabled.find((model) => model.is_active) ?? enabled[0]
+      setDeveloperModelId(selected?.model_id ?? '')
+      setDeveloperThinkingLevel(selected?.production_thinking_level ?? selected?.supported_thinking_levels[0] ?? 'low')
+    }).catch((caught) => {
+      if (active) setDeveloperModelError(caught instanceof Error ? caught.message : 'Could not load enabled Gemini models.')
+    })
+    return () => { active = false }
+  }, [developerMode, developerModels.length, isAdmin, loadDeveloperModels, open])
+
   const updateRow = useCallback((index: number, update: Partial<EditableScheduleImportRow>) => {
     setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...update } : row))
   }, [])
@@ -230,6 +284,12 @@ export function ScheduleImportDialog({
     setPhase('upload')
     setError(null)
     setMessage(null)
+    setDeveloperMode(false)
+    setDeveloperModels([])
+    setDeveloperModelId('')
+    setDeveloperThinkingLevel('low')
+    setDeveloperData(null)
+    setDeveloperModelError(null)
     onClose()
   }
 
@@ -242,8 +302,15 @@ export function ScheduleImportDialog({
     setPhase('processing')
     setError(null)
     setMessage(null)
+    setDeveloperData(null)
     try {
-      const result = await importScreenshots(files)
+      const result = isAdmin && developerMode
+        ? await importScreenshots(files, {
+            enabled: true,
+            ...(developerModelId ? { modelId: developerModelId } : {}),
+            thinkingLevel: developerThinkingLevel,
+          })
+        : await importScreenshots(files)
       const editable = result.rows.map((row) => ({
         ...row,
         selected_existing_class_id: row.existing_class_id,
@@ -251,9 +318,11 @@ export function ScheduleImportDialog({
       }))
       setRows(editable.map((row) => isCurrentDuplicate(row, currentEnrollments) ? { ...row, include: false } : row))
       setMessage(result.warnings.join(' '))
+      setDeveloperData(result.developer ?? null)
       setPhase('review')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The schedule could not be imported.')
+      setDeveloperData(caught instanceof ScheduleImportRequestError ? caught.developer ?? null : null)
       setPhase('upload')
     }
   }
@@ -290,7 +359,21 @@ export function ScheduleImportDialog({
 
         {phase === 'upload' || phase === 'processing' ? (
           <div className="import-upload-step">
-            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>Upload or paste up to two PowerSchool screenshots.</strong><span>Crop out your name and student ID. Include the course, teacher, and Exp period columns.</span></p></div>
+            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>Upload or paste up to two PowerSchool screenshots.</strong><span>Crop out your name and student ID. Keep each course, teacher, term, and visible meeting detail together.</span></p></div>
+            {isAdmin ? <section className="import-developer-controls">
+              <label className="checkbox-row"><input type="checkbox" checked={developerMode} onChange={(event) => { setDeveloperMode(event.target.checked); setDeveloperData(null) }} /><span><strong>AI developer mode</strong><small>Current admin session only. Bypasses only ScheduleShare's import rate limit and stores temporary diagnostics.</small></span></label>
+              {developerMode ? <div className="two-field-row">
+                <label>Test model<select value={developerModelId} disabled={developerModels.length === 0} onChange={(event) => {
+                  const model = developerModels.find((candidate) => candidate.model_id === event.target.value)
+                  setDeveloperModelId(event.target.value)
+                  if (model && (!developerThinkingLevel || !model.supported_thinking_levels.includes(developerThinkingLevel))) {
+                    setDeveloperThinkingLevel(model.supported_thinking_levels.includes('low') ? 'low' : model.supported_thinking_levels[0] ?? 'low')
+                  }
+                }}>{developerModels.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}{model.is_active ? ' (production)' : ''}</option>)}</select></label>
+                <label>Reasoning<select value={developerThinkingLevel} disabled={!developerModelId} onChange={(event) => setDeveloperThinkingLevel(event.target.value as NonNullable<ScheduleImportDeveloperOptions['thinkingLevel']>)}>{(developerModels.find((model) => model.model_id === developerModelId)?.supported_thinking_levels ?? []).map((level) => <option value={level} key={level}>{level}</option>)}</select></label>
+              </div> : null}
+              {developerModelError ? <p className="form-error" role="alert">{developerModelError}</p> : null}
+            </section> : null}
             <div className="import-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
               <Upload aria-hidden="true" />
               <strong>Drop screenshots here</strong>
@@ -323,7 +406,8 @@ export function ScheduleImportDialog({
               ))}
             </div>
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
-            <button className="button button-primary button-block" disabled={phase === 'processing' || images.every((item) => !item)} type="button" onClick={() => void processImages()}>
+            {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
+            <button className="button button-primary button-block" disabled={phase === 'processing' || images.every((item) => !item) || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
               {phase === 'processing' ? 'Reading schedule…' : 'Review imported classes'}
             </button>
           </div>
@@ -335,6 +419,7 @@ export function ScheduleImportDialog({
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
+            {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <div className="import-review-grid">
               {rows.map((row, index) => {
                 const duplicateCurrent = currentDuplicateIndexes.has(index)
@@ -348,6 +433,7 @@ export function ScheduleImportDialog({
                         {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
                         {row.flags.includes('duplicate') ? <span>Overlap merged</span> : null}
                         {row.flags.includes('unresolved_course') ? <span>Course unresolved</span> : null}
+                        {row.flags.includes('ambiguous_course') ? <span>Ambiguous match</span> : null}
                         {conflict ? <span className="danger">Schedule conflict</span> : null}
                         {duplicate ? <span className="danger">Duplicate import row</span> : null}
                       </div>

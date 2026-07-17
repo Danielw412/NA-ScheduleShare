@@ -1,19 +1,20 @@
-import { ChevronDown, ChevronRight, FileClock, Flag, GraduationCap, History, Merge, Plus, ShieldCheck, Users, X } from 'lucide-react'
+import { BrainCircuit, ChevronDown, ChevronRight, FileClock, Flag, GraduationCap, History, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type MeetingSlot, type PrivacySetting } from '../lib/domain'
+import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type GeminiThinkingLevel, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord } from '../lib/domain'
 import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminListClasses, adminListCourseNames, adminListReports, adminListUsers, adminUpdateClass, callAdminAction } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateScheduleImportSettings, callAdminAction } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'history' | 'admins' | 'audit'
+type AdminTab = 'users' | 'reports' | 'classes' | 'ai' | 'history' | 'admins' | 'audit'
 
 const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'users', label: 'User management', icon: Users },
   { id: 'reports', label: 'Reports', icon: Flag },
   { id: 'classes', label: 'Class management', icon: GraduationCap },
+  { id: 'ai', label: 'AI importer', icon: BrainCircuit },
   { id: 'history', label: 'Schedule history', icon: History },
   { id: 'admins', label: 'Admin management', icon: ShieldCheck },
   { id: 'audit', label: 'Audit logs', icon: FileClock },
@@ -231,6 +232,8 @@ export function AdminPage() {
         onAdminAction={adminAction}
       /> : null}
 
+      {tab === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
+
       {tab === 'history' ? <AdminLogTable title="Schedule history" rows={historyRows} primary="action" target="student_id" /> : null}
       {tab === 'audit' ? <AdminLogTable title="Immutable audit log" rows={auditRows} primary="action_type" target="target_id" /> : null}
       {tab === 'admins' ? <section className="admin-section narrow-admin"><h2>Admin management</h2><p>Role changes require an existing administrator. The last administrator cannot remove their own access.</p><label>User ID<input value={adminUserId} onChange={(event) => setAdminUserId(event.target.value)} /></label><div className="form-actions"><button className="button button-primary" disabled={!adminUserId} onClick={() => void adminAction('admin_promote_user', { p_user_id: adminUserId, p_reason: 'Promoted from admin console' }, 'Administrator access granted.')}>Promote to administrator</button><button className="button button-secondary danger-text" disabled={!adminUserId} onClick={() => void adminAction('admin_remove_user_role', { p_user_id: adminUserId, p_reason: 'Removed from admin console' }, 'Administrator access removed.')}>Remove administrator</button></div></section> : null}
@@ -238,6 +241,120 @@ export function AdminPage() {
       {editingClass ? <AdminClassEditDialog key={editingClass.id} course={editingClass} courseNames={courseNames} saving={classSaving} onClose={() => setEditingClass(null)} onSave={saveClass} /> : null}
     </div>
   )
+}
+
+const demoImportModels: ScheduleImportModelRecord[] = [{
+  model_id: 'gemini-3.1-flash-lite',
+  display_name: 'Gemini 3.1 Flash-Lite',
+  enabled: true,
+  supports_image_input: true,
+  supports_structured_output: true,
+  supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
+  max_output_tokens: 65536,
+  is_active: true,
+  production_thinking_level: 'low',
+  production_output_token_limit: 4096,
+}]
+
+function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
+  const [models, setModels] = useState<ScheduleImportModelRecord[]>(isDemo ? demoImportModels : [])
+  const [logs, setLogs] = useState<ScheduleImportDiagnosticLog[]>([])
+  const [modelId, setModelId] = useState(isDemo ? demoImportModels[0].model_id : '')
+  const [thinkingLevel, setThinkingLevel] = useState<GeminiThinkingLevel>('low')
+  const [outputTokenLimit, setOutputTokenLimit] = useState(4096)
+  const [loading, setLoading] = useState(!isDemo)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (isDemo) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [nextModels, nextLogs] = await Promise.all([
+        adminListScheduleImportModels(),
+        adminListScheduleImportDiagnostics(),
+      ])
+      setModels(nextModels)
+      setLogs(nextLogs)
+      const active = nextModels.find((model) => model.is_active) ?? nextModels[0]
+      setModelId(active?.model_id ?? '')
+      setThinkingLevel(active?.production_thinking_level ?? 'low')
+      setOutputTokenLimit(active?.production_output_token_limit ?? 4096)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not load AI importer settings.')
+    } finally {
+      setLoading(false)
+    }
+  }, [isDemo])
+
+  useEffect(() => { void load() }, [load])
+
+  const selectedModel = models.find((model) => model.model_id === modelId) ?? null
+  const canSave = selectedModel !== null
+    && selectedModel.enabled
+    && selectedModel.supports_image_input
+    && selectedModel.supports_structured_output
+    && selectedModel.supported_thinking_levels.includes(thinkingLevel)
+    && Number.isInteger(outputTokenLimit)
+    && outputTokenLimit >= 256
+    && outputTokenLimit <= Math.min(8192, selectedModel.max_output_tokens)
+
+  async function saveSettings(event: FormEvent) {
+    event.preventDefault()
+    if (!canSave) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (!isDemo) await adminUpdateScheduleImportSettings({ modelId, thinkingLevel, outputTokenLimit })
+      setMessage('Production Gemini configuration updated. New imports will use it immediately.')
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not update the AI importer settings.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteLog(log: ScheduleImportDiagnosticLog) {
+    if (!window.confirm('Delete this temporary diagnostic log now? The deletion is recorded in the immutable audit log.')) return
+    setError(null)
+    try {
+      if (!isDemo) await adminDeleteScheduleImportDiagnostic(log.diagnostic_id)
+      setLogs((current) => current.filter((candidate) => candidate.diagnostic_id !== log.diagnostic_id))
+      setMessage('Diagnostic log deleted and the access was audited.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not delete the diagnostic log.')
+    }
+  }
+
+  return <section className="admin-section ai-importer-admin">
+    <div className="section-heading"><div><h2>Gemini schedule importer</h2><p>Only allowlisted, image-capable structured-output models can be selected. Changes apply without a frontend or Edge Function deployment.</p></div><button className="button button-secondary" disabled={loading} type="button" onClick={() => void load()}><RefreshCw size={16} /> Refresh</button></div>
+    {message ? <div className="notice-box"><span>{message}</span></div> : null}
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <form className="ai-model-settings" onSubmit={saveSettings}>
+      <label>Production model<select value={modelId} disabled={loading || saving} onChange={(event) => {
+        const model = models.find((candidate) => candidate.model_id === event.target.value)
+        setModelId(event.target.value)
+        if (model && !model.supported_thinking_levels.includes(thinkingLevel)) {
+          setThinkingLevel(model.supported_thinking_levels.includes('low') ? 'low' : model.supported_thinking_levels[0] ?? 'low')
+        }
+      }}>{models.map((model) => <option key={model.model_id} value={model.model_id} disabled={!model.enabled || !model.supports_image_input || !model.supports_structured_output}>{model.display_name}{model.enabled ? '' : ' (disabled)'}</option>)}</select></label>
+      <label>Thinking level<select value={thinkingLevel} disabled={!selectedModel || saving} onChange={(event) => setThinkingLevel(event.target.value as GeminiThinkingLevel)}>{(selectedModel?.supported_thinking_levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
+      <label>Output-token limit<input type="number" min={256} max={Math.min(8192, selectedModel?.max_output_tokens ?? 8192)} step={128} value={outputTokenLimit} disabled={saving} onChange={(event) => setOutputTokenLimit(Number(event.target.value))} /></label>
+      <button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Update production configuration'}</button>
+    </form>
+    <div className="notice-box"><BrainCircuit aria-hidden="true" /><span><strong>Developer mode stays off by default.</strong> An administrator must enable it inside the screenshot importer for the current dialog session. It bypasses only ScheduleShare's database rate limit; authentication, file validation, model allowlisting, Gemini quotas, and all other checks remain enforced.</span></div>
+
+    <div className="section-heading diagnostic-heading"><div><h3>Temporary diagnostic logs</h3><p>Detailed logs exist only for explicit admin developer-mode requests and expire within 24 hours. Viewing and deletion are audited.</p></div><span className="section-count">{logs.length}</span></div>
+    {logs.length === 0 ? <p className="muted">No unexpired developer diagnostic logs.</p> : <div className="diagnostic-log-list">{logs.map((log) => <details key={log.diagnostic_id} className="diagnostic-log-card">
+      <summary><span><strong>{log.status.replace('_', ' ')}</strong><small>{log.model_id} · {log.thinking_level} · {log.timing_ms} ms</small></span><span><small>Expires {new Date(log.expires_at).toLocaleString()}</small></span></summary>
+      <div className="diagnostic-log-actions"><button className="button button-secondary danger-text" type="button" onClick={() => void deleteLog(log)}><Trash2 size={15} /> Delete log</button></div>
+      <dl><div><dt>Output-token limit</dt><dd>{log.output_token_limit}</dd></div><div><dt>Created</dt><dd>{new Date(log.created_at).toLocaleString()}</dd></div><div><dt>Log ID</dt><dd><code>{log.diagnostic_id}</code></dd></div></dl>
+      {[['Exact prompt', log.prompt], ['Raw Gemini output', log.raw_output], ['Parsed output', log.parsed_output], ['Validation errors', log.validation_errors], ['Image metadata', log.image_metadata], ['Provider error details', log.provider_error]].map(([label, value]) => <section key={String(label)}><h4>{String(label)}</h4><pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? 'null'}</pre></section>)}
+    </details>)}</div>}
+  </section>
 }
 
 function ClassManagementPanel({

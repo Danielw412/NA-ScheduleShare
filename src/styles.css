@@ -273,6 +273,16 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .import-privacy-note > svg { color: var(--brand-gold-dark); }
 .import-privacy-note p { display: grid; gap: 3px; margin: 0; }
 .import-privacy-note span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.import-developer-controls { display: grid; gap: 12px; padding: 14px; border: 1px solid #7e65aa; border-left: 5px solid #5f3d94; background: #faf7ff; }
+.import-developer-controls .checkbox-row { padding: 0; border: 0; }
+.import-developer-controls .two-field-row { margin: 0; }
+.import-developer-results { border: 1px solid #7e65aa; background: #fbf9ff; }
+.import-developer-results > summary { display: flex; align-items: center; gap: 7px; padding: 12px 14px; cursor: pointer; font-size: 13px; font-weight: 850; }
+.import-developer-results > section, .diagnostic-log-card > section { padding: 12px 14px; border-top: 1px solid #ded7ea; }
+.import-developer-results h4, .diagnostic-log-card h4 { margin: 0 0 7px; font-size: 12px; }
+.import-developer-results pre, .diagnostic-log-card pre { max-height: 280px; overflow: auto; margin: 0; padding: 11px; background: #17131d; color: #f7f1ff; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.import-developer-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
+.import-developer-summary span { min-width: 0; display: grid; gap: 3px; padding: 9px; border: 1px solid #ded7ea; background: var(--white); overflow-wrap: anywhere; font-size: 11px; }
 .import-drop-zone { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 22px; border: 2px dashed var(--border-strong); background: var(--surface-subtle); text-align: center; }
 .import-drop-zone > svg { width: 34px; height: 34px; color: var(--brand-gold-dark); }
 .import-drop-zone > span { color: var(--muted); font-size: 12px; }
@@ -420,6 +430,20 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .report-detail-panel h4 { margin: 0 0 8px; font-size: 13px; }
 .report-detail-panel section p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-soft); font-size: 14px; line-height: 1.55; }
 .admin-class-dialog { width: min(880px, 100%); }
+.ai-importer-admin { display: grid; gap: 22px; }
+.ai-model-settings { display: grid; grid-template-columns: minmax(240px, 1.5fr) minmax(150px, .7fr) minmax(170px, .7fr) auto; align-items: end; gap: 11px; padding: 18px; border: 1px solid var(--border-strong); background: var(--surface-subtle); }
+.ai-model-settings label { min-width: 0; display: grid; gap: 6px; }
+.diagnostic-heading { align-items: end; padding-top: 10px; border-top: 2px solid var(--ink); }
+.diagnostic-log-list { display: grid; gap: 10px; }
+.diagnostic-log-card { border: 1px solid var(--border-strong); background: var(--white); }
+.diagnostic-log-card > summary { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 14px; cursor: pointer; }
+.diagnostic-log-card > summary > span { display: grid; gap: 3px; }
+.diagnostic-log-card > summary small { color: var(--muted); font-size: 11px; }
+.diagnostic-log-actions { display: flex; justify-content: flex-end; padding: 0 14px 12px; }
+.diagnostic-log-card dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; padding: 12px 14px; border-top: 1px solid var(--border); }
+.diagnostic-log-card dl div { min-width: 0; display: grid; gap: 4px; }
+.diagnostic-log-card dt { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.diagnostic-log-card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 12px; }
 
 @media (max-width: 1180px) {
   .site-header { grid-template-columns: 230px 1fr auto; gap: 14px; }
@@ -465,6 +489,8 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .merge-tool > svg { display: none; }
   .report-detail-panel dl { grid-template-columns: repeat(2, 1fr); }
   .import-review-fields { grid-template-columns: 1fr 1fr; }
+  .import-developer-summary { grid-template-columns: repeat(2, 1fr); }
+  .ai-model-settings { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 650px) {
@@ -544,6 +570,8 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .course-catalog-actions { justify-content: flex-start; }
   .report-page form { padding: 18px; }
   .report-detail-panel dl { grid-template-columns: 1fr; }
+  .import-developer-summary, .ai-model-settings, .diagnostic-log-card dl { grid-template-columns: 1fr; }
+  .diagnostic-log-card > summary { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

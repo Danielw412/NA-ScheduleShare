@@ -5,7 +5,7 @@ import { supabase } from './supabase/client'
 import { normalizeTeacherLastName, teacherLastNameError } from './teacher'
 
 export type ImportTerm = AcademicTerm | 'unknown'
-export type ImportFlag = 'low_confidence' | 'unresolved_course' | 'duplicate' | 'incomplete'
+export type ImportFlag = 'low_confidence' | 'unresolved_course' | 'ambiguous_course' | 'duplicate' | 'incomplete'
 
 export interface ImportClassOption {
   id: string
@@ -34,6 +34,28 @@ export interface ScheduleImportResult {
   rows: ScheduleImportRow[]
   warnings: string[]
   image_count: number
+  developer?: ScheduleImportDeveloperDiagnostics
+}
+
+export interface ScheduleImportDeveloperDiagnostics {
+  prompt: string
+  raw_gemini_output: string | null
+  parsed_output: unknown
+  validation_errors: string[]
+  model: string
+  thinking_level: 'minimal' | 'low' | 'medium' | 'high'
+  output_token_limit: number
+  timing_ms: number
+  image_metadata: Array<{ index: number; mime_type: string; byte_size: number }>
+  provider_error: unknown
+  diagnostic_log_id: string | null
+  diagnostic_log_error?: string
+}
+
+export interface ScheduleImportDeveloperOptions {
+  enabled: boolean
+  modelId?: string
+  thinkingLevel?: ScheduleImportDeveloperDiagnostics['thinking_level']
 }
 
 export interface EditableScheduleImportRow extends ScheduleImportRow {
@@ -44,6 +66,13 @@ export interface EditableScheduleImportRow extends ScheduleImportRow {
 export interface ScheduleImportErrorBody {
   error?: string
   message?: string
+  developer?: ScheduleImportDeveloperDiagnostics
+}
+
+export class ScheduleImportRequestError extends Error {
+  constructor(message: string, readonly developer?: ScheduleImportDeveloperDiagnostics) {
+    super(message)
+  }
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -79,30 +108,40 @@ export async function prepareScheduleImage(file: File): Promise<File> {
   }
 }
 
-export async function submitScheduleScreenshots(files: File[]): Promise<ScheduleImportResult> {
-  const endpoint = import.meta.env.VITE_SCHEDULE_IMPORT_API_URL?.trim()
-  if (!endpoint) throw new Error('Schedule importing is not configured yet.')
+export async function submitScheduleScreenshots(
+  files: File[],
+  developerOptions: ScheduleImportDeveloperOptions = { enabled: false },
+): Promise<ScheduleImportResult> {
   if (!supabase) throw new Error('Sign in before importing schedule screenshots.')
   const { data, error } = await supabase.auth.getSession()
   if (error || !data.session?.access_token) throw new Error('Your session has expired. Refresh the page and sign in again.')
   const formData = new FormData()
   files.forEach((file) => formData.append('images', file, file.name))
-  let response: Response
+  formData.set('developer_mode', String(developerOptions.enabled))
+  if (developerOptions.enabled && developerOptions.modelId) formData.set('model', developerOptions.modelId)
+  if (developerOptions.enabled && developerOptions.thinkingLevel) formData.set('thinking_level', developerOptions.thinkingLevel)
+
   try {
-    response = await fetch(`${endpoint.replace(/\/$/, '')}/api/schedule-import`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${data.session.access_token}` },
-      body: formData,
-    })
-  } catch {
-    throw new Error('The schedule import service could not be reached. Your previews are still here so you can try again.')
+    const result = await supabase.functions.invoke('schedule-import', { body: formData })
+    if (result.error) {
+      const context = (result.error as unknown as { context?: unknown }).context
+      const response = context instanceof Response ? context : null
+      const errorBody = response
+        ? await response.clone().json().catch(() => ({})) as ScheduleImportErrorBody
+        : {}
+      throw new ScheduleImportRequestError(
+        errorBody.message || importErrorMessage(errorBody.error, response?.status ?? 0),
+        errorBody.developer,
+      )
+    }
+    if (!result.data || typeof result.data !== 'object') {
+      throw new ScheduleImportRequestError('Schedule recognition returned an invalid response.')
+    }
+    return result.data as ScheduleImportResult
+  } catch (caught) {
+    if (caught instanceof ScheduleImportRequestError) throw caught
+    throw new ScheduleImportRequestError('The schedule import service could not be reached. Your previews are still here so you can try again.')
   }
-  const body = await response.json().catch(() => ({})) as ScheduleImportErrorBody | ScheduleImportResult
-  if (!response.ok) {
-    const errorBody = body as ScheduleImportErrorBody
-    throw new Error(errorBody.message || importErrorMessage(errorBody.error, response.status))
-  }
-  return body as ScheduleImportResult
 }
 
 function importErrorMessage(code: string | undefined, status: number): string {
@@ -110,6 +149,9 @@ function importErrorMessage(code: string | undefined, status: number): string {
   if (code === 'session_expired' || status === 401) return 'Your session has expired. Refresh the page and sign in again.'
   if (code === 'rate_limit_exceeded' || status === 429) return 'You have reached the schedule import limit. Try again later.'
   if (code === 'ai_quota_exceeded') return 'Schedule recognition is temporarily at capacity. Try again later.'
+  if (code === 'ai_timeout') return 'Schedule recognition timed out. Your previews are still here so you can try again.'
+  if (code === 'developer_mode_forbidden') return 'Administrator access is required for AI developer mode.'
+  if (code === 'invalid_model_configuration') return 'The selected Gemini model or reasoning setting is not enabled.'
   return 'The schedule could not be imported. Check the screenshots and try again.'
 }
 

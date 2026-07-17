@@ -13,7 +13,7 @@ import { removeEnrollment, updateEnrollmentTerm } from '../lib/supabase/data'
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
 export function SchedulePage() {
-  const { isDemo } = useAuth()
+  const { isAdmin, isDemo } = useAuth()
   const schedule = useSchedule()
   const [selectedTerm, setSelectedTerm] = useState<AcademicTerm>('full_year')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
@@ -83,6 +83,7 @@ export function SchedulePage() {
       /> : null}
       {importOpen ? <ScheduleImportDialog
         open
+        isAdmin={isAdmin}
         currentEnrollments={schedule.enrollments}
         onClose={() => setImportOpen(false)}
         onImported={schedule.reload}

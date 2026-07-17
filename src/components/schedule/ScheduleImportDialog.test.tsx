@@ -134,6 +134,55 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
+  it('keeps admin developer mode off by default and shows exact diagnostics for an explicit test request', async () => {
+    const user = userEvent.setup()
+    const importScreenshots = vi.fn(async () => ({
+      ...importResult(),
+      developer: {
+        prompt: 'exact Gemini prompt',
+        raw_gemini_output: '{"schedule":true}',
+        parsed_output: { schedule: true },
+        validation_errors: [],
+        model: 'gemini-3.5-flash',
+        thinking_level: 'high' as const,
+        output_token_limit: 4096,
+        timing_ms: 321,
+        image_metadata: [{ index: 1, mime_type: 'image/png', byte_size: 3 }],
+        provider_error: null,
+        diagnostic_log_id: 'diagnostic-log-id',
+      },
+    }))
+    renderDialog({
+      isAdmin: true,
+      importScreenshots,
+      loadDeveloperModels: vi.fn(async () => [{
+        model_id: 'gemini-3.5-flash',
+        display_name: 'Gemini 3.5 Flash',
+        enabled: true,
+        supports_image_input: true,
+        supports_structured_output: true,
+        supported_thinking_levels: ['low', 'high'] as Array<'low' | 'high'>,
+        max_output_tokens: 65536,
+        is_active: true,
+        production_thinking_level: 'low' as const,
+        production_output_token_limit: 4096,
+      }]),
+    })
+    const developerMode = screen.getByRole('checkbox', { name: /AI developer mode/ })
+    expect(developerMode).not.toBeChecked()
+    await user.click(developerMode)
+    await user.selectOptions(await screen.findByLabelText('Reasoning'), 'high')
+    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await waitFor(() => expect(importScreenshots).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: 'schedule.png' })],
+      { enabled: true, modelId: 'gemini-3.5-flash', thinkingLevel: 'high' },
+    ))
+    expect(await screen.findByText('AI developer diagnostics')).toBeInTheDocument()
+    expect(screen.getByText('exact Gemini prompt')).toBeInTheDocument()
+    expect(screen.getByText('diagnostic-log-id')).toBeInTheDocument()
+  })
+
   it('requires manual catalogue selection for unresolved courses and submits edited new-class details only on confirmation', async () => {
     const user = userEvent.setup()
     const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100 }

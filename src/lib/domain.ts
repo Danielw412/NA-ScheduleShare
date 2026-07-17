@@ -142,3 +142,35 @@ export const privacyLabels: Record<PrivacySetting, string> = {
   classmates: 'Classmates',
   school: 'Anyone',
 }
+
+export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
+
+export interface ScheduleImportModelRecord {
+  model_id: string
+  display_name: string
+  enabled: boolean
+  supports_image_input: boolean
+  supports_structured_output: boolean
+  supported_thinking_levels: GeminiThinkingLevel[]
+  max_output_tokens: number
+  is_active: boolean
+  production_thinking_level: GeminiThinkingLevel
+  production_output_token_limit: number
+}
+
+export interface ScheduleImportDiagnosticLog {
+  diagnostic_id: string
+  status: 'success' | 'validation_error' | 'provider_error'
+  model_id: string
+  thinking_level: GeminiThinkingLevel
+  output_token_limit: number
+  prompt: string
+  raw_output: string | null
+  parsed_output: unknown
+  validation_errors: unknown
+  provider_error: unknown
+  timing_ms: number
+  image_metadata: unknown
+  created_at: string
+  expires_at: string
+}

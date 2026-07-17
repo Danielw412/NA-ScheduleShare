@@ -13,6 +13,8 @@ import type {
   MeetingSlot,
   ReportableUser,
   ScheduleEnrollment,
+  ScheduleImportDiagnosticLog,
+  ScheduleImportModelRecord,
   StudentDirectoryResult,
 } from '../domain'
 import { supabase } from './client'
@@ -343,21 +345,76 @@ export async function adminUpdateClass(input: {
   if (error) throw error
 }
 
-export async function callAdminAction(
-  functionName: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
+async function callUntypedRpc(functionName: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const client = requireClient()
-
   const rpc = client.rpc.bind(client) as unknown as (
     name: string,
     parameters: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: Error | null }>
-
   const { data, error } = await rpc(functionName, args)
-
   if (error) throw error
   return data
+}
+
+export async function adminListScheduleImportModels(): Promise<ScheduleImportModelRecord[]> {
+  const data = await callUntypedRpc('admin_list_schedule_import_models')
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    model_id: String(row.model_id),
+    display_name: String(row.display_name),
+    enabled: Boolean(row.enabled),
+    supports_image_input: Boolean(row.supports_image_input),
+    supports_structured_output: Boolean(row.supports_structured_output),
+    supported_thinking_levels: Array.isArray(row.supported_thinking_levels)
+      ? row.supported_thinking_levels.map(String) as ScheduleImportModelRecord['supported_thinking_levels']
+      : [],
+    max_output_tokens: Number(row.max_output_tokens),
+    is_active: Boolean(row.is_active),
+    production_thinking_level: String(row.production_thinking_level) as ScheduleImportModelRecord['production_thinking_level'],
+    production_output_token_limit: Number(row.production_output_token_limit),
+  }))
+}
+
+export async function adminUpdateScheduleImportSettings(input: {
+  modelId: string
+  thinkingLevel: ScheduleImportModelRecord['production_thinking_level']
+  outputTokenLimit: number
+}): Promise<void> {
+  await callUntypedRpc('admin_update_schedule_import_settings', {
+    p_model_id: input.modelId,
+    p_thinking_level: input.thinkingLevel,
+    p_output_token_limit: input.outputTokenLimit,
+  })
+}
+
+export async function adminListScheduleImportDiagnostics(): Promise<ScheduleImportDiagnosticLog[]> {
+  const data = await callUntypedRpc('admin_list_schedule_import_diagnostics')
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    diagnostic_id: String(row.diagnostic_id),
+    status: String(row.status) as ScheduleImportDiagnosticLog['status'],
+    model_id: String(row.model_id),
+    thinking_level: String(row.thinking_level) as ScheduleImportDiagnosticLog['thinking_level'],
+    output_token_limit: Number(row.output_token_limit),
+    prompt: String(row.prompt),
+    raw_output: row.raw_output === null ? null : String(row.raw_output),
+    parsed_output: row.parsed_output,
+    validation_errors: row.validation_errors,
+    provider_error: row.provider_error,
+    timing_ms: Number(row.timing_ms),
+    image_metadata: row.image_metadata,
+    created_at: String(row.created_at),
+    expires_at: String(row.expires_at),
+  }))
+}
+
+export async function adminDeleteScheduleImportDiagnostic(diagnosticId: string): Promise<void> {
+  await callUntypedRpc('admin_delete_schedule_import_diagnostic', { p_diagnostic_id: diagnosticId })
+}
+
+export async function callAdminAction(
+  functionName: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return callUntypedRpc(functionName, args)
 }
 
 export function classFromSearch(result: ClassSearchResult): ClassDefinition {

@@ -7,6 +7,7 @@ dist/
 cloudflare/schedule-import-worker/.dev.vars
 .supabase/
 supabase/.temp/
+supabase/.branches/
 coverage/
 .wrangler/
 playwright-report/
