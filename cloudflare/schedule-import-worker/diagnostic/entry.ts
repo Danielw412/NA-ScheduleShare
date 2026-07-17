@@ -9,14 +9,6 @@ import {
 } from '../src/index'
 
 const MAX_FIXTURE_BYTES = 128 * 1024
-const MAX_DIAGNOSTIC_CATALOG_SIZE = 304
-
-function diagnosticCatalog(size: number) {
-  return Array.from({ length: size }, (_, index) => ({
-    id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    name: `Diagnostic Course ${String(index).padStart(3, '0')}`,
-  }))
-}
 
 interface DiagnosticEnv {
   AI: AiBinding
@@ -47,15 +39,7 @@ export default {
     const file = new File([bytes], 'moondream-diagnostic.png', { type: 'image/png' })
     const image = await fileToMoondreamImage(file)
     const boundary = describeMoondreamImageBoundary(image)
-    const requestedCatalogSize = Number(request.headers.get('X-Diagnostic-Catalog-Size') ?? '0')
-    if (!Number.isInteger(requestedCatalogSize) || requestedCatalogSize < 0 || requestedCatalogSize > MAX_DIAGNOSTIC_CATALOG_SIZE) {
-      return Response.json({
-        ok: false,
-        category: 'configuration',
-        message: `X-Diagnostic-Catalog-Size must be an integer from 0 through ${MAX_DIAGNOSTIC_CATALOG_SIZE}.`,
-      }, { status: 400 })
-    }
-    const question = buildPrompt(diagnosticCatalog(requestedCatalogSize))
+    const question = buildPrompt()
 
     try {
       const output = await invokeMoondreamQuery(
@@ -73,7 +57,6 @@ export default {
           model: MOONDREAM_MODEL,
           task: 'query',
           boundary,
-          catalogue_size: requestedCatalogSize,
           question_length: question.length,
           message: 'Cloudflare returned an unexpected model result shape.',
         }, { status: 502 })
@@ -85,7 +68,6 @@ export default {
         model: MOONDREAM_MODEL,
         task: 'query',
         boundary,
-        catalogue_size: requestedCatalogSize,
         question_length: question.length,
         answer_received: answer.length > 0,
       })
@@ -98,7 +80,6 @@ export default {
         model: MOONDREAM_MODEL,
         task: 'query',
         boundary,
-        catalogue_size: requestedCatalogSize,
         question_length: question.length,
         error_name: error instanceof Error ? error.name : 'UnknownError',
         error_message: message,

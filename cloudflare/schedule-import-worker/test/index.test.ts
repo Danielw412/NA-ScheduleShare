@@ -21,9 +21,6 @@ interface TestEntry {
   meeting_slots: Array<{ day_type: string; period_number: number }>
   confidence: number
   warnings: string[]
-  course_id: string | null
-  canonical_course_name: string | null
-  course_match_confidence: number
 }
 
 const validEntry: TestEntry = {
@@ -33,9 +30,6 @@ const validEntry: TestEntry = {
   meeting_slots: [{ day_type: 'A', period_number: 1 }, { day_type: 'B', period_number: 1 }],
   confidence: 0.98,
   warnings: [] as string[],
-  course_id: AP_STATS_ID,
-  canonical_course_name: 'AP Statistics',
-  course_match_confidence: 0.99,
 }
 
 function aiResult(entries = [validEntry], overrides: Record<string, unknown> = {}) {
@@ -257,7 +251,7 @@ describe('image input and rate limiting', () => {
     })
   })
 
-  it('uses prompt-sized two-pass matching for a production-sized catalogue', async () => {
+  it('keeps the catalogue out of inference and fuzzy matches on the backend', async () => {
     const largeCatalog = [
       ...catalog,
       ...Array.from({ length: 304 }, (_, index) => ({
@@ -267,36 +261,23 @@ describe('image input and rate limiting', () => {
     ]
     mockSupabase([], 200, largeCatalog)
     const calls: AiRunCall[] = []
-    const firstPassEntry = {
-      ...validEntry,
-      course_id: null,
-      canonical_course_name: null,
-      course_match_confidence: 0,
-    }
 
     const response = await handleRequest(
       requestWithImages([image()]),
-      createEnv([aiResult([firstPassEntry]), aiResult()], [], calls),
+      createEnv([aiResult()], [], calls),
     )
 
     expect(response.status).toBe(200)
-    expect(calls).toHaveLength(2)
-    const firstInput = calls[0].input as { image: string; question: string }
-    const candidateInput = calls[1].input as { image: string; question: string }
-    expect(firstInput.question).not.toContain(AP_STATS_ID)
-    expect(candidateInput.question).toContain('fuzzy candidates')
-    expect(candidateInput.question).toContain(AP_STATS_ID)
-    expect(candidateInput.question.length).toBeLessThanOrEqual(7_500)
-    expect(candidateInput.image).toBe(firstInput.image)
+    expect(calls).toHaveLength(1)
+    const input = calls[0].input as { question: string }
+    for (const course of largeCatalog) {
+      expect(input.question).not.toContain(course.id)
+      expect(input.question).not.toContain(course.name)
+    }
+    expect(input.question).not.toContain('ACTIVE CATALOGUE')
 
-    const allowedIds = new Set(largeCatalog.map((course) => course.id))
-    const suppliedIds = candidateInput.question
-      .split('ACTIVE CATALOGUE:\n')[1]
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => line.split(' | ', 1)[0])
-    expect(suppliedIds.length).toBeGreaterThan(0)
-    expect(suppliedIds.every((id) => allowedIds.has(id))).toBe(true)
+    const result = await body(response) as { rows: Array<{ course: { id: string; name: string } }> }
+    expect(result.rows[0].course).toMatchObject({ id: AP_STATS_ID, name: 'AP Statistics' })
   })
 
   it('processes two images and merges overlapping entries without duplicates', async () => {
@@ -351,7 +332,7 @@ describe('extraction safeguards and matching', () => {
   it('matches decorated course text only to an existing canonical catalogue row', async () => {
     const response = await handleRequest(requestWithImages([image()]), createEnv())
     const result = await body(response) as { rows: Array<{ course: { id: string; name: string }; teacher_last_name: string }> }
-    expect(result.rows[0].course).toEqual({ id: AP_STATS_ID, name: 'AP Statistics', confidence: 0.99 })
+    expect(result.rows[0].course).toEqual({ id: AP_STATS_ID, name: 'AP Statistics', confidence: 1 })
     expect(result.rows[0].teacher_last_name).toBe('Lester')
   })
 
@@ -359,9 +340,6 @@ describe('extraction safeguards and matching', () => {
     const unresolved = aiResult([{
       ...validEntry,
       source_course_name: 'Advanced Mystery Seminar',
-      course_id: null,
-      canonical_course_name: null,
-      course_match_confidence: 0,
     }])
     const response = await handleRequest(requestWithImages([image()]), createEnv([unresolved]))
     const result = await body(response) as { rows: Array<{ course: null; resolution: string; flags: string[] }> }
@@ -387,24 +365,24 @@ describe('extraction safeguards and matching', () => {
     expect(result.rows[0]).toMatchObject({ resolution: 'existing_class', existing_class_id: CLASS_ID })
   })
 
-  it('proposes a new class only with an existing course UUID and canonical name', async () => {
+  it('proposes a new class only with a server-matched catalogue course', async () => {
     const response = await handleRequest(requestWithImages([image()]), createEnv())
     const result = await body(response) as { rows: Array<{ resolution: string; course: { id: string; name: string } }> }
     expect(result.rows[0].resolution).toBe('new_class')
     expect(result.rows[0].course).toMatchObject({ id: AP_STATS_ID, name: 'AP Statistics' })
   })
 
-  it('does not accept an AI-invented course ID or arbitrary canonical name', async () => {
+  it('rejects model-supplied catalogue identifiers outside the transcription schema', async () => {
     const invented = aiResult([{
       ...validEntry,
       source_course_name: 'Advanced Mystery Seminar',
       course_id: '99999999-9999-4999-8999-999999999999',
       canonical_course_name: 'AI Invented Course',
       course_match_confidence: 1,
-    }])
+    } as TestEntry & Record<string, unknown>])
     const response = await handleRequest(requestWithImages([image()]), createEnv([invented]))
-    const result = await body(response) as { rows: Array<{ course: null }> }
-    expect(result.rows[0].course).toBeNull()
+    expect(response.status).toBe(502)
+    expect(await body(response)).toMatchObject({ error: 'ai_invalid_response' })
   })
 })
 

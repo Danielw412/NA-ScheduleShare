@@ -54,7 +54,7 @@ pnpm worker:diagnose
 pnpm worker:deploy
 ```
 
-`pnpm worker:diagnose` starts a local diagnostic Worker with a remote Workers AI binding and sends the small public club-logo PNG. It never uses a student schedule. Its JSON result distinguishes `configuration`, `transport`, `model`, and `quota` failures. The diagnostic uses the production image converter, extraction prompt, 8,000-token setting, and `query` task, so it exercises the same model boundary without exposing the authenticated schedule-import endpoint. Set `MOONDREAM_DIAGNOSTIC_CATALOG_SIZE` to an integer from 0 through 304 to add synthetic catalogue rows when investigating prompt-size failures.
+`pnpm worker:diagnose` starts a local diagnostic Worker with a remote Workers AI binding and sends the small public club-logo PNG. It never uses a student schedule. Its JSON result distinguishes `configuration`, `transport`, `model`, and `quota` failures. The diagnostic uses the production image converter, transcription-only prompt, 8,000-token setting, and `query` task, so it exercises the same model boundary without exposing the authenticated schedule-import endpoint.
 
 The manually triggered `deploy-worker.yml` workflow expects these GitHub production-environment secrets:
 
@@ -68,7 +68,7 @@ After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` to the reposito
 ## Privacy and operational behavior
 
 - Screenshots are held only in request memory and sent as schema-required data URIs through the Workers AI binding; neither the Worker nor KV stores image bytes.
-- Large catalogues use a prompt-sized two-pass flow: first extract visible text, then provide only server-selected fuzzy catalogue candidates. Every candidate is still an active Supabase catalogue row, and the server revalidates the model's match.
+- No catalogue names or IDs are sent to the model. Moondream returns only visible transcription fields, then the Worker fuzzy-matches that text against active Supabase catalogue rows and keeps ambiguous names unresolved.
 - KV stores a per-user fixed-window request counter only.
 - Requests accept one or two PNG, JPEG, or WebP images, each no larger than 5 MB.
 - Model output is untrusted input and must pass an exact runtime schema before it is used.

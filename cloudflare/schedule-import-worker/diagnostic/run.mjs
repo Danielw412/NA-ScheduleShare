@@ -10,7 +10,6 @@ const configPath = path.join(diagnosticDirectory, 'wrangler.jsonc')
 const fixturePath = path.join(repositoryRoot, 'public', 'na-club-logo.png')
 const wranglerPath = path.join(repositoryRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
 const port = Number(process.env.MOONDREAM_DIAGNOSTIC_PORT ?? '8791')
-const catalogSize = Number(process.env.MOONDREAM_DIAGNOSTIC_CATALOG_SIZE ?? '0')
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10]
 
 function result(category, message, details = {}) {
@@ -52,9 +51,6 @@ try {
   if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
     throw new Error('MOONDREAM_DIAGNOSTIC_PORT must be an integer from 1024 through 65535.')
   }
-  if (!Number.isInteger(catalogSize) || catalogSize < 0 || catalogSize > 304) {
-    throw new Error('MOONDREAM_DIAGNOSTIC_CATALOG_SIZE must be an integer from 0 through 304.')
-  }
   const fixture = new Uint8Array(await readFile(fixturePath))
   if (fixture.length > 128 * 1024 || !pngSignature.every((byte, index) => fixture[index] === byte)) {
     throw new Error('The repository diagnostic fixture is not a valid small PNG.')
@@ -78,10 +74,7 @@ try {
 
   const response = await fetch(`http://127.0.0.1:${port}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'image/png',
-      'X-Diagnostic-Catalog-Size': String(catalogSize),
-    },
+    headers: { 'Content-Type': 'image/png' },
     body: fixture,
   })
   const body = await response.json().catch(() => result('model', 'The diagnostic Worker returned non-JSON output.'))
