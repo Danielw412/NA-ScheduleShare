@@ -1,0 +1,47 @@
+name: Apply approved schedule import replacement
+
+on:
+  push:
+    branches: [fix/schedule-import-replacement]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/schedule-import-replacement
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply approved patch
+        shell: bash
+        run: |
+          base64 -d .github/patches/schedule-import-replacement.patch.gz.b64 | gunzip > /tmp/schedule-import-replacement.patch
+          git apply --check /tmp/schedule-import-replacement.patch
+          git apply /tmp/schedule-import-replacement.patch
+          rm -f .github/patches/schedule-import-replacement.patch.gz.b64
+          rm -f .github/workflows/apply-schedule-import-replacement.yml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:function
+      - run: pnpm build
+      - name: Commit and push approved changes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Improve schedule import reconciliation and atomic replacement"
+          git push origin HEAD:fix/schedule-import-replacement
