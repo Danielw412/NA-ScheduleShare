@@ -1,8 +1,8 @@
 import { ArrowRight, CalendarDays, Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthProvider'
+import { useGuestAccess } from '../features/guest/GuestAccessContext'
 import { useSchedule } from '../hooks/useSchedule'
 import { clearAuthDestination, hasPendingAuthDestination, pendingAuthDestination } from '../lib/authDestination'
 import type { HomepageStatistic } from '../lib/domain'
@@ -11,10 +11,12 @@ import { getHomepageStatistic } from '../lib/supabase/data'
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
+  const { explorationEnabled } = useGuestAccess()
   const { enrollments, loading } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const navigate = useNavigate()
   const completion = scheduleCompletion(enrollments)
+  const guestLocked = !user && !explorationEnabled
 
   useEffect(() => {
     if (!user || !hasPendingAuthDestination()) return
@@ -32,21 +34,21 @@ export function HomePage() {
 
   return (
     <div className="home-page">
-      <section className="home-hero">
+      <section className="home-hero" style={guestLocked ? { gridTemplateColumns: 'minmax(0, 720px)', justifyContent: 'start' } : undefined}>
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
           <div className="hero-actions">
             <Link className="button button-primary" to={user ? '/schedule' : '/auth?mode=sign-up&next=/schedule'}>Upload My Schedule <ArrowRight size={18} /></Link>
-            <Link className="button button-secondary" to="/students">Explore ScheduleShare</Link>
+            {guestLocked ? null : <Link className="button button-secondary" to="/students">Explore ScheduleShare</Link>}
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
-        <div className="hero-schedule-preview" aria-label="Schedule summary">
+        {guestLocked ? null : <div className="hero-schedule-preview" aria-label="Schedule summary">
           <span>{user ? loading ? '…' : `${completion}%` : 'A/B'}</span>
           <div><strong>{user ? 'Schedule progress' : 'Schedule preview'}</strong><small>{user ? `${enrollments.length} classes added` : 'Upload · Review · Discover'}</small></div>
           <div className="progress-track"><span style={{ width: user ? `${completion}%` : '72%' }} /></div>
-        </div>
+        </div>}
       </section>
       {user && completion < 100 ? (
         <section className="completion-callout">
@@ -55,11 +57,11 @@ export function HomePage() {
           <Link to="/schedule">Add classes <ArrowRight size={17} /></Link>
         </section>
       ) : null}
-      <section className="home-links" aria-label="Major features">
+      {guestLocked ? null : <section className="home-links" aria-label="Major features">
         <Link to="/schedule"><CalendarDays aria-hidden="true" /><h2>{user ? 'My Schedule' : 'Schedule Preview'}</h2><p>{user ? 'Add, replace, and review your A/B-day classes.' : 'See how an A/B-day schedule is organized before joining.'}</p><span>{user ? 'Build schedule' : 'See preview'} <ArrowRight size={16} /></span></Link>
         <Link to="/classes"><Search aria-hidden="true" /><h2>View Classes</h2><p>Search by class, teacher, day, or period.</p><span>Search classes <ArrowRight size={16} /></span></Link>
         <Link to={user ? '/classmates' : '/students'}><Users aria-hidden="true" /><h2>Classmates</h2><p>See what schedule uploading unlocks and find public student previews.</p><span>Find classmates <ArrowRight size={16} /></span></Link>
-      </section>
+      </section>}
     </div>
   )
 }
