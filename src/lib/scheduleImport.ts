@@ -1,7 +1,8 @@
 import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, MeetingSlot } from './domain'
 import { hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
-import { createClassAndEnroll, enrollInClass, searchClasses } from './supabase/data'
+import { searchClasses } from './supabase/data'
 import { supabase } from './supabase/client'
+import type { Json } from './supabase/database.types'
 import { normalizeTeacherLastName, teacherLastNameError } from './teacher'
 
 export type ImportTerm = AcademicTerm | 'unknown'
@@ -184,6 +185,35 @@ export function exactClassOption(row: EditableScheduleImportRow, options = row.c
   )) ?? null
 }
 
+export function reconcileExactClassSelection(row: EditableScheduleImportRow): EditableScheduleImportRow {
+  const exact = exactClassOption(row)
+  if (exact) {
+    return {
+      ...row,
+      selected_existing_class_id: exact.id,
+      resolution: 'existing_class',
+    }
+  }
+  return {
+    ...row,
+    selected_existing_class_id: null,
+    resolution: row.course ? 'new_class' : 'unresolved_course',
+  }
+}
+
+function academicTermLabel(term: AcademicTerm): string {
+  if (term === 'full_year') return 'Full Year'
+  if (term === 'semester_1') return 'Semester 1'
+  return 'Semester 2'
+}
+
+export function importClassOptionLabel(option: ImportClassOption): string {
+  const slots = sortMeetingSlots(option.meeting_slots)
+    .map((slot) => `${slot.day_type} Day P${slot.period_number}`)
+    .join(' / ')
+  return `Use ${option.teacher_last_name} · ${slots} · ${academicTermLabel(option.term)}`
+}
+
 export function importRowError(row: EditableScheduleImportRow): string | null {
   if (!row.include) return null
   if (!row.course) return 'Choose an existing course from the catalogue.'
@@ -193,48 +223,50 @@ export function importRowError(row: EditableScheduleImportRow): string | null {
   return validateMeetingSlots(row.meeting_slots, hasMultiplePeriodsOnAnyDay(row.meeting_slots))
 }
 
-export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): Promise<{ added: number; skipped: number }> {
-  let added = 0
-  let skipped = 0
-  for (const row of rows) {
-    if (!row.include) {
-      skipped += 1
-      continue
-    }
+interface ScheduleReplacementResult {
+  added_count: number
+  removed_count: number
+}
+
+function scheduleReplacementErrorMessage(error: { message?: string; details?: string; hint?: string }): string {
+  const message = [error.message, error.details, error.hint].filter(Boolean).join(' ')
+  if (message.includes('import_schedule_conflict')) return 'The imported classes conflict with each other. Review their terms and meeting slots.'
+  if (message.includes('import_existing_class_mismatch')) return 'An existing class changed while you were reviewing. Review the class action and try again.'
+  if (message.includes('duplicate_import_class')) return 'The imported schedule includes the same class more than once.'
+  if (message.includes('invalid_import_schedule')) return 'The imported schedule is incomplete or invalid. Review every selected class.'
+  return error.message || 'The reviewed schedule could not be saved.'
+}
+
+export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): Promise<{ added: number; removed: number }> {
+  if (!supabase) throw new Error('Sign in before replacing your schedule.')
+  const includedRows = rows.filter((row) => row.include)
+  if (includedRows.length === 0) throw new Error('Select at least one class before replacing your schedule.')
+
+  const replacementRows = includedRows.map((row) => {
     const validationError = importRowError(row)
-    if (validationError || !row.course || row.term === 'unknown') throw new Error(validationError ?? 'Review every import row before saving.')
-
-    const currentOptions = await findClassesForCourse({ id: row.course.id, course_name: row.course.name, score: 100 })
-    const selected = row.selected_existing_class_id
-      ? currentOptions.find((option) => option.id === row.selected_existing_class_id) ?? null
-      : exactClassOption(row, currentOptions)
-    if (selected) {
-      await enrollInClass(selected.id, row.term)
-      added += 1
-      continue
+    if (validationError || !row.course || row.term === 'unknown') {
+      throw new Error(validationError ?? 'Review every import row before saving.')
     }
-
-    try {
-      await createClassAndEnroll({
-        courseNameId: row.course.id,
-        teacherLastName: teacherForImportedCourse(row.teacher_last_name, row.course.name),
-        term: row.term,
-        isDoublePeriod: hasMultiplePeriodsOnAnyDay(row.meeting_slots),
-        meetingSlots: row.meeting_slots,
-        confirmedNoCourseMatch: false,
-      })
-      added += 1
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : ''
-      if (!message.includes('exact_duplicate_class_section_exists')) throw caught
-      const rechecked = await findClassesForCourse({ id: row.course.id, course_name: row.course.name, score: 100 })
-      const duplicate = exactClassOption(row, rechecked)
-      if (!duplicate) throw caught
-      await enrollInClass(duplicate.id, row.term)
-      added += 1
+    return {
+      existing_class_id: row.selected_existing_class_id,
+      course_name_id: row.course.id,
+      teacher_last_name: teacherForImportedCourse(row.teacher_last_name, row.course.name),
+      academic_term: row.term,
+      meeting_slots: sortMeetingSlots(row.meeting_slots),
     }
-  }
-  return { added, skipped }
+  })
+
+  const { data, error } = await supabase.rpc('replace_schedule_from_import', {
+    p_rows: replacementRows as unknown as Json,
+  })
+  if (error) throw new Error(scheduleReplacementErrorMessage(error))
+
+  const result = Array.isArray(data) ? data[0] : data
+  if (!result || typeof result !== 'object') throw new Error('Schedule replacement returned an invalid response.')
+  const added = Number((result as ScheduleReplacementResult).added_count)
+  const removed = Number((result as ScheduleReplacementResult).removed_count)
+  if (!Number.isInteger(added) || !Number.isInteger(removed)) throw new Error('Schedule replacement returned invalid counts.')
+  return { added, removed }
 }
 
 export function teacherForImportedCourse(teacherLastName: string, courseName?: string): string {

@@ -654,6 +654,13 @@ export type Database = {
         }
         Returns: string
       }
+      replace_schedule_from_import: {
+        Args: { p_rows: Json }
+        Returns: {
+          added_count: number
+          removed_count: number
+        }[]
+      }
       search_classes: {
         Args: {
           p_day_type?: Database["public"]["Enums"]["day_type"]

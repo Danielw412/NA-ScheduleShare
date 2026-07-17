@@ -29,7 +29,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `src/lib/domain.ts` — shared application domain types and labels.
 - `src/lib/schedule.ts` — term overlap, slot lookup, double-period, and conflict logic.
 - `src/lib/teacher.ts` — teacher last-name normalization and practical invalid-input checks shared by forms and tests.
-- `src/lib/scheduleImport.ts` and `src/components/schedule/ScheduleImportDialog.tsx` — screenshot preparation, Worker client, editable import review, duplicate recheck, and confirmation through existing schedule mutations.
+- `src/lib/scheduleImport.ts` and `src/components/schedule/ScheduleImportDialog.tsx` — screenshot preparation, Worker client, editable import review, exact class reconciliation, and transactional whole-schedule replacement.
 - `src/pages/AdminPage.tsx` — admin user/report/class/history/role/audit workflows; the database still authorizes every action.
 - `src/config/brand.ts` — single source for site name, organization, attribution, URLs, and temporary logo path.
 - `src/styles.css` — centralized design tokens and responsive styles.

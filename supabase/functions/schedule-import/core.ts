@@ -144,6 +144,7 @@ interface NormalizedGeminiRow {
   term: ImportTerm
   meeting_slots: MeetingSlot[]
   duplicate: boolean
+  term_defaulted: boolean
 }
 
 interface EncodedImage {
@@ -191,7 +192,7 @@ Extraction rules:
 - Include Lunch and Study Hall.
 - Ignore grade-level, counselor, case-manager, attendance, and other administrative rows.
 - Preserve visible course and teacher names exactly. Do not invent, correct, expand, rename, or canonicalize them.
-- Return unknown when the term is not visible.
+- Return unknown when the term is not visible. The application will default an unknown term to Full Year during review.
 - Use slot strings in A1 through A9 or B1 through B9 form. Include every explicitly visible A/B meeting slot and remove duplicate slots.
 - If the images are not a readable student schedule, return {"schedule":false,"rows":[]}.
 - Return only the required structured data.`
@@ -656,10 +657,18 @@ export function parseGeminiSchedule(rawOutput: string): GeminiSchedule {
 
 export function normalizeTerm(value: string): ImportTerm | null {
   const normalized = collapseWhitespace(value).toLowerCase().replace(/[._]/g, ' ')
-  if (normalized === 'unknown' || normalized === 'not visible' || normalized === 'n/a') return 'unknown'
-  if (/^(?:fy|full\s*year|\d{2}\s*[-/]\s*\d{2})$/.test(normalized)) return 'full_year'
+  if (normalized === '' || normalized === 'unknown' || normalized === 'not visible' || normalized === 'n/a') return 'unknown'
+  if (/^(?:fy|full\s*year|\d{2}\s*[-/]\s*\d{2}|fy\s*\/\s*pt)$/.test(normalized)) return 'full_year'
   if (/^(?:s1|sem(?:ester)?\s*1|first\s+semester|1st\s+semester)$/.test(normalized)) return 'semester_1'
   if (/^(?:s2|sem(?:ester)?\s*2|second\s+semester|2nd\s+semester)$/.test(normalized)) return 'semester_2'
+  return null
+}
+
+function termFromCourseName(value: string): Exclude<ImportTerm, 'unknown'> | null {
+  const normalized = collapseWhitespace(value).toLowerCase()
+  if (/\(\s*(?:s1|sem(?:ester)?\s*1)\s*\)/.test(normalized)) return 'semester_1'
+  if (/\(\s*(?:s2|sem(?:ester)?\s*2)\s*\)/.test(normalized)) return 'semester_2'
+  if (/\(\s*(?:fy|full\s*year|fy\s*\/\s*pt)\s*\)/.test(normalized)) return 'full_year'
   return null
 }
 
@@ -710,10 +719,14 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
 
   const merged = new Map<string, NormalizedGeminiRow>()
   for (const row of visibleRows) {
-    const term = normalizeTerm(row.term)
-    if (!term) throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid term.')
+    const parsedTerm = normalizeTerm(row.term)
+    if (!parsedTerm) throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid term.')
+    const embeddedTerm = termFromCourseName(row.course)
+    const visibleTerm = embeddedTerm ?? parsedTerm
+    const termDefaulted = visibleTerm === 'unknown'
+    const term: ImportTerm = termDefaulted ? 'full_year' : visibleTerm
     const meetingSlots = normalizeSlots(row.slots)
-    const key = `${normalizeCourseName(row.course)}|${collapseWhitespace(row.teacher).toLowerCase()}|${term}`
+    const key = `${normalizeCourseName(row.course)}|${collapseWhitespace(row.teacher).toLowerCase()}|${term}|${slotsKey(meetingSlots)}`
     const current = merged.get(key)
     if (!current) {
       merged.set(key, {
@@ -722,16 +735,14 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
         term,
         meeting_slots: meetingSlots,
         duplicate: false,
+        term_defaulted: termDefaulted,
       })
       continue
     }
     merged.set(key, {
       ...current,
-      meeting_slots: normalizeSlots(
-        uniqueSlots([...current.meeting_slots, ...meetingSlots])
-          .map((slot) => `${slot.day_type}${slot.period_number}`),
-      ),
       duplicate: true,
+      term_defaulted: current.term_defaulted && termDefaulted,
     })
   }
   return [...merged.values()]
@@ -780,9 +791,11 @@ function buildReviewRows(
     if (match.kind !== 'matched' || match.score < 0.9) flags.push('low_confidence')
     if (entry.duplicate) {
       flags.push('duplicate')
-      warnings.push('Duplicate or overlapping screenshot rows were merged.')
+      warnings.push('An exact duplicate screenshot row was merged.')
     }
-    if (entry.term === 'unknown') flags.push('incomplete')
+    if (entry.term_defaulted) {
+      warnings.push('Academic term was not visible, so Full Year was selected by default.')
+    }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
       source_course_name: entry.source_course_name,
@@ -840,11 +853,11 @@ function exactClassMatch(
 }
 
 function normalizeCourseName(value: string): string {
-  return value
+  const normalized = value
     .normalize('NFKD')
     .toLowerCase()
     .replace(/\(\s*chs\s*\)/g, ' ')
-    .replace(/\(\s*(?:sem(?:ester)?\s*[12]|s[12]|fy\s*\/\s*pt)\s*\)\s*\d*/g, ' ')
+    .replace(/\(\s*(?:sem(?:ester)?\s*[12]|s[12]|fy|full\s*year|fy\s*\/\s*pt)\s*\)\s*\d*/g, ' ')
     .replace(/\bhon\b/g, 'honors')
     .replace(/\bmod\b/g, 'modern')
     .replace(/\bamer\b/g, 'american')
@@ -858,6 +871,9 @@ function normalizeCourseName(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
+
+  if (/^health (?:and )?(?:pe|physical education)(?: \d{1,2})?$/.test(normalized)) return 'gym'
+  return normalized
 }
 
 function courseSimilarity(left: string, right: string): number {
