@@ -54,11 +54,10 @@ interface AiRunCall {
   input: unknown
 }
 
-let mockAiAnswers: unknown[] = [aiResult()]
-let mockAiAnswerIndex = 0
-let mockAiCalls: AiRunCall[] = []
 let mockExistingClasses: unknown[] = []
+let mockCatalog: unknown[] = catalog
 let mockAuthStatus = 200
+let mockSupabaseCalls: Array<{ url: string; headers: Headers }> = []
 
 class MemoryKv {
   values = new Map<string, string>()
@@ -77,38 +76,51 @@ function createEnv(
   existingClasses: unknown[] = [],
   calls: AiRunCall[] = [],
 ): Env {
-  mockAiAnswers = answers
-  mockAiAnswerIndex = 0
-  mockAiCalls = calls
   mockExistingClasses = existingClasses
+  let answerIndex = 0
 
   return {
     AI: {
-      async run() {
-        throw new Error('The AI binding should not be used by REST API tests.')
+      async run(model, input) {
+        calls.push({ model, input })
+        const answer = answers[Math.min(answerIndex, answers.length - 1)]
+        answerIndex += 1
+        if (answer instanceof Error) throw answer
+        return {
+          result: {
+            answer: typeof answer === 'string' ? answer : JSON.stringify(answer),
+          },
+          usage: {
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            total_tokens: 2,
+          },
+        }
       },
     },
     RATE_LIMIT: new MemoryKv(),
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
-    CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
-    CLOUDFLARE_AI_API_TOKEN: 'test-ai-token',
     RATE_LIMIT_MAX: '6',
     RATE_LIMIT_WINDOW_SECONDS: '3600',
   }
 }
 
-function mockSupabase(existingClasses: unknown[] = [], authStatus = 200) {
+function mockSupabase(existingClasses: unknown[] = [], authStatus = 200, catalogRows: unknown[] = catalog) {
   mockExistingClasses = existingClasses
+  mockCatalog = catalogRows
   mockAuthStatus = authStatus
+  mockSupabaseCalls = []
 
   vi.stubGlobal('fetch', vi.fn(async (
     input: RequestInfo | URL,
     init?: RequestInit,
   ) => {
     const url = String(input)
+    const headers = new Headers(init?.headers)
 
     if (url.includes('/auth/v1/user')) {
+      mockSupabaseCalls.push({ url, headers })
       return Response.json(
         mockAuthStatus === 200
           ? { id: USER_ID }
@@ -118,60 +130,13 @@ function mockSupabase(existingClasses: unknown[] = [], authStatus = 200) {
     }
 
     if (url.includes('/rest/v1/course_names')) {
-      return Response.json(catalog)
+      mockSupabaseCalls.push({ url, headers })
+      return Response.json(mockCatalog)
     }
 
     if (url.includes('/rest/v1/classes')) {
+      mockSupabaseCalls.push({ url, headers })
       return Response.json(mockExistingClasses)
-    }
-
-    if (url.includes('/ai/run/')) {
-      const requestBody = typeof init?.body === 'string'
-        ? JSON.parse(init.body) as unknown
-        : null
-
-      const encodedModel = url.split('/ai/run/')[1] ?? ''
-      const model = decodeURIComponent(encodedModel)
-
-      mockAiCalls.push({
-        model,
-        input: requestBody,
-      })
-
-      const answer = mockAiAnswers[
-        Math.min(mockAiAnswerIndex, mockAiAnswers.length - 1)
-      ]
-
-      mockAiAnswerIndex += 1
-
-      if (answer instanceof Error) {
-        if (/429|quota|rate limit/i.test(answer.message)) {
-          return Response.json(
-            {
-              success: false,
-              result: null,
-              errors: [{
-                code: 429,
-                message: answer.message,
-              }],
-            },
-            { status: 429 },
-          )
-        }
-
-        throw answer
-      }
-
-      const result = typeof answer === 'string'
-        ? { answer }
-        : { answer: JSON.stringify(answer) }
-
-      return Response.json({
-        success: true,
-        result,
-        errors: [],
-        messages: [],
-      })
     }
 
     return new Response(null, { status: 404 })
@@ -196,6 +161,8 @@ async function body(response: Response) {
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  vi.spyOn(console, 'log').mockImplementation(() => undefined)
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
   mockSupabase()
 })
 
@@ -211,6 +178,17 @@ describe('authentication and CORS', () => {
     const response = await handleRequest(requestWithImages([image()]), createEnv())
     expect(response.status).toBe(401)
     expect(await body(response)).toMatchObject({ error: 'session_expired' })
+  })
+
+  it('uses the caller token and publishable key for RLS-protected reads', async () => {
+    const response = await handleRequest(requestWithImages([image()]), createEnv())
+    expect(response.status).toBe(200)
+    const protectedReads = mockSupabaseCalls.filter(({ url }) => url.includes('/rest/v1/'))
+    expect(protectedReads).toHaveLength(2)
+    for (const call of protectedReads) {
+      expect(call.headers.get('Authorization')).toBe('Bearer valid-token')
+      expect(call.headers.get('apikey')).toBe('sb_publishable_test')
+    }
   })
 
   it('answers preflight only for configured production and local origins', async () => {
@@ -235,7 +213,7 @@ describe('image input and rate limiting', () => {
     expect(await body(response)).toMatchObject({ image_count: 1 })
   })
 
-  it('passes uploaded bytes and the expected query input to Moondream', async () => {
+  it('passes the exact uploaded bytes in the schema-required Moondream data URI', async () => {
     const uploadedBytes = [0, 1, 2, 127, 128, 254, 255]
     const calls: AiRunCall[] = []
     const uploadedImage = new File([Uint8Array.from(uploadedBytes)], 'schedule.png', { type: 'image/png' })
@@ -256,9 +234,69 @@ describe('image input and rate limiting', () => {
       stream: false,
     })
     const input = calls[0].input as { image: unknown }
-    expect(typeof input.image).not.toBe('string')
-    expect(Array.isArray(input.image)).toBe(true)
-    expect(input.image).toEqual(uploadedBytes)
+    expect(typeof input.image).toBe('string')
+    expect(Array.isArray(input.image)).toBe(false)
+    const [prefix, encoded] = (input.image as string).split(',', 2)
+    expect(prefix).toBe('data:image/png;base64')
+    expect(Array.from(atob(encoded), (character) => character.charCodeAt(0))).toEqual(uploadedBytes)
+
+    const boundaryLog = vi.mocked(console.log).mock.calls
+      .map(([value]) => typeof value === 'string' ? JSON.parse(value) as Record<string, unknown> : null)
+      .find((value) => value?.event === 'workers_ai_inference_boundary')
+    expect(boundaryLog).toMatchObject({
+      model: '@cf/moondream/moondream3.1-9B-A2B',
+      task: 'query',
+      image: {
+        type: 'string',
+        is_array: false,
+        constructor: 'String',
+        byte_length: uploadedBytes.length,
+      },
+      question_length: expect.any(Number),
+      max_tokens: 8_000,
+    })
+  })
+
+  it('uses prompt-sized two-pass matching for a production-sized catalogue', async () => {
+    const largeCatalog = [
+      ...catalog,
+      ...Array.from({ length: 304 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        name: `Diagnostic Course ${String(index).padStart(3, '0')}`,
+      })),
+    ]
+    mockSupabase([], 200, largeCatalog)
+    const calls: AiRunCall[] = []
+    const firstPassEntry = {
+      ...validEntry,
+      course_id: null,
+      canonical_course_name: null,
+      course_match_confidence: 0,
+    }
+
+    const response = await handleRequest(
+      requestWithImages([image()]),
+      createEnv([aiResult([firstPassEntry]), aiResult()], [], calls),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(2)
+    const firstInput = calls[0].input as { image: string; question: string }
+    const candidateInput = calls[1].input as { image: string; question: string }
+    expect(firstInput.question).not.toContain(AP_STATS_ID)
+    expect(candidateInput.question).toContain('fuzzy candidates')
+    expect(candidateInput.question).toContain(AP_STATS_ID)
+    expect(candidateInput.question.length).toBeLessThanOrEqual(7_500)
+    expect(candidateInput.image).toBe(firstInput.image)
+
+    const allowedIds = new Set(largeCatalog.map((course) => course.id))
+    const suppliedIds = candidateInput.question
+      .split('ACTIVE CATALOGUE:\n')[1]
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split(' | ', 1)[0])
+    expect(suppliedIds.length).toBeGreaterThan(0)
+    expect(suppliedIds.every((id) => allowedIds.has(id))).toBe(true)
   })
 
   it('processes two images and merges overlapping entries without duplicates', async () => {

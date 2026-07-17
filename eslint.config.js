@@ -3,7 +3,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'src/lib/supabase/database.types.ts'] },
+  { ignores: ['dist', 'coverage', '**/.wrangler/**', 'src/lib/supabase/database.types.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -21,6 +21,10 @@ export default tseslint.config(
   },
   {
     files: ['vite.config.ts'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['cloudflare/schedule-import-worker/diagnostic/run.mjs'],
     languageOptions: { globals: globals.node },
   },
 )

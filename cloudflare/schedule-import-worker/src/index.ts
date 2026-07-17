@@ -1,9 +1,10 @@
-const MODEL = '@cf/moondream/moondream3.1-9B-A2B'
+export const MOONDREAM_MODEL = '@cf/moondream/moondream3.1-9B-A2B'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGES = 2
 const DEFAULT_RATE_LIMIT = 6
 const DEFAULT_RATE_WINDOW_SECONDS = 60 * 60
-const MAX_CATALOG_PROMPT_CHARS = 60_000
+const MAX_MOONDREAM_PROMPT_CHARS = 7_500
+const CANDIDATES_PER_ENTRY = 8
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
@@ -87,7 +88,7 @@ export interface ScheduleImportResponse {
 
 interface MoondreamQueryInput {
   task: 'query'
-  image: number[]
+  image: string
   question: string
   reasoning: boolean
   temperature: number
@@ -95,8 +96,13 @@ interface MoondreamQueryInput {
   stream: boolean
 }
 
-interface AiBinding {
+export interface AiBinding {
   run(model: string, input: MoondreamQueryInput): Promise<unknown>
+}
+
+export interface MoondreamImageInput {
+  dataUrl: string
+  byteLength: number
 }
 
 interface KvBinding {
@@ -109,8 +115,6 @@ export interface Env {
   RATE_LIMIT: KvBinding
   SUPABASE_URL: string
   SUPABASE_PUBLISHABLE_KEY: string
-  CLOUDFLARE_ACCOUNT_ID: string
-  CLOUDFLARE_AI_API_TOKEN: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
 }
@@ -318,7 +322,7 @@ async function fetchAllPages(
     : 'The class list is too large to import safely.')
 }
 
-function buildPrompt(catalog: CourseRecord[], candidatesOnly = false): string {
+export function buildPrompt(catalog: CourseRecord[], candidatesOnly = false): string {
   const catalogLines = catalog.map((course) => `${course.id} | ${course.name}`).join('\n')
   return `You are reading one screenshot that is one whole or partial view of the same PowerSchool student schedule. Return ONLY one JSON object with exactly this shape:
 {"schedule_detected":boolean,"period_mapping_visible":boolean,"image_quality":"clear"|"usable"|"unusable","warnings":string[],"entries":[{"source_course_name":string,"teacher_raw":string,"term":"full_year"|"semester_1"|"semester_2"|"unknown","meeting_slots":[{"day_type":"A"|"B","period_number":1-9}],"confidence":0-1,"warnings":string[],"course_id":string|null,"canonical_course_name":string|null,"course_match_confidence":0-1}]}
@@ -340,88 +344,85 @@ ACTIVE CATALOGUE:
 ${catalogLines}`
 }
 
-async function fileToImageBytes(file: File): Promise<number[]> {
-  return Array.from(new Uint8Array(await file.arrayBuffer()))
+export async function fileToMoondreamImage(file: File): Promise<MoondreamImageInput> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return {
+    dataUrl: `data:${file.type};base64,${btoa(binary)}`,
+    byteLength: bytes.byteLength,
+  }
 }
 
-interface CloudflareAiEnvelope {
-  success?: boolean
-  result?: unknown
-  errors?: Array<{
-    code?: number
-    message?: string
-  }>
+export function describeMoondreamImageBoundary(image: MoondreamImageInput) {
+  return {
+    type: typeof image.dataUrl,
+    is_array: Array.isArray(image.dataUrl),
+    constructor: image.dataUrl.constructor.name,
+    byte_length: image.byteLength,
+  }
+}
+
+export async function invokeMoondreamQuery(
+  ai: AiBinding,
+  image: MoondreamImageInput,
+  question: string,
+  maxTokens = 8_000,
+): Promise<unknown> {
+  const boundary = describeMoondreamImageBoundary(image)
+  console.log(JSON.stringify({
+    event: 'workers_ai_inference_boundary',
+    model: MOONDREAM_MODEL,
+    task: 'query',
+    image: boundary,
+    question_length: question.length,
+    max_tokens: maxTokens,
+  }))
+  return ai.run(MOONDREAM_MODEL, {
+    task: 'query',
+    image: image.dataUrl,
+    question,
+    reasoning: false,
+    temperature: 0,
+    max_tokens: maxTokens,
+    stream: false,
+  })
+}
+
+export function moondreamAnswer(output: unknown): string | null {
+  if (!isRecord(output)) return null
+  if (typeof output.answer === 'string') return output.answer
+  return isRecord(output.result) && typeof output.result.answer === 'string'
+    ? output.result.answer
+    : null
 }
 
 async function runAi(
   env: Env,
-  image: number[],
+  image: MoondreamImageInput,
   prompt: string,
 ): Promise<AiScheduleResult> {
-  const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim()
-  const apiToken = env.CLOUDFLARE_AI_API_TOKEN?.trim()
-
-  if (!accountId || !apiToken) {
-    throw new HttpError(
-      503,
-      'ai_not_configured',
-      'Schedule recognition is not configured.',
-    )
-  }
-
-  const model = '@cf/moondream/moondream3.1-9B-A2B'
-  const endpoint =
-    `https://api.cloudflare.com/client/v4/accounts/` +
-    `${encodeURIComponent(accountId)}/ai/run/${model}`
-
-  let response: Response
-
+  let output: unknown
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        task: 'query',
-        image,
-        question: prompt,
-        reasoning: false,
-        temperature: 0,
-        max_tokens: 8_000,
-        stream: false,
-      }),
-    })
+    output = await invokeMoondreamQuery(env.AI, image, prompt)
   } catch (error) {
-    console.error('Workers AI REST request failed:', error)
-
-    throw new HttpError(
-      503,
-      'ai_unavailable',
-      'Schedule recognition is temporarily unavailable.',
-    )
-  }
-
-  const envelope = await response
-    .json()
-    .catch(() => null) as CloudflareAiEnvelope | null
-
-  if (!response.ok || !envelope?.success) {
-    console.error('Workers AI REST response failed:', {
-      status: response.status,
-      errors: envelope?.errors,
-    })
-
-    const errorText = envelope?.errors
-      ?.map((error) => `${error.code ?? ''} ${error.message ?? ''}`)
-      .join(' ')
-      .toLowerCase() ?? ''
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(JSON.stringify({
+      event: 'workers_ai_inference_failed',
+      model: MOONDREAM_MODEL,
+      task: 'query',
+      error_name: error instanceof Error ? error.name : 'UnknownError',
+      error_message: message,
+    }))
+    const normalized = message.toLowerCase()
 
     if (
-      response.status === 429
-      || errorText.includes('quota')
-      || errorText.includes('rate limit')
+      normalized.includes('429')
+      || normalized.includes('quota')
+      || normalized.includes('rate limit')
     ) {
       throw new HttpError(
         503,
@@ -437,10 +438,15 @@ async function runAi(
     )
   }
 
-  const output = envelope.result
-
-  if (!isRecord(output) || typeof output.answer !== 'string') {
-    console.error('Unexpected Workers AI result:', output)
+  const answer = moondreamAnswer(output)
+  if (answer === null) {
+    console.error(JSON.stringify({
+      event: 'workers_ai_invalid_result',
+      model: MOONDREAM_MODEL,
+      task: 'query',
+      result_type: typeof output,
+      result_keys: isRecord(output) ? Object.keys(output) : [],
+    }))
 
     throw new HttpError(
       502,
@@ -449,16 +455,16 @@ async function runAi(
     )
   }
 
-  return parseAiSchedule(output.answer)
+  return parseAiSchedule(answer)
 }
 
 async function extractImage(env: Env, file: File, catalog: CourseRecord[]): Promise<AiScheduleResult> {
-  const image = await fileToImageBytes(file)
+  const image = await fileToMoondreamImage(file)
   const completePrompt = buildPrompt(catalog)
-  if (completePrompt.length <= MAX_CATALOG_PROMPT_CHARS) return runAi(env, image, completePrompt)
+  if (completePrompt.length <= MAX_MOONDREAM_PROMPT_CHARS) return runAi(env, image, completePrompt)
 
   const firstPass = await runAi(env, image, buildPrompt([], false))
-  const candidates = uniqueCourses(firstPass.entries.flatMap((entry) => fuzzyCandidates(entry.source_course_name, catalog, 8)))
+  const candidates = promptSizedCandidates(firstPass.entries, catalog)
   if (candidates.length === 0) return firstPass
   return runAi(env, image, buildPrompt(candidates, true))
 }
@@ -607,8 +613,27 @@ function fuzzyCandidates(sourceName: string, catalog: CourseRecord[], limit: num
     .map(({ course }) => course)
 }
 
-function uniqueCourses(courses: CourseRecord[]): CourseRecord[] {
-  return [...new Map(courses.map((course) => [course.id, course])).values()]
+function promptSizedCandidates(entries: AiEntry[], catalog: CourseRecord[]): CourseRecord[] {
+  const candidatesByEntry = entries.map((entry) => fuzzyCandidates(
+    entry.source_course_name,
+    catalog,
+    CANDIDATES_PER_ENTRY,
+  ))
+  const selected: CourseRecord[] = []
+  const selectedIds = new Set<string>()
+
+  for (let rank = 0; rank < CANDIDATES_PER_ENTRY; rank += 1) {
+    for (const candidates of candidatesByEntry) {
+      const candidate = candidates[rank]
+      if (!candidate || selectedIds.has(candidate.id)) continue
+      const next = [...selected, candidate]
+      if (buildPrompt(next, true).length > MAX_MOONDREAM_PROMPT_CHARS) continue
+      selected.push(candidate)
+      selectedIds.add(candidate.id)
+    }
+  }
+
+  return selected
 }
 
 function validatedCourseMatch(entry: AiEntry, catalog: CourseRecord[]): { course: CourseRecord; confidence: number } | null {

@@ -17,6 +17,7 @@
     "test:privacy": "supabase test db --local supabase/tests/database",
     "build": "tsc -b && vite build",
     "worker:typecheck": "tsc -p cloudflare/schedule-import-worker/tsconfig.json",
+    "worker:diagnose": "node cloudflare/schedule-import-worker/diagnostic/run.mjs",
     "worker:dev": "wrangler dev --config cloudflare/schedule-import-worker/wrangler.toml",
     "worker:deploy": "wrangler deploy --config cloudflare/schedule-import-worker/wrangler.toml",
     "preview": "vite preview",

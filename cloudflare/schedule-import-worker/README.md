@@ -23,6 +23,8 @@ This Worker accepts one or two PowerSchool schedule screenshots, validates the s
 
 6. Deploy with `pnpm worker:deploy`. The deployed route is `POST /api/schedule-import`.
 
+Moondream is invoked through the configured Workers AI binding. Its current model schema requires `image` to be a public HTTPS URL or base64 data URI, so the Worker creates one in request memory from the uploaded bytes. No Cloudflare AI API token is needed by the Worker.
+
 The Worker permits only the GitHub Pages origin and the built-in local Vite/preview origins. The production entry is origin-only (`https://danielw412.github.io`), because browsers send the `Origin` header without the Pages path.
 
 ## Local development
@@ -48,8 +50,11 @@ The browser forwards only the current Supabase access token and image files. The
 ```bash
 pnpm worker:typecheck
 pnpm test:worker
+pnpm worker:diagnose
 pnpm worker:deploy
 ```
+
+`pnpm worker:diagnose` starts a local diagnostic Worker with a remote Workers AI binding and sends the small public club-logo PNG. It never uses a student schedule. Its JSON result distinguishes `configuration`, `transport`, `model`, and `quota` failures. The diagnostic uses the production image converter, extraction prompt, 8,000-token setting, and `query` task, so it exercises the same model boundary without exposing the authenticated schedule-import endpoint. Set `MOONDREAM_DIAGNOSTIC_CATALOG_SIZE` to an integer from 0 through 304 to add synthetic catalogue rows when investigating prompt-size failures.
 
 The manually triggered `deploy-worker.yml` workflow expects these GitHub production-environment secrets:
 
@@ -62,7 +67,8 @@ After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` to the reposito
 
 ## Privacy and operational behavior
 
-- Screenshots are held only in request memory and sent directly to Workers AI; neither the Worker nor KV stores image bytes.
+- Screenshots are held only in request memory and sent as schema-required data URIs through the Workers AI binding; neither the Worker nor KV stores image bytes.
+- Large catalogues use a prompt-sized two-pass flow: first extract visible text, then provide only server-selected fuzzy catalogue candidates. Every candidate is still an active Supabase catalogue row, and the server revalidates the model's match.
 - KV stores a per-user fixed-window request counter only.
 - Requests accept one or two PNG, JPEG, or WebP images, each no larger than 5 MB.
 - Model output is untrusted input and must pass an exact runtime schema before it is used.
