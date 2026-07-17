@@ -109,6 +109,8 @@ export interface Env {
   RATE_LIMIT: KvBinding
   SUPABASE_URL: string
   SUPABASE_PUBLISHABLE_KEY: string
+  CLOUDFLARE_ACCOUNT_ID: string
+  CLOUDFLARE_AI_API_TOKEN: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
 }
@@ -342,39 +344,84 @@ async function fileToImageBytes(file: File): Promise<number[]> {
   return Array.from(new Uint8Array(await file.arrayBuffer()))
 }
 
+interface CloudflareAiEnvelope {
+  success?: boolean
+  result?: unknown
+  errors?: Array<{
+    code?: number
+    message?: string
+  }>
+}
+
 async function runAi(
   env: Env,
   image: number[],
   prompt: string,
 ): Promise<AiScheduleResult> {
-  let output: unknown
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim()
+  const apiToken = env.CLOUDFLARE_AI_API_TOKEN?.trim()
+
+  if (!accountId || !apiToken) {
+    throw new HttpError(
+      503,
+      'ai_not_configured',
+      'Schedule recognition is not configured.',
+    )
+  }
+
+  const model = '@cf/moondream/moondream3.1-9B-A2B'
+  const endpoint =
+    `https://api.cloudflare.com/client/v4/accounts/` +
+    `${encodeURIComponent(accountId)}/ai/run/${model}`
+
+  let response: Response
+
   try {
-    output = await env.AI.run(MODEL, {
-      task: 'query',
-      image,
-      question: prompt,
-      reasoning: false,
-      temperature: 0,
-      max_tokens: 8_000,
-      stream: false,
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        task: 'query',
+        image,
+        question: prompt,
+        reasoning: false,
+        temperature: 0,
+        max_tokens: 8_000,
+        stream: false,
+      }),
     })
   } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : String(error)
+    console.error('Workers AI REST request failed:', error)
 
-    console.error('Workers AI invocation failed:', {
-      name: error instanceof Error ? error.name : 'UnknownError',
-      message,
-      stack: error instanceof Error ? error.stack : undefined,
+    throw new HttpError(
+      503,
+      'ai_unavailable',
+      'Schedule recognition is temporarily unavailable.',
+    )
+  }
+
+  const envelope = await response
+    .json()
+    .catch(() => null) as CloudflareAiEnvelope | null
+
+  if (!response.ok || !envelope?.success) {
+    console.error('Workers AI REST response failed:', {
+      status: response.status,
+      errors: envelope?.errors,
     })
 
-    const normalized = message.toLowerCase()
+    const errorText = envelope?.errors
+      ?.map((error) => `${error.code ?? ''} ${error.message ?? ''}`)
+      .join(' ')
+      .toLowerCase() ?? ''
 
     if (
-      normalized.includes('quota')
-      || normalized.includes('rate limit')
-      || normalized.includes('429')
+      response.status === 429
+      || errorText.includes('quota')
+      || errorText.includes('rate limit')
     ) {
       throw new HttpError(
         503,
@@ -389,9 +436,19 @@ async function runAi(
       'Schedule recognition is temporarily unavailable.',
     )
   }
+
+  const output = envelope.result
+
   if (!isRecord(output) || typeof output.answer !== 'string') {
-    throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid response.')
+    console.error('Unexpected Workers AI result:', output)
+
+    throw new HttpError(
+      502,
+      'ai_invalid_response',
+      'Schedule recognition returned an invalid response.',
+    )
   }
+
   return parseAiSchedule(output.answer)
 }
 
