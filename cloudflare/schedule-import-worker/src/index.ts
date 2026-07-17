@@ -455,26 +455,76 @@ async function extractImage(env: Env, file: File): Promise<AiScheduleResult> {
 }
 
 function parseAiSchedule(answer: string): AiScheduleResult {
-  const trimmed = answer.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-  let value: unknown
+  const trimmed = answer
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+
+  let parsed: unknown
+
   try {
-    value = JSON.parse(trimmed)
+    parsed = JSON.parse(trimmed)
   } catch {
-    throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned malformed data.')
+    throw new HttpError(
+      502,
+      'ai_invalid_response',
+      'Schedule recognition returned malformed data.',
+    )
   }
-  if (!isRecord(value) || !hasExactKeys(value, ['schedule_detected', 'period_mapping_visible', 'image_quality', 'warnings', 'entries'])) {
-    throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned data with an unexpected shape.')
+
+  const value =
+    isRecord(parsed) && isRecord(parsed.result)
+      ? parsed.result
+      : isRecord(parsed) && isRecord(parsed.schedule)
+        ? parsed.schedule
+        : parsed
+
+  const requiredKeys = [
+    'schedule_detected',
+    'period_mapping_visible',
+    'image_quality',
+    'warnings',
+    'entries',
+  ] as const
+
+  if (!isRecord(value) || !hasRequiredKeys(value, requiredKeys)) {
+    console.error(JSON.stringify({
+      event: 'workers_ai_unexpected_shape',
+      parsed_type: Array.isArray(value) ? 'array' : typeof value,
+      parsed_keys: isRecord(value) ? Object.keys(value) : [],
+    }))
+
+    throw new HttpError(
+      502,
+      'ai_invalid_response',
+      'Schedule recognition returned data with an unexpected shape.',
+    )
   }
-  if (typeof value.schedule_detected !== 'boolean' || typeof value.period_mapping_visible !== 'boolean'
-    || !['clear', 'usable', 'unusable'].includes(String(value.image_quality))
-    || !isStringArray(value.warnings) || !Array.isArray(value.entries) || value.entries.length > 30) {
-    throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned data with invalid fields.')
+
+  if (
+    typeof value.schedule_detected !== 'boolean'
+    || typeof value.period_mapping_visible !== 'boolean'
+    || !['clear', 'usable', 'unusable'].includes(
+      String(value.image_quality),
+    )
+    || !isStringArray(value.warnings)
+    || !Array.isArray(value.entries)
+    || value.entries.length > 30
+  ) {
+    throw new HttpError(
+      502,
+      'ai_invalid_response',
+      'Schedule recognition returned data with invalid fields.',
+    )
   }
+
   const entries = value.entries.map(parseAiEntry)
+
   return {
     schedule_detected: value.schedule_detected,
     period_mapping_visible: value.period_mapping_visible,
-    image_quality: value.image_quality as AiScheduleResult['image_quality'],
+    image_quality:
+      value.image_quality as AiScheduleResult['image_quality'],
     warnings: value.warnings,
     entries,
   }
@@ -482,7 +532,7 @@ function parseAiSchedule(answer: string): AiScheduleResult {
 
 function parseAiEntry(value: unknown): AiEntry {
   const keys = ['source_course_name', 'teacher_raw', 'term', 'meeting_slots', 'confidence', 'warnings']
-  if (!isRecord(value) || !hasExactKeys(value, keys)
+  if (!isRecord(value) || !hasRequiredKeys(value, keys)
     || typeof value.source_course_name !== 'string' || value.source_course_name.trim().length < 2
     || value.source_course_name.length > 160 || typeof value.teacher_raw !== 'string' || value.teacher_raw.length > 200
     || !isImportTerm(value.term) || !Array.isArray(value.meeting_slots)
@@ -506,7 +556,7 @@ function parseSlots(values: unknown[]): MeetingSlot[] | null {
   const slots: MeetingSlot[] = []
   const seen = new Set<string>()
   for (const value of values) {
-    if (!isRecord(value) || !hasExactKeys(value, ['day_type', 'period_number'])
+    if (!isRecord(value) || !hasRequiredKeys(value, ['day_type', 'period_number'])
       || !isDayType(value.day_type) || !Number.isInteger(value.period_number)
       || Number(value.period_number) < 1 || Number(value.period_number) > 9) return null
     const key = `${value.day_type}:${value.period_number}`
@@ -743,10 +793,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  const actual = Object.keys(value).sort()
-  const expected = [...keys].sort()
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index])
+function hasRequiredKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return keys.every((key) =>
+    Object.prototype.hasOwnProperty.call(value, key),
+  )
 }
 
 function isStringArray(value: unknown): value is string[] {
