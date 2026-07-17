@@ -54,6 +54,12 @@ interface AiRunCall {
   input: unknown
 }
 
+let mockAiAnswers: unknown[] = [aiResult()]
+let mockAiAnswerIndex = 0
+let mockAiCalls: AiRunCall[] = []
+let mockExistingClasses: unknown[] = []
+let mockAuthStatus = 200
+
 class MemoryKv {
   values = new Map<string, string>()
 
@@ -71,34 +77,103 @@ function createEnv(
   existingClasses: unknown[] = [],
   calls: AiRunCall[] = [],
 ): Env {
-  let index = 0
+  mockAiAnswers = answers
+  mockAiAnswerIndex = 0
+  mockAiCalls = calls
+  mockExistingClasses = existingClasses
+
   return {
     AI: {
-      async run(model, input) {
-        calls.push({ model, input })
-        const answer = answers[Math.min(index, answers.length - 1)]
-        index += 1
-        if (answer instanceof Error) throw answer
-        return typeof answer === 'string' ? { answer } : { answer: JSON.stringify(answer) }
+      async run() {
+        throw new Error('The AI binding should not be used by REST API tests.')
       },
     },
     RATE_LIMIT: new MemoryKv(),
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
+    CLOUDFLARE_AI_API_TOKEN: 'test-ai-token',
     RATE_LIMIT_MAX: '6',
     RATE_LIMIT_WINDOW_SECONDS: '3600',
-    ...({ existingClasses } as object),
   }
 }
 
 function mockSupabase(existingClasses: unknown[] = [], authStatus = 200) {
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  mockExistingClasses = existingClasses
+  mockAuthStatus = authStatus
+
+  vi.stubGlobal('fetch', vi.fn(async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
     const url = String(input)
+
     if (url.includes('/auth/v1/user')) {
-      return Response.json(authStatus === 200 ? { id: USER_ID } : { error: 'invalid' }, { status: authStatus })
+      return Response.json(
+        mockAuthStatus === 200
+          ? { id: USER_ID }
+          : { error: 'invalid' },
+        { status: mockAuthStatus },
+      )
     }
-    if (url.includes('/rest/v1/course_names')) return Response.json(catalog)
-    if (url.includes('/rest/v1/classes')) return Response.json(existingClasses)
+
+    if (url.includes('/rest/v1/course_names')) {
+      return Response.json(catalog)
+    }
+
+    if (url.includes('/rest/v1/classes')) {
+      return Response.json(mockExistingClasses)
+    }
+
+    if (url.includes('/ai/run/')) {
+      const requestBody = typeof init?.body === 'string'
+        ? JSON.parse(init.body) as unknown
+        : null
+
+      const encodedModel = url.split('/ai/run/')[1] ?? ''
+      const model = decodeURIComponent(encodedModel)
+
+      mockAiCalls.push({
+        model,
+        input: requestBody,
+      })
+
+      const answer = mockAiAnswers[
+        Math.min(mockAiAnswerIndex, mockAiAnswers.length - 1)
+      ]
+
+      mockAiAnswerIndex += 1
+
+      if (answer instanceof Error) {
+        if (/429|quota|rate limit/i.test(answer.message)) {
+          return Response.json(
+            {
+              success: false,
+              result: null,
+              errors: [{
+                code: 429,
+                message: answer.message,
+              }],
+            },
+            { status: 429 },
+          )
+        }
+
+        throw answer
+      }
+
+      const result = typeof answer === 'string'
+        ? { answer }
+        : { answer: JSON.stringify(answer) }
+
+      return Response.json({
+        success: true,
+        result,
+        errors: [],
+        messages: [],
+      })
+    }
+
     return new Response(null, { status: 404 })
   }))
 }
@@ -266,8 +341,10 @@ describe('extraction safeguards and matching', () => {
       is_double_period: false,
       class_meeting_slots: validEntry.meeting_slots,
     }]
-    mockSupabase(classes)
-    const response = await handleRequest(requestWithImages([image()]), createEnv([aiResult()]))
+    const response = await handleRequest(
+      requestWithImages([image()]),
+      createEnv([aiResult()], classes),
+    )
     const result = await body(response) as { rows: Array<{ resolution: string; existing_class_id: string }> }
     expect(result.rows[0]).toMatchObject({ resolution: 'existing_class', existing_class_id: CLASS_ID })
   })
