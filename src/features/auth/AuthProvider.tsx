@@ -15,6 +15,11 @@ interface OnboardingInput {
   privacySetting: PrivacySetting
 }
 
+interface ProfileUpdateInput {
+  fullName: string
+  privacySetting: PrivacySetting
+}
+
 interface AuthContextValue {
   user: CurrentUser | null
   profile: Profile | null
@@ -28,6 +33,7 @@ interface AuthContextValue {
   signUpWithPassword: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   completeOnboarding: (input: OnboardingInput) => Promise<void>
+  updateProfile: (input: ProfileUpdateInput) => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
@@ -177,6 +183,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await hydrateUser(user)
   }, [hydrateUser, isDemo, user])
 
+  const updateProfile = useCallback(async (input: ProfileUpdateInput) => {
+    const fullName = input.fullName.trim().replace(/\s+/g, ' ')
+    if (fullName.length < 2 || fullName.length > 100) throw new Error('Full name must be between 2 and 100 characters.')
+    if (isDemo) {
+      setProfile((current) => current ? { ...current, full_name: fullName, privacy_setting: input.privacySetting } : current)
+      return
+    }
+    if (!supabase || !user) throw new Error('You must be signed in.')
+    const { error } = await supabase
+      .from('profiles')
+      .update({ full_name: fullName, privacy_setting: input.privacySetting })
+      .eq('id', user.id)
+    if (error) throw new Error(onboardingErrorMessage(error.code))
+    await hydrateUser(user)
+  }, [hydrateUser, isDemo, user])
+
   const refreshProfile = useCallback(async () => {
     await hydrateUser(user)
   }, [hydrateUser, user])
@@ -194,8 +216,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUpWithPassword,
     signOut,
     completeOnboarding,
+    updateProfile,
     refreshProfile,
-  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, profile, refreshProfile, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, user])
+  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, profile, refreshProfile, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

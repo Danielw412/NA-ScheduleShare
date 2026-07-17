@@ -4,6 +4,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { BrandLogo } from '../ui/BrandLogo'
+import { ProfileAvatar } from '../ui/ProfileAvatar'
 
 const primaryNavigation = [
   { to: '/', label: 'Home' },
@@ -11,6 +12,7 @@ const primaryNavigation = [
   { to: '/classes', label: 'View Classes' },
   { to: '/students', label: 'Students' },
   { to: '/classmates', label: 'Classmates' },
+  { to: '/profile', label: 'Profile' },
 ]
 
 export function AppShell() {
@@ -30,9 +32,9 @@ export function AppShell() {
           {isAdmin ? <NavLink to="/admin" onClick={() => setMenuOpen(false)}><ShieldCheck size={16} aria-hidden="true" /> Admin</NavLink> : null}
         </nav>
         <div className="profile-menu">
-          <span className="avatar" aria-hidden="true">{profile?.full_name.split(' ').map((part) => part[0]).slice(0, 2).join('') || 'NA'}</span>
+          <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
           <div>
-            <strong>{profile?.full_name || 'Student'}</strong>
+            <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
             <button type="button" onClick={() => void signOut()}>Sign out</button>
           </div>
         </div>
@@ -41,7 +43,7 @@ export function AppShell() {
       <footer className="site-footer">
         <p>{brand.attribution}</p>
         <nav aria-label="Footer navigation">
-          <NavLink to="/privacy">Privacy</NavLink>
+          <NavLink to="/profile">Profile & privacy</NavLink>
           <NavLink to="/report">Report an issue</NavLink>
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>

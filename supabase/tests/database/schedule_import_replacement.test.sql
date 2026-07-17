@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(14);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -147,6 +147,40 @@ select is(
   (select count(*)::integer from public.class_enrollments where student_id = '97000000-0000-4000-8000-000000000001' and active),
   2,
   'both non-overlapping semester enrollments are active'
+);
+
+select is(
+  (
+    select jsonb_build_object('added_count', added_count, 'removed_count', removed_count)
+    from public.replace_schedule_from_import('[
+      {
+        "existing_class_id":null,
+        "course_name_id":"97000000-0000-4000-8000-000000000011",
+        "teacher_last_name":"Smith",
+        "academic_term":"full_year",
+        "meeting_slots":[{"day_type":"A","period_number":4}]
+      },
+      {
+        "existing_class_id":null,
+        "course_name_id":"97000000-0000-4000-8000-000000000011",
+        "teacher_last_name":"Smith",
+        "academic_term":"full_year",
+        "meeting_slots":[{"day_type":"B","period_number":5}]
+      }
+    ]'::jsonb)
+  ),
+  '{"added_count":2,"removed_count":2}'::jsonb,
+  'the same course in different periods produces two replacement enrollments'
+);
+select is(
+  (
+    select count(distinct enrollment.class_id)::integer
+    from public.class_enrollments enrollment
+    where enrollment.student_id = '97000000-0000-4000-8000-000000000001'
+      and enrollment.active
+  ),
+  2,
+  'different-period imports remain separate classes'
 );
 
 select throws_ok(

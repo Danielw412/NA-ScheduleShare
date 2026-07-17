@@ -16,6 +16,7 @@ vi.mock('./supabase/data', () => ({
 import {
   confirmScheduleImport,
   importClassOptionLabel,
+  normalizeReviewTerm,
   reconcileExactClassSelection,
 } from './scheduleImport'
 
@@ -50,6 +51,17 @@ beforeEach(() => {
 })
 
 describe('schedule import replacement', () => {
+  it('defaults blank, missing, unknown, and not-visible review terms to Full Year', () => {
+    expect([undefined, null, '', 'unknown', 'not visible', 'not-visible', 'unexpected'].map(normalizeReviewTerm)).toEqual([
+      'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year',
+    ])
+  })
+
+  it('preserves explicit semester terms and common PowerSchool spellings', () => {
+    expect(['semester_1', 'SEM 1', 'Semester 1', 'S1'].map(normalizeReviewTerm)).toEqual(Array(4).fill('semester_1'))
+    expect(['semester_2', 'SEM 2', 'Semester 2', 'S2'].map(normalizeReviewTerm)).toEqual(Array(4).fill('semester_2'))
+  })
+
   it('sends all included rows to one atomic replacement RPC', async () => {
     await expect(confirmScheduleImport([row, { ...row, id: 'excluded', include: false }])).resolves.toEqual({ added: 1, removed: 2 })
     expect(mocks.rpc).toHaveBeenCalledTimes(1)
@@ -73,6 +85,11 @@ describe('schedule import replacement', () => {
   it('maps database replacement conflicts to a reviewable message', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'import_schedule_conflict' } })
     await expect(confirmScheduleImport([row])).rejects.toThrow('imported classes conflict with each other')
+  })
+
+  it('rejects a replacement response that did not add every reviewed row', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ added_count: 0, removed_count: 2 }], error: null })
+    await expect(confirmScheduleImport([row])).rejects.toThrow('reported 0 of 1 reviewed classes')
   })
 
   it('sends Lunch and Study Hall with teacher N/A', async () => {

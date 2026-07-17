@@ -70,6 +70,14 @@ export interface ScheduleImportErrorBody {
   developer?: ScheduleImportDeveloperDiagnostics
 }
 
+export function normalizeReviewTerm(value: unknown): AcademicTerm {
+  if (typeof value !== 'string') return 'full_year'
+  const normalized = value.trim().toLocaleLowerCase().replace(/[._]/g, ' ').replace(/\s+/g, ' ')
+  if (/^(?:s1|sem(?:ester)?\s*1|first\s+semester|1st\s+semester)$/.test(normalized)) return 'semester_1'
+  if (/^(?:s2|sem(?:ester)?\s*2|second\s+semester|2nd\s+semester)$/.test(normalized)) return 'semester_2'
+  return 'full_year'
+}
+
 export class ScheduleImportRequestError extends Error {
   constructor(message: string, readonly developer?: ScheduleImportDeveloperDiagnostics) {
     super(message)
@@ -230,6 +238,7 @@ interface ScheduleReplacementResult {
 
 function scheduleReplacementErrorMessage(error: { message?: string; details?: string; hint?: string }): string {
   const message = [error.message, error.details, error.hint].filter(Boolean).join(' ')
+  if (message.includes('PGRST202') || message.toLowerCase().includes('could not find the function')) return 'Schedule replacement is not available yet. An administrator must apply the latest database migration.'
   if (message.includes('import_schedule_conflict')) return 'The imported classes conflict with each other. Review their terms and meeting slots.'
   if (message.includes('import_existing_class_mismatch')) return 'An existing class changed while you were reviewing. Review the class action and try again.'
   if (message.includes('duplicate_import_class')) return 'The imported schedule includes the same class more than once.'
@@ -266,6 +275,7 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
   const added = Number((result as ScheduleReplacementResult).added_count)
   const removed = Number((result as ScheduleReplacementResult).removed_count)
   if (!Number.isInteger(added) || !Number.isInteger(removed)) throw new Error('Schedule replacement returned invalid counts.')
+  if (added !== includedRows.length) throw new Error(`Schedule replacement reported ${added} of ${includedRows.length} reviewed classes. Reload the page before trying again.`)
   return { added, removed }
 }
 

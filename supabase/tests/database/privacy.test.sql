@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(16);
 
 -- Test identities
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_current, email_change_token_new, recovery_token)
@@ -88,6 +88,26 @@ select is(
 );
 
 reset role;
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+select is(
+  (select count(*) from public.search_student_directory('Private Student', null, '', '') where student_id = '90000000-0000-4000-8000-000000000001'),
+  1::bigint,
+  'an Anyone privacy change is reflected immediately in student search'
+);
+select is(
+  (select count(*) from public.get_classmates() where student_id = '90000000-0000-4000-8000-000000000001'),
+  1::bigint,
+  'an Anyone privacy change is reflected immediately in shared-class discovery'
+);
+select is(
+  (select count(*) from public.get_class_members('91000000-0000-4000-8000-000000000001') where student_id = '90000000-0000-4000-8000-000000000001'),
+  1::bigint,
+  'an Anyone privacy change is reflected immediately in class rosters'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '90000000-0000-4000-8000-000000000003', true);
 update private.account_moderation set suspended_at = now(), suspended_by = '90000000-0000-4000-8000-000000000004', suspension_reason = 'Test suspension' where user_id = '90000000-0000-4000-8000-000000000003';
 set local role authenticated;
 select is((select count(*) from public.profiles), 0::bigint, 'a suspended user cannot read protected profile data');

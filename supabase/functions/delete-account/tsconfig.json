@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["*.ts"]
+}

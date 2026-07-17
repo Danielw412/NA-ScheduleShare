@@ -1,4 +1,4 @@
-import { AlertTriangle, Bug, CheckCircle2, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
+import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
@@ -8,6 +8,7 @@ import {
   findClassesForCourse,
   importClassOptionLabel,
   importRowError,
+  normalizeReviewTerm,
   prepareScheduleImage,
   reconcileExactClassSelection,
   ScheduleImportRequestError,
@@ -33,7 +34,7 @@ export interface ScheduleImportDialogProps {
   isAdmin?: boolean
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
-  onImported: () => Promise<void>
+  onImported: (result: { added: number; removed: number }) => Promise<void>
   importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
@@ -154,6 +155,24 @@ function conflictingImportIndexes(rows: EditableScheduleImportRow[]): Set<number
   return conflicts
 }
 
+function academicTermLabel(term: EditableScheduleImportRow['term']): string {
+  if (term === 'semester_1') return 'Semester 1'
+  if (term === 'semester_2') return 'Semester 2'
+  return 'Full Year'
+}
+
+function meetingSlotsLabel(slots: MeetingSlot[]): string {
+  return sortMeetingSlots(slots).map((slot) => `${slot.day_type} P${slot.period_number}`).join(' · ') || 'No periods'
+}
+
+function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
+  return Boolean(rowError)
+    || conflict
+    || duplicate
+    || row.confidence < 0.9
+    || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
+}
+
 export function ScheduleImportDialog({
   open,
   isAdmin = false,
@@ -168,6 +187,7 @@ export function ScheduleImportDialog({
 }: ScheduleImportDialogProps) {
   const [images, setImages] = useState<Array<ImportImage | null>>([null, null])
   const [rows, setRows] = useState<EditableScheduleImportRow[]>([])
+  const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set())
   const [phase, setPhase] = useState<'upload' | 'processing' | 'review' | 'saving'>('upload')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -240,9 +260,13 @@ export function ScheduleImportDialog({
     return () => { active = false }
   }, [developerMode, developerModels.length, isAdmin, loadDeveloperModels, open])
 
-  const updateRow = useCallback((index: number, update: Partial<EditableScheduleImportRow>) => {
-    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? reconcileExactClassSelection({ ...row, ...update }) : row))
-  }, [])
+  function updateRow(index: number, update: Partial<EditableScheduleImportRow>) {
+    const rowId = rows[index]?.id
+    if (rowId) setExpandedRowIds((expanded) => new Set(expanded).add(rowId))
+    setRows((current) => current.map((row, rowIndex) => (
+      rowIndex === index ? reconcileExactClassSelection({ ...row, ...update }) : row
+    )))
+  }
 
   const duplicateIndexes = useMemo(() => duplicateImportIndexes(rows), [rows])
   const importedConflictIndexes = useMemo(() => conflictingImportIndexes(rows), [rows])
@@ -260,6 +284,7 @@ export function ScheduleImportDialog({
       return [null, null]
     })
     setRows([])
+    setExpandedRowIds(new Set())
     setPhase('upload')
     setError(null)
     setMessage(null)
@@ -292,10 +317,12 @@ export function ScheduleImportDialog({
         : await importScreenshots(files)
       const editable = result.rows.map((row) => ({
         ...row,
+        term: normalizeReviewTerm(row.term),
         selected_existing_class_id: row.existing_class_id,
         include: true,
-      }))
-      setRows(editable.map(reconcileExactClassSelection))
+      })).map(reconcileExactClassSelection)
+      setRows(editable)
+      setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
       setMessage(result.warnings.join(' '))
       setDeveloperData(result.developer ?? null)
       setPhase('review')
@@ -311,14 +338,22 @@ export function ScheduleImportDialog({
     setPhase('saving')
     setError(null)
     try {
-      await confirmImport(rows)
-      await onImported()
+      const result = await confirmImport(rows)
+      await onImported(result)
       closeDialog()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The reviewed schedule could not be saved.')
       setPhase('review')
-      await onImported()
     }
+  }
+
+  function removeImage(index: number) {
+    setImages((current) => {
+      const removed = current[index]
+      if (removed) URL.revokeObjectURL(removed.previewUrl)
+      const compacted = current.filter((candidate, candidateIndex): candidate is ImportImage => candidateIndex !== index && candidate !== null)
+      return [compacted[0] ?? null, compacted[1] ?? null]
+    })
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -338,7 +373,7 @@ export function ScheduleImportDialog({
 
         {phase === 'upload' || phase === 'processing' ? (
           <div className="import-upload-step">
-            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>Upload or paste up to two PowerSchool screenshots.</strong><span>Crop out your name and student ID. Keep each course, teacher, term, and visible meeting detail together.</span></p></div>
+            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>One PowerSchool screenshot is usually all you need.</strong><span>Crop out your name and student ID. Add a second image only when the full schedule does not fit in one screenshot.</span></p></div>
             {isAdmin ? <section className="import-developer-controls">
               <label className="checkbox-row"><input type="checkbox" checked={developerMode} onChange={(event) => { setDeveloperMode(event.target.checked); setDeveloperData(null) }} /><span><strong>AI developer mode</strong><small>Current admin session only. Bypasses only ScheduleShare's import rate limit and stores temporary diagnostics.</small></span></label>
               {developerMode ? <div className="two-field-row">
@@ -353,37 +388,46 @@ export function ScheduleImportDialog({
               </div> : null}
               {developerModelError ? <p className="form-error" role="alert">{developerModelError}</p> : null}
             </section> : null}
-            <div className="import-drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
-              <Upload aria-hidden="true" />
-              <strong>Drop screenshots here</strong>
-              <span>or choose files below · PNG, JPEG, or WebP · 5 MB each</span>
-              <small><ClipboardPaste size={15} aria-hidden="true" /> Ctrl+V or Cmd+V pastes into the first empty slot.</small>
+            <div className={images[0] ? 'import-drop-zone has-image' : 'import-drop-zone'} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+              {images[0] ? <img src={images[0].previewUrl} alt="Schedule screenshot 1 preview" /> : <Upload aria-hidden="true" />}
+              <strong>Upload schedule screenshot</strong>
+              <span>{images[0] ? images[0].file.name : 'One screenshot is sufficient · PNG, JPEG, or WebP · 5 MB maximum'}</span>
+              <div className="import-upload-actions">
+                <label className="button button-primary">
+                  {images[0] ? 'Replace screenshot' : 'Choose screenshot'}
+                  <input
+                    accept="image/png,image/jpeg,image/webp"
+                    aria-label={images[0] ? 'Replace screenshot 1' : 'Upload schedule screenshot'}
+                    hidden
+                    type="file"
+                    onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 0); event.target.value = '' }}
+                  />
+                </label>
+                {images[0] ? <button type="button" onClick={() => removeImage(0)}>Remove</button> : null}
+              </div>
+              <small><ClipboardPaste size={15} aria-hidden="true" /> Drag and drop here, choose a file, or press Ctrl+V / Cmd+V to paste.</small>
             </div>
-            <div className="import-image-slots">
-              {images.map((item, index) => (
-                <div className={item ? 'import-image-slot has-image' : 'import-image-slot'} key={index}>
-                  {item ? <img src={item.previewUrl} alt={`Schedule screenshot ${index + 1} preview`} /> : <FileImage aria-hidden="true" />}
-                  <span>{item ? item.file.name : `Screenshot ${index + 1}`}</span>
-                  <div>
-                    <label className="button button-secondary">
-                      {item ? 'Replace' : 'Choose image'}
-                      <input
-                        accept="image/png,image/jpeg,image/webp"
-                        aria-label={`${item ? 'Replace' : 'Choose'} screenshot ${index + 1}`}
-                        hidden
-                        type="file"
-                        onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], index); event.target.value = '' }}
-                      />
-                    </label>
-                    {item ? <button type="button" onClick={() => setImages((current) => current.map((candidate, candidateIndex) => {
-                      if (candidateIndex !== index) return candidate
-                      if (candidate) URL.revokeObjectURL(candidate.previewUrl)
-                      return null
-                    }))}>Remove</button> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {images[0] && !images[1] ? <div className="import-second-image-prompt">
+              <p><strong>Does your full schedule fit above?</strong><span>If not, add one optional second screenshot.</span></p>
+              <label className="button button-secondary">
+                <FileImage size={17} aria-hidden="true" /> Add a second screenshot
+                <input
+                  accept="image/png,image/jpeg,image/webp"
+                  aria-label="Add a second screenshot"
+                  hidden
+                  type="file"
+                  onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 1); event.target.value = '' }}
+                />
+              </label>
+            </div> : null}
+            {images[1] ? <div className="import-image-slot import-image-slot-secondary">
+              <img src={images[1].previewUrl} alt="Schedule screenshot 2 preview" />
+              <span>{images[1].file.name}</span>
+              <div>
+                <label className="button button-secondary">Replace<input accept="image/png,image/jpeg,image/webp" aria-label="Replace screenshot 2" hidden type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 1); event.target.value = '' }} /></label>
+                <button type="button" onClick={() => removeImage(1)}>Remove</button>
+              </div>
+            </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <button className="button button-primary button-block" disabled={phase === 'processing' || images.every((item) => !item) || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
@@ -400,24 +444,54 @@ export function ScheduleImportDialog({
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div>
+            <div className="import-review-controls" aria-label="Review row display controls">
+              <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
+              <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse reviewed</button>
+            </div>
             <div className="import-review-grid">
               {rows.map((row, index) => {
                 const conflict = importedConflictIndexes.has(index)
                 const duplicate = duplicateIndexes.has(index)
+                const attention = rowNeedsAttention(row, rowErrors[index], conflict, duplicate)
+                const expanded = attention || expandedRowIds.has(row.id)
                 return (
                   <article className={rowErrors[index] || conflict || duplicate ? 'import-review-row has-error' : 'import-review-row'} key={row.id}>
-                    <header>
-                      <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>{row.source_course_name}</strong><small>Include this row</small></span></label>
+                    <button
+                      aria-expanded={expanded}
+                      className="import-row-toggle"
+                      type="button"
+                      onClick={() => {
+                        if (attention) return
+                        setExpandedRowIds((current) => {
+                          const next = new Set(current)
+                          if (next.has(row.id)) next.delete(row.id)
+                          else next.add(row.id)
+                          return next
+                        })
+                      }}
+                    >
+                      <span className="import-row-summary">
+                        <span><small>Course</small><strong>{row.course?.name ?? row.source_course_name}</strong></span>
+                        <span><small>Teacher</small><strong>{teacherForImportedCourse(row.teacher_last_name, row.course?.name) || 'Not resolved'}</strong></span>
+                        <span><small>Term</small><strong>{academicTermLabel(row.term)}</strong></span>
+                        <span><small>Periods</small><strong>{meetingSlotsLabel(row.meeting_slots)}</strong></span>
+                        <span><small>Class action</small><strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong></span>
+                      </span>
                       <div className="import-flags">
                         {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
                         {row.flags.includes('duplicate') ? <span>Overlap merged</span> : null}
                         {row.flags.includes('unresolved_course') ? <span>Course unresolved</span> : null}
                         {row.flags.includes('ambiguous_course') ? <span>Ambiguous match</span> : null}
+                        {row.flags.includes('incomplete') ? <span className="danger">Incomplete</span> : null}
+                        {rowErrors[index] ? <span className="danger">Error</span> : null}
                         {conflict ? <span className="danger">Schedule conflict</span> : null}
                         {duplicate ? <span className="danger">Duplicate import row</span> : null}
                       </div>
-                    </header>
-                    <div className="import-review-fields">
+                      <ChevronDown aria-hidden="true" className={expanded ? 'is-expanded' : ''} />
+                    </button>
+                    {expanded ? <div className="import-row-details">
+                      <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>{row.source_course_name}</strong><small>Include this row in the replacement</small></span></label>
+                      <div className="import-review-fields">
                       <CoursePicker row={row} searchCourses={searchCourses} onSelect={async (course) => {
                         const options = await loadClassOptions(course)
                         updateRow(index, {
@@ -454,16 +528,17 @@ export function ScheduleImportDialog({
                           {row.class_options.map((option) => <option value={option.id} key={option.id}>{importClassOptionLabel(option)}</option>)}
                         </select>
                       </label>
-                    </div>
-                    <p className="import-resolution">{row.selected_existing_class_id ? 'Will use an existing class.' : row.course ? `Will propose a new class for existing course “${row.course.name}”.` : 'Choose an existing course before this row can be saved.'}</p>
-                    <div className="import-slot-editor">
-                      <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots })} />
-                    </div>
-                    {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
-                    {conflict ? <p className="form-error">This row conflicts with another included import row in the same semester. Edit its term/slots or exclude it.</p> : null}
-                    {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
-                    {row.warnings.length ? <p className="import-row-warning">{row.warnings.join(' ')}</p> : null}
-                    <small className="import-confidence">Extraction confidence: {Math.round(row.confidence * 100)}% · {hasMultiplePeriodsOnAnyDay(row.meeting_slots) ? 'Multiple-period class' : 'Single-period class'}</small>
+                      </div>
+                      <p className="import-resolution">{row.selected_existing_class_id ? 'Will use an existing class.' : row.course ? `Will propose a new class for existing course “${row.course.name}”.` : 'Choose an existing course before this row can be saved.'}</p>
+                      <div className="import-slot-editor">
+                        <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots })} />
+                      </div>
+                      {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
+                      {conflict ? <p className="form-error">This row conflicts with another included import row in the same semester. Edit its term/slots or exclude it.</p> : null}
+                      {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
+                      {row.warnings.length ? <p className="import-row-warning">{row.warnings.join(' ')}</p> : null}
+                      <small className="import-confidence">Extraction confidence: {Math.round(row.confidence * 100)}% · {hasMultiplePeriodsOnAnyDay(row.meeting_slots) ? 'Multiple-period class' : 'Single-period class'}</small>
+                    </div> : null}
                   </article>
                 )
               })}

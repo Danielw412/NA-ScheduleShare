@@ -89,10 +89,20 @@ afterEach(() => {
 })
 
 describe('ScheduleImportDialog image input', () => {
+  it('makes one screenshot visibly sufficient and reveals the optional second upload only after the first image', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    expect(screen.getByText('One screenshot is sufficient · PNG, JPEG, or WebP · 5 MB maximum')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Add a second screenshot')).not.toBeInTheDocument()
+
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
+    expect(await screen.findByLabelText('Add a second screenshot')).toBeInTheDocument()
+  })
+
   it('supports file upload, clipboard paste into the first empty slot, and two previews', async () => {
     const user = userEvent.setup()
     renderDialog()
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile('first.png'))
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile('first.png'))
     expect(await screen.findByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
 
     fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('pasted.png')) })
@@ -106,7 +116,7 @@ describe('ScheduleImportDialog image input', () => {
   it('supports drag-and-drop and sends both selected images in one request', async () => {
     const importScreenshots = vi.fn(async () => importResult())
     renderDialog({ importScreenshots })
-    const dropZone = screen.getByText('Drop screenshots here').parentElement!
+    const dropZone = screen.getByText('Upload schedule screenshot').closest('.import-drop-zone')!
     fireEvent.drop(dropZone, { dataTransfer: { files: [scheduleFile('one.png'), scheduleFile('two.png')] } })
     expect(await screen.findAllByRole('img', { name: /Schedule screenshot/ })).toHaveLength(2)
     await userEvent.click(screen.getByRole('button', { name: 'Review imported classes' }))
@@ -119,7 +129,7 @@ describe('ScheduleImportDialog image input', () => {
   it('keeps previews visible after a structured rejection so users can replace an image', async () => {
     const user = userEvent.setup()
     renderDialog({ importScreenshots: vi.fn(async () => { throw new Error('The screenshot shows classes but not their period numbers.') }) })
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('not their period numbers')
     expect(screen.getByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
@@ -173,7 +183,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(developerMode).not.toBeChecked()
     await user.click(developerMode)
     await user.selectOptions(await screen.findByLabelText('Reasoning'), 'high')
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
     await waitFor(() => expect(importScreenshots).toHaveBeenCalledWith(
       [expect.objectContaining({ name: 'schedule.png' })],
@@ -199,7 +209,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
       searchCourses: vi.fn(async () => [course]),
       confirmImport,
     })
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeDisabled()
@@ -223,7 +233,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(rows[0].meeting_slots).toContainEqual({ day_type: 'A', period_number: 2 })
   })
 
-  it('shows periods and automatically joins an exact existing class after the term is edited', async () => {
+  it('defaults a missing review term to Full Year and automatically joins the exact existing class', async () => {
     const user = userEvent.setup()
     const existing = {
       id: 'class-existing',
@@ -232,19 +242,54 @@ describe('ScheduleImportDialog review and confirmation', () => {
       term: 'full_year' as const,
       meeting_slots: [{ day_type: 'A' as const, period_number: 1 }, { day_type: 'B' as const, period_number: 1 }],
     }
-    renderDialog({ importScreenshots: vi.fn(async () => importResult({ term: 'unknown', class_options: [existing] })) })
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    renderDialog({ importScreenshots: vi.fn(async () => importResult({
+      term: 'unknown',
+      warnings: ['Academic term was not visible, so Full Year was selected by default.'],
+      class_options: [existing],
+    })) })
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    const rowToggle = screen.getByRole('button', { name: /AP Statistics.*Lester.*Full Year.*A P1.*B P1.*Use existing class/i })
+    expect(rowToggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(rowToggle)
     expect(screen.getByRole('option', { name: 'Use Lester · A Day P1 / B Day P1 · Full Year' })).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Academic term'), 'full_year')
+    expect(screen.getByLabelText('Academic term')).toHaveValue('full_year')
     await waitFor(() => expect(screen.getByLabelText('Class action')).toHaveValue('class-existing'))
     expect(screen.getByText('Will use an existing class.')).toBeInTheDocument()
+  })
+
+  it('collapses high-confidence reviewed rows while keeping problematic rows expanded', async () => {
+    const user = userEvent.setup()
+    const result = importResult()
+    result.rows.push({
+      ...result.rows[0],
+      id: 'import-problem',
+      source_course_name: 'Mystery Course',
+      course: null,
+      confidence: 0.42,
+      meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
+      flags: ['low_confidence', 'unresolved_course'],
+      resolution: 'unresolved_course',
+    })
+    renderDialog({ importScreenshots: vi.fn(async () => result) })
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+
+    expect(screen.getByRole('button', { name: /AP Statistics.*Full Year.*Create class/i })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(screen.getByLabelText('Catalogue course for AP Statistics (CHS)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Collapse reviewed' }))
+    expect(screen.queryByLabelText('Catalogue course for AP Statistics (CHS)')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
   })
 
   it('replaces a partially filled schedule instead of treating it as a conflict', async () => {
     const user = userEvent.setup()
     renderDialog({ currentEnrollments: [currentEnrollment()] })
-    await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
+    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
     expect(screen.queryByText('Schedule conflict')).not.toBeInTheDocument()

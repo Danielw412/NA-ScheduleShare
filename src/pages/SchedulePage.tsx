@@ -86,7 +86,10 @@ export function SchedulePage() {
         isAdmin={isAdmin}
         currentEnrollments={schedule.enrollments}
         onClose={() => setImportOpen(false)}
-        onImported={schedule.reload}
+        onImported={async ({ added, removed }) => {
+          await schedule.reload()
+          setMessage(`Schedule replaced: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
+        }}
       /> : null}
     </div>
   )

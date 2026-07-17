@@ -18,7 +18,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 
 ## Repository map
 
-- `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, privacy, reporting, and the six-section admin page.
+- `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, profile/privacy/account management, reporting, and the six-section admin page.
 - `src/components/` — reusable UI. `auth/` has route/discovery/suspension guards, `layout/` has the shell/navigation/footer, `schedule/` has the grid/add flow/term controls/utility rail, and `ui/` has shared brand/loading components.
 - `src/hooks/useSchedule.ts` and `src/hooks/useClassSearch.ts` — schedule loading/mutations and shared debounced class-search state.
 - `src/hooks/useCourseNameSearch.ts` — debounced reusable course-catalog search used before creating a class section.
@@ -30,6 +30,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `src/lib/schedule.ts` — term overlap, slot lookup, double-period, and conflict logic.
 - `src/lib/teacher.ts` — teacher last-name normalization and practical invalid-input checks shared by forms and tests.
 - `src/lib/scheduleImport.ts` and `src/components/schedule/ScheduleImportDialog.tsx` — screenshot preparation, Worker client, editable import review, exact class reconciliation, and transactional whole-schedule replacement.
+- `src/lib/profile.ts`, `src/components/ui/ProfileAvatar.tsx`, and `src/pages/ProfilePage.tsx` — profile editing, public avatar presentation with fallback initials, Storage upload/removal, privacy controls, and confirmed self-service account deletion.
 - `src/pages/AdminPage.tsx` — admin user/report/class/history/role/audit workflows; the database still authorizes every action.
 - `src/config/brand.ts` — single source for site name, organization, attribution, URLs, and temporary logo path.
 - `src/styles.css` — centralized design tokens and responsive styles.
@@ -41,6 +42,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `supabase/config.toml` — local Supabase/Auth settings and seed configuration.
 - `.github/workflows/deploy.yml` and `vite.config.ts` — GitHub Pages build/deployment and `/NA-ScheduleShare/` base path.
 - `cloudflare/schedule-import-worker/` and `.github/workflows/deploy-worker.yml` — authenticated screenshot extraction Worker, strict AI-output validation, KV rate limiting, tests, safe public-logo model diagnostic, and manual deployment.
+- `supabase/functions/delete-account/` — authenticated server-side account deletion that removes the fixed avatar object and deletes the caller's Auth account with the service role kept inside the function runtime.
 - `public/na-club-logo.png` — square site logo, favicon, and mobile touch-icon asset.
 - `docs/design/` — generated visual direction references used to validate desktop and mobile implementation.
 

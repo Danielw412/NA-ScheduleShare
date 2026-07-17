@@ -872,7 +872,7 @@ function normalizeCourseName(value: string): string {
     .trim()
     .replace(/\s+/g, ' ')
 
-  if (/^health (?:and )?(?:pe|physical education)(?: \d{1,2})?$/.test(normalized)) return 'gym'
+  if (/^health (?:and )?(?:p e|pe|physical education|phys ed)(?: \d{1,2})?$/.test(normalized)) return 'gym'
   return normalized
 }
 

@@ -7,7 +7,7 @@ import { ClassesPage } from './pages/ClassesPage'
 import { ClassmatesPage } from './pages/ClassmatesPage'
 import { HomePage } from './pages/HomePage'
 import { OnboardingPage } from './pages/OnboardingPage'
-import { PrivacyPage } from './pages/PrivacyPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { ReportPage } from './pages/ReportPage'
 import { SchedulePage } from './pages/SchedulePage'
 import { StudentDetailPage } from './pages/StudentDetailPage'
@@ -28,7 +28,8 @@ export function App() {
           <Route path="students/:studentId" element={<StudentDetailPage />} />
           <Route path="classmates" element={<ClassmatesPage />} />
           <Route path="directory" element={<StudentsPage />} />
-          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="privacy" element={<Navigate to="/profile" replace />} />
           <Route path="report" element={<ReportPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="admin" element={<AdminPage />} />

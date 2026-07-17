@@ -259,6 +259,12 @@ describe('normalization and backend catalogue matching', () => {
     ])
   })
 
+  it('normalizes explicit semester spellings without defaulting them to full year', () => {
+    expect(['SEM 1', 'Semester 1', 'S1'].map(normalizeTerm)).toEqual(Array(3).fill('semester_1'))
+    expect(['SEM 2', 'Semester 2', 'S2'].map(normalizeTerm)).toEqual(Array(3).fill('semester_2'))
+    expect(['', 'unknown', 'not visible', 'N/A'].map(normalizeTerm)).toEqual(Array(4).fill('unknown'))
+  })
+
   it('maps PowerSchool Health & PE variants to the Gym catalogue course', async () => {
     const response = await handleScheduleImportRequest(request([png()]), dependencies({
       output: {
@@ -273,6 +279,22 @@ describe('normalization and backend catalogue matching', () => {
         term: 'full_year',
       }),
     ])
+
+    for (const powerSchoolName of [
+      'Health & PE',
+      'Health and PE',
+      'Health/PE',
+      'Health and Physical Education',
+      'Health & P.E.',
+      'Health / Phys. Ed.',
+      'Health - PE (FY/PT) 11',
+    ]) {
+      expect(findCourseMatch(powerSchoolName, catalog)).toMatchObject({
+        kind: 'matched',
+        course: { id: '88888888-8888-4888-8888-888888888888', name: 'Gym' },
+        score: 1,
+      })
+    }
   })
 
   it('fuzzy matches decorated course names on the backend', () => {
