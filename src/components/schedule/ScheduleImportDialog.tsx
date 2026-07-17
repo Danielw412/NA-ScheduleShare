@@ -1,13 +1,15 @@
 import { AlertTriangle, Bug, CheckCircle2, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
-import type { AcademicTerm, CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
+import type { CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
 import { hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
   findClassesForCourse,
+  importClassOptionLabel,
   importRowError,
   prepareScheduleImage,
+  reconcileExactClassSelection,
   ScheduleImportRequestError,
   submitScheduleScreenshots,
   teacherForImportedCourse,
@@ -35,7 +37,7 @@ export interface ScheduleImportDialogProps {
   importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
-  confirmImport?: (rows: EditableScheduleImportRow[]) => Promise<{ added: number; skipped: number }>
+  confirmImport?: (rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>
   loadDeveloperModels?: () => Promise<ScheduleImportModelRecord[]>
 }
 
@@ -118,28 +120,6 @@ function sameSlots(left: MeetingSlot[], right: MeetingSlot[]): boolean {
   const leftSorted = sortMeetingSlots(left)
   const rightSorted = sortMeetingSlots(right)
   return leftSorted.length === rightSorted.length && leftSorted.every((slot, index) => sameSlot(slot, rightSorted[index]))
-}
-
-function isCurrentDuplicate(row: EditableScheduleImportRow, enrollments: ScheduleEnrollment[]): boolean {
-  if (!row.course || row.term === 'unknown') return false
-  return enrollments.some((enrollment) => enrollment.active && (
-    (row.selected_existing_class_id && enrollment.class_id === row.selected_existing_class_id)
-    || (
-      enrollment.class.course_name_id === row.course?.id
-      && normalizeTeacherLastName(enrollment.class.teacher_last_name).toLocaleLowerCase() === normalizeTeacherLastName(row.teacher_last_name).toLocaleLowerCase()
-      && enrollment.academic_term === row.term
-      && sameSlots(enrollment.class.meeting_slots, row.meeting_slots)
-    )
-  ))
-}
-
-function conflictsWithCurrent(row: EditableScheduleImportRow, enrollments: ScheduleEnrollment[]): boolean {
-  if (row.term === 'unknown' || isCurrentDuplicate(row, enrollments)) return false
-  return enrollments.some((enrollment) => (
-    enrollment.active
-    && termsOverlap(enrollment.academic_term, row.term as AcademicTerm)
-    && row.meeting_slots.some((slot) => enrollment.class.meeting_slots.some((candidate) => sameSlot(slot, candidate)))
-  ))
 }
 
 function duplicateImportIndexes(rows: EditableScheduleImportRow[]): Set<number> {
@@ -261,19 +241,18 @@ export function ScheduleImportDialog({
   }, [developerMode, developerModels.length, isAdmin, loadDeveloperModels, open])
 
   const updateRow = useCallback((index: number, update: Partial<EditableScheduleImportRow>) => {
-    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...update } : row))
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? reconcileExactClassSelection({ ...row, ...update }) : row))
   }, [])
 
   const duplicateIndexes = useMemo(() => duplicateImportIndexes(rows), [rows])
   const importedConflictIndexes = useMemo(() => conflictingImportIndexes(rows), [rows])
-  const currentDuplicateIndexes = useMemo(() => new Set(rows.flatMap((row, index) => isCurrentDuplicate(row, currentEnrollments) ? [index] : [])), [currentEnrollments, rows])
-  const currentConflictIndexes = useMemo(() => new Set(rows.flatMap((row, index) => conflictsWithCurrent(row, currentEnrollments) ? [index] : [])), [currentEnrollments, rows])
+  const existingClassCount = currentEnrollments.filter((enrollment) => enrollment.active).length
+  const existingClassNoun = existingClassCount === 1 ? 'class' : 'classes'
   const rowErrors = rows.map(importRowError)
   const canConfirm = rows.some((row) => row.include)
     && rowErrors.every((rowError) => !rowError)
     && duplicateIndexes.size === 0
     && importedConflictIndexes.size === 0
-    && currentConflictIndexes.size === 0
 
   function closeDialog() {
     setImages((current) => {
@@ -316,7 +295,7 @@ export function ScheduleImportDialog({
         selected_existing_class_id: row.existing_class_id,
         include: true,
       }))
-      setRows(editable.map((row) => isCurrentDuplicate(row, currentEnrollments) ? { ...row, include: false } : row))
+      setRows(editable.map(reconcileExactClassSelection))
       setMessage(result.warnings.join(' '))
       setDeveloperData(result.developer ?? null)
       setPhase('review')
@@ -414,21 +393,21 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>Review every class</h3><p>Course names are restricted to the existing catalogue. Resolve all red flags before confirming.</p></div>
+              <div><h3>Review every class</h3><p>Course names are restricted to the existing catalogue. Only conflicts within this imported schedule block replacement.</p></div>
               <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
+            <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div>
             <div className="import-review-grid">
               {rows.map((row, index) => {
-                const duplicateCurrent = currentDuplicateIndexes.has(index)
-                const conflict = currentConflictIndexes.has(index) || importedConflictIndexes.has(index)
+                const conflict = importedConflictIndexes.has(index)
                 const duplicate = duplicateIndexes.has(index)
                 return (
                   <article className={rowErrors[index] || conflict || duplicate ? 'import-review-row has-error' : 'import-review-row'} key={row.id}>
                     <header>
-                      <label className="checkbox-row"><input type="checkbox" checked={row.include} disabled={duplicateCurrent} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>{row.source_course_name}</strong><small>{duplicateCurrent ? 'Already on your schedule — skipped' : 'Include this row'}</small></span></label>
+                      <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>{row.source_course_name}</strong><small>Include this row</small></span></label>
                       <div className="import-flags">
                         {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
                         {row.flags.includes('duplicate') ? <span>Overlap merged</span> : null}
@@ -445,16 +424,14 @@ export function ScheduleImportDialog({
                           course: { id: course.id, name: course.course_name, confidence: 1 },
                           teacher_last_name: teacherForImportedCourse(row.teacher_last_name, course.course_name),
                           class_options: options,
-                          selected_existing_class_id: null,
-                          resolution: 'new_class',
                           flags: row.flags.filter((flag) => flag !== 'unresolved_course'),
                         })
                       }} />
                       <label>Teacher last name
-                        <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={row.course?.name === 'Lunch' || row.course?.name === 'Study Hall'} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value, selected_existing_class_id: null, resolution: row.course ? 'new_class' : 'unresolved_course' })} />
+                        <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={row.course?.name === 'Lunch' || row.course?.name === 'Study Hall'} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
                       </label>
                       <label>Academic term
-                        <select value={row.term} onChange={(event) => updateRow(index, { term: event.target.value as EditableScheduleImportRow['term'], selected_existing_class_id: null, resolution: row.course ? 'new_class' : 'unresolved_course' })}>
+                        <select value={row.term} onChange={(event) => updateRow(index, { term: event.target.value as EditableScheduleImportRow['term'] })}>
                           <option value="unknown">Choose term</option>
                           <option value="full_year">Full Year</option>
                           <option value="semester_1">Semester 1</option>
@@ -471,19 +448,19 @@ export function ScheduleImportDialog({
                             term: option.term,
                             meeting_slots: option.meeting_slots,
                             resolution: 'existing_class',
-                          } : { selected_existing_class_id: null, resolution: row.course ? 'new_class' : 'unresolved_course' })
+                          } : { selected_existing_class_id: null })
                         }}>
                           <option value="">Create a new class for this course</option>
-                          {row.class_options.map((option) => <option value={option.id} key={option.id}>Use {option.teacher_last_name} · {option.term.replace('_', ' ')}</option>)}
+                          {row.class_options.map((option) => <option value={option.id} key={option.id}>{importClassOptionLabel(option)}</option>)}
                         </select>
                       </label>
                     </div>
                     <p className="import-resolution">{row.selected_existing_class_id ? 'Will use an existing class.' : row.course ? `Will propose a new class for existing course “${row.course.name}”.` : 'Choose an existing course before this row can be saved.'}</p>
                     <div className="import-slot-editor">
-                      <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots, selected_existing_class_id: null, resolution: row.course ? 'new_class' : 'unresolved_course' })} />
+                      <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots })} />
                     </div>
                     {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
-                    {conflict ? <p className="form-error">This row conflicts with another class in the same semester. Edit its term/slots or exclude it.</p> : null}
+                    {conflict ? <p className="form-error">This row conflicts with another included import row in the same semester. Edit its term/slots or exclude it.</p> : null}
                     {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
                     {row.warnings.length ? <p className="import-row-warning">{row.warnings.join(' ')}</p> : null}
                     <small className="import-confidence">Extraction confidence: {Math.round(row.confidence * 100)}% · {hasMultiplePeriodsOnAnyDay(row.meeting_slots) ? 'Multiple-period class' : 'Single-period class'}</small>
@@ -492,8 +469,8 @@ export function ScheduleImportDialog({
               })}
             </div>
             <div className="import-confirm-bar">
-              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. No changes occur until you confirm.</p>
-              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Saving…' : 'Confirm and add classes'}</button>
+              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. This will replace your current schedule.</p>
+              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
             </div>
           </div>
         )}

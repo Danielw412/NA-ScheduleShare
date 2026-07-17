@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,7 +64,7 @@ function renderDialog(overrides: Partial<ScheduleImportDialogProps> = {}) {
     importScreenshots: vi.fn(async () => importResult()),
     searchCourses: vi.fn(async () => []),
     loadClassOptions: vi.fn(async () => []),
-    confirmImport: vi.fn(async () => ({ added: 1, skipped: 0 })),
+    confirmImport: vi.fn(async () => ({ added: 1, removed: 0 })),
     ...overrides,
   }
   return { ...render(<ScheduleImportDialog {...props} />), props }
@@ -186,7 +187,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
   it('requires manual catalogue selection for unresolved courses and submits edited new-class details only on confirmation', async () => {
     const user = userEvent.setup()
     const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100 }
-    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; skipped: number }>>(async () => ({ added: 1, skipped: 0 }))
+    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
     renderDialog({
       importScreenshots: vi.fn(async () => importResult({
         course: null,
@@ -201,7 +202,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm and add classes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeDisabled()
 
     await user.click(await screen.findByRole('button', { name: 'AP Statistics' }))
     await user.clear(screen.getByLabelText('Teacher last name'))
@@ -210,7 +211,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
     expect(screen.getByText(/Will propose a new class for existing course “AP Statistics”/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Confirm and add classes' }))
+    await user.click(screen.getByRole('button', { name: 'Replace schedule' }))
     await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
     const rows = confirmImport.mock.calls[0][0]
     expect(rows[0]).toMatchObject({
@@ -222,31 +223,32 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(rows[0].meeting_slots).toContainEqual({ day_type: 'A', period_number: 2 })
   })
 
-  it('loads and lets the student choose an existing class for the selected course', async () => {
+  it('shows periods and automatically joins an exact existing class after the term is edited', async () => {
     const user = userEvent.setup()
     const existing = {
       id: 'class-existing',
       course_id: COURSE_ID,
-      teacher_last_name: 'Smith',
-      term: 'semester_1' as const,
-      meeting_slots: [{ day_type: 'A' as const, period_number: 3 }],
+      teacher_last_name: 'Lester',
+      term: 'full_year' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 1 }, { day_type: 'B' as const, period_number: 1 }],
     }
-    renderDialog({ importScreenshots: vi.fn(async () => importResult({ class_options: [existing] })) })
+    renderDialog({ importScreenshots: vi.fn(async () => importResult({ term: 'unknown', class_options: [existing] })) })
     await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
-    await user.selectOptions(await screen.findByLabelText('Class action'), 'class-existing')
+    expect(screen.getByRole('option', { name: 'Use Lester · A Day P1 / B Day P1 · Full Year' })).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Academic term'), 'full_year')
+    await waitFor(() => expect(screen.getByLabelText('Class action')).toHaveValue('class-existing'))
     expect(screen.getByText('Will use an existing class.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Teacher last name')).toHaveValue('Smith')
-    expect(screen.getByLabelText('Academic term')).toHaveValue('semester_1')
   })
 
-  it('flags current-schedule conflicts and blocks final confirmation until resolved or excluded', async () => {
+  it('replaces a partially filled schedule instead of treating it as a conflict', async () => {
     const user = userEvent.setup()
     renderDialog({ currentEnrollments: [currentEnrollment()] })
     await user.upload(screen.getByLabelText('Choose screenshot 1'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
-    expect(await screen.findByText('Schedule conflict')).toBeInTheDocument()
-    expect(screen.getByText(/conflicts with another class/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm and add classes' })).toBeDisabled()
+    expect(await screen.findByText('Review every class')).toBeInTheDocument()
+    expect(screen.queryByText('Schedule conflict')).not.toBeInTheDocument()
+    expect(screen.getByText(/replace the 1 class currently on your schedule/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeEnabled()
   })
 })

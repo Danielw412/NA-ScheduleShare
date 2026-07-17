@@ -25,6 +25,7 @@ const catalog: CourseRecord[] = [
   { id: COURSE_ID, name: 'AP Biology' },
   { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch' },
   { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall' },
+  { id: '88888888-8888-4888-8888-888888888888', name: 'Gym' },
 ]
 
 const transcription = {
@@ -178,9 +179,11 @@ describe('Gemini request and response handling', () => {
 describe('normalization and backend catalogue matching', () => {
   it('normalizes visible terms and supported slot formats', () => {
     expect(normalizeTerm('25-26')).toBe('full_year')
+    expect(normalizeTerm('FY/PT')).toBe('full_year')
     expect(normalizeTerm('SEM 1')).toBe('semester_1')
     expect(normalizeTerm('Semester 2')).toBe('semester_2')
     expect(normalizeTerm('not visible')).toBe('unknown')
+    expect(normalizeTerm('')).toBe('unknown')
     expect(normalizeSlots(['P01(A-B)', 'A Day Period 2', 'B2'])).toEqual([
       { day_type: 'A', period_number: 1 },
       { day_type: 'A', period_number: 2 },
@@ -196,7 +199,7 @@ describe('normalization and backend catalogue matching', () => {
     expect(() => normalizeSlots(['C2'])).toThrow('invalid meeting slots')
   })
 
-  it('revalidates merged rows from overlapping screenshots', async () => {
+  it('keeps the same course and teacher at different periods as separate rows', async () => {
     const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
       output: {
         schedule: true,
@@ -206,8 +209,70 @@ describe('normalization and backend catalogue matching', () => {
         ],
       },
     }))
-    expect(response.status).toBe(502)
-    expect(await responseBody(response)).toMatchObject({ error: 'ai_invalid_response' })
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({ meeting_slots: [{ day_type: 'A', period_number: 1 }] }),
+      expect.objectContaining({ meeting_slots: [{ day_type: 'A', period_number: 3 }] }),
+    ])
+  })
+
+  it('still merges exact duplicate screenshot rows', async () => {
+    const duplicateRow = { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A2', 'B2'] }
+    const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
+      output: { schedule: true, rows: [duplicateRow, duplicateRow] },
+    }))
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
+        flags: expect.arrayContaining(['duplicate']),
+      }),
+    ])
+  })
+
+  it('defaults a missing term to full year but preserves explicit semester markers in course names', async () => {
+    const defaulted = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        rows: [{ course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: '', slots: ['A2', 'B2'] }],
+      },
+    }))
+    expect((await responseBody(defaulted)).rows).toEqual([
+      expect.objectContaining({
+        term: 'full_year',
+        warnings: [expect.stringContaining('Full Year')],
+      }),
+    ])
+
+    const semesters = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        rows: [
+          { course: 'Lunch (SEM 1)', teacher: 'Staff, Unassigned', term: 'FY', slots: ['P07(A-B)'] },
+          { course: 'Lunch (SEM 2)', teacher: 'Staff, Unassigned', term: '', slots: ['P07(A-B)'] },
+        ],
+      },
+    }))
+    expect((await responseBody(semesters)).rows).toEqual([
+      expect.objectContaining({ term: 'semester_1', teacher_last_name: 'N/A' }),
+      expect.objectContaining({ term: 'semester_2', teacher_last_name: 'N/A' }),
+    ])
+  })
+
+  it('maps PowerSchool Health & PE variants to the Gym catalogue course', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        rows: [{ course: 'Health & PE (FY/PT) 11', teacher: 'Winters, Heather', term: '', slots: ['P02(A)'] }],
+      },
+    }))
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        course: { id: '88888888-8888-4888-8888-888888888888', name: 'Gym', confidence: 1 },
+        teacher_last_name: 'Winters',
+        term: 'full_year',
+      }),
+    ])
   })
 
   it('fuzzy matches decorated course names on the backend', () => {
