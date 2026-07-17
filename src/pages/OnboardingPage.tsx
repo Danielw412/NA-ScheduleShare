@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { BrandLogo } from '../components/ui/BrandLogo'
 import { useAuth } from '../features/auth/AuthProvider'
+import { clearAuthDestination, pendingAuthDestination } from '../lib/authDestination'
 import type { Grade, PrivacySetting } from '../lib/domain'
 
 export function OnboardingPage() {
@@ -13,7 +14,7 @@ export function OnboardingPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   if (!auth.user) return <Navigate to="/auth" replace />
-  if (auth.profile?.onboarding_completed) return <Navigate to="/" replace />
+  if (auth.profile?.onboarding_completed) return <Navigate to={pendingAuthDestination()} replace />
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -22,7 +23,9 @@ export function OnboardingPage() {
     setError(null)
     try {
       await auth.completeOnboarding({ fullName, grade, privacySetting: privacy })
-      void navigate('/', { replace: true })
+      const destination = pendingAuthDestination()
+      clearAuthDestination()
+      void navigate(destination, { replace: true })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save your profile.')
     } finally {

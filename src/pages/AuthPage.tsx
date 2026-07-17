@@ -1,20 +1,31 @@
-import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { brand } from '../config/brand'
 import { BrandLogo } from '../components/ui/BrandLogo'
 import { useAuth } from '../features/auth/AuthProvider'
+import { clearAuthDestination, pendingAuthDestination, rememberAuthDestination } from '../lib/authDestination'
+
+function SignedInRedirect() {
+  const destination = pendingAuthDestination()
+  useEffect(() => clearAuthDestination(), [])
+  return <Navigate to={destination} replace />
+}
 
 export function AuthPage() {
   const auth = useAuth()
-  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const [searchParams] = useSearchParams()
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>(() => searchParams.get('mode') === 'sign-up' ? 'sign-up' : 'sign-in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  if (auth.user && !auth.loading) return <Navigate to={auth.profile?.onboarding_completed ? '/' : '/onboarding'} replace />
+  if (auth.user && !auth.loading) {
+    if (!auth.profile?.onboarding_completed) return <Navigate to="/onboarding" replace />
+    return <SignedInRedirect />
+  }
 
   async function handleEmail(event: FormEvent) {
     event.preventDefault()
@@ -22,6 +33,7 @@ export function AuthPage() {
     setError(null)
     setMessage(null)
     try {
+      rememberAuthDestination(searchParams.get('next'))
       if (mode === 'sign-in') await auth.signInWithPassword(email, password)
       else {
         await auth.signUpWithPassword(email, password)
@@ -51,7 +63,7 @@ export function AuthPage() {
           {auth.configurationMissing ? (
             <div className="notice-box error"><AlertCircle aria-hidden="true" /><span>Supabase is not configured. Copy <code>.env.example</code> to <code>.env.local</code> and add the project URL and publishable key.</span></div>
           ) : null}
-          <button className="button google-button" type="button" disabled={busy || auth.configurationMissing} onClick={() => void auth.signInWithGoogle().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Google sign-in failed.'))}>
+          <button className="button google-button" type="button" disabled={busy || auth.configurationMissing} onClick={() => { rememberAuthDestination(searchParams.get('next')); void auth.signInWithGoogle().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Google sign-in failed.')) }}>
             <span className="google-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

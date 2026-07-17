@@ -9,7 +9,10 @@ import type {
   ClassSearchResult,
   CourseNameSearchResult,
   DayType,
+  GuestStudentResult,
   HistoryRecord,
+  HomepageStatistic,
+  HomepageStatisticSettings,
   MeetingSlot,
   ReportableUser,
   ScheduleEnrollment,
@@ -354,6 +357,52 @@ async function callUntypedRpc(functionName: string, args: Record<string, unknown
   const { data, error } = await rpc(functionName, args)
   if (error) throw error
   return data
+}
+
+export async function searchGuestStudents(firstName: string): Promise<GuestStudentResult[]> {
+  const data = await callUntypedRpc('guest_search_students', {
+    p_first_name: firstName,
+    p_limit: 12,
+  })
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    first_name: String(row.first_name),
+    last_initial: String(row.last_initial),
+    display_name: String(row.display_name),
+  }))
+}
+
+export async function getHomepageStatistic(): Promise<HomepageStatistic | null> {
+  const data = await callUntypedRpc('get_homepage_statistic')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) return null
+  return {
+    statistic_key: String(row.statistic_key) as HomepageStatistic['statistic_key'],
+    activity_scope: String(row.activity_scope) as HomepageStatistic['activity_scope'],
+    statistic_value: Number(row.statistic_value),
+    statistic_label: String(row.statistic_label),
+  }
+}
+
+export async function adminGetHomepageStatisticSettings(): Promise<HomepageStatisticSettings> {
+  const data = await callUntypedRpc('admin_get_homepage_statistic_settings')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) throw new Error('Homepage statistic settings are missing.')
+  return {
+    shown: Boolean(row.shown),
+    statistic_key: String(row.statistic_key) as HomepageStatisticSettings['statistic_key'],
+    minimum_value: Number(row.minimum_value),
+    activity_scope: String(row.activity_scope) as HomepageStatisticSettings['activity_scope'],
+    updated_at: String(row.updated_at),
+  }
+}
+
+export async function adminUpdateHomepageStatisticSettings(input: Omit<HomepageStatisticSettings, 'updated_at'>): Promise<void> {
+  await callUntypedRpc('admin_update_homepage_statistic_settings', {
+    p_shown: input.shown,
+    p_statistic_key: input.statistic_key,
+    p_minimum_value: input.minimum_value,
+    p_activity_scope: input.activity_scope,
+  })
 }
 
 export async function adminListScheduleImportModels(): Promise<ScheduleImportModelRecord[]> {

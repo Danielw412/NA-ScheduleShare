@@ -85,6 +85,7 @@ export class ScheduleImportRequestError extends Error {
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+export const MAX_SCHEDULE_IMAGES = 3
 const RESIZE_THRESHOLD_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 2200
 
@@ -117,10 +118,17 @@ export async function prepareScheduleImage(file: File): Promise<File> {
   }
 }
 
+export function validateScheduleImageCount(count: number): void {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_SCHEDULE_IMAGES) {
+    throw new Error('Add between 1 and 3 schedule screenshots before analysis.')
+  }
+}
+
 export async function submitScheduleScreenshots(
   files: File[],
   developerOptions: ScheduleImportDeveloperOptions = { enabled: false },
 ): Promise<ScheduleImportResult> {
+  validateScheduleImageCount(files.length)
   if (!supabase) throw new Error('Sign in before importing schedule screenshots.')
   const { data, error } = await supabase.auth.getSession()
   if (error || !data.session?.access_token) throw new Error('Your session has expired. Refresh the page and sign in again.')

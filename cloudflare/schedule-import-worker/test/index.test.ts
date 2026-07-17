@@ -280,16 +280,27 @@ describe('image input and rate limiting', () => {
     expect(result.rows[0].course).toMatchObject({ id: AP_STATS_ID, name: 'AP Statistics' })
   })
 
-  it('processes two images and merges overlapping entries without duplicates', async () => {
+  it('processes three images and merges overlapping entries without duplicates', async () => {
     const response = await handleRequest(
-      requestWithImages([image('first.png'), image('second.webp', 'image/webp')]),
-      createEnv([aiResult(), aiResult()]),
+      requestWithImages([image('first.png'), image('second.webp', 'image/webp'), image('third.jpg', 'image/jpeg')]),
+      createEnv([aiResult(), aiResult(), aiResult()]),
     )
     const result = await body(response)
     expect(response.status).toBe(200)
-    expect(result.image_count).toBe(2)
+    expect(result.image_count).toBe(3)
     expect(result.rows).toHaveLength(1)
     expect((result.rows as Array<{ flags: string[] }>)[0].flags).toContain('duplicate')
+  })
+
+  it('rejects more than three images', async () => {
+    const response = await handleRequest(requestWithImages([
+      image('first.png'),
+      image('second.png'),
+      image('third.png'),
+      image('fourth.png'),
+    ]), createEnv())
+    expect(response.status).toBe(400)
+    expect(await body(response)).toMatchObject({ error: 'invalid_image_count' })
   })
 
   it('rejects unsupported and oversized files before AI processing', async () => {

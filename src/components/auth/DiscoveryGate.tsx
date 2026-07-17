@@ -10,9 +10,9 @@ export function DiscoveryGate({ children }: { children: React.ReactNode }) {
     return (
       <section className="empty-state discovery-lock">
         <LockKeyhole size={38} aria-hidden="true" />
-        <h1>Add your first class to unlock discovery</h1>
-        <p>Class and student discovery opens after you add at least one class to your own schedule.</p>
-        <Link className="button button-primary" to="/schedule">Build my schedule</Link>
+        <h1>Upload your schedule to see which classmates share your courses.</h1>
+        <p>ScheduleShare uses your own active classes to find relevant classmates without weakening anyone’s privacy setting.</p>
+        <Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link>
       </section>
     )
   }

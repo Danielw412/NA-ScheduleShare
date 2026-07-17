@@ -1,6 +1,6 @@
 export const MOONDREAM_MODEL = '@cf/moondream/moondream3.1-9B-A2B'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const MAX_IMAGES = 2
+const MAX_IMAGES = 3
 const DEFAULT_RATE_LIMIT = 6
 const DEFAULT_RATE_WINDOW_SECONDS = 60 * 60
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -233,7 +233,7 @@ async function readImages(request: Request): Promise<File[]> {
   }
   const images = formData.getAll('images').filter((value): value is File => value instanceof File)
   if (images.length < 1 || images.length > MAX_IMAGES) {
-    throw new HttpError(400, 'invalid_image_count', 'Upload one or two schedule screenshots.')
+    throw new HttpError(400, 'invalid_image_count', 'Upload between one and three schedule screenshots.')
   }
   for (const image of images) {
     if (!IMAGE_TYPES.has(image.type.toLowerCase())) {
@@ -797,7 +797,7 @@ function hasRequiredKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
 ): boolean {
-  return keys.every((key) =>
+  return Object.keys(value).length === keys.length && keys.every((key) =>
     Object.prototype.hasOwnProperty.call(value, key),
   )
 }

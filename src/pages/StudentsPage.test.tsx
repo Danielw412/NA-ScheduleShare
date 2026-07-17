@@ -1,0 +1,62 @@
+import '@testing-library/jest-dom/vitest'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { StudentsPage } from './StudentsPage'
+
+const mocks = vi.hoisted(() => ({
+  useAuth: vi.fn(),
+  searchGuestStudents: vi.fn(),
+  searchStudentDirectory: vi.fn(),
+}))
+
+vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
+vi.mock('../lib/supabase/data', () => ({
+  searchGuestStudents: mocks.searchGuestStudents,
+  searchStudentDirectory: mocks.searchStudentDirectory,
+}))
+
+beforeEach(() => {
+  mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
+  mocks.searchGuestStudents.mockResolvedValue([{ first_name: 'Alex', last_initial: 'M', display_name: 'Alex M.' }])
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+describe('guest student discovery', () => {
+  it('searches by first name and exposes only the redacted display name', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    expect(screen.getByText('Create an account and add your schedule to discover classmates.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create Account' })).toHaveAttribute('href', '/auth?mode=sign-up&next=/schedule')
+
+    await user.type(screen.getByPlaceholderText('Search first name'), 'Alex')
+    await waitFor(() => expect(mocks.searchGuestStudents).toHaveBeenCalledWith('Alex'))
+    expect(await screen.findByRole('heading', { name: 'Alex M.' })).toBeInTheDocument()
+    expect(screen.queryByText('Alex Morgan')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Grade 11/)).not.toBeInTheDocument()
+  })
+
+  it('blocks schedule viewing with the privacy-accurate registration prompt', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    await user.type(screen.getByPlaceholderText('Search first name'), 'Alex')
+    await screen.findByRole('heading', { name: 'Alex M.' })
+    await user.click(screen.getByRole('button', { name: 'View Schedule' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('Create an account and upload your schedule to view schedules from students who have chosen to share with you.')
+    expect(within(dialog).getByRole('link', { name: 'Create Account' })).toHaveAttribute('href', '/auth?mode=sign-up&next=/schedule')
+    await user.click(screen.getByRole('button', { name: 'Not now' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('marks guest discovery as non-indexable', () => {
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow, noarchive')
+  })
+})

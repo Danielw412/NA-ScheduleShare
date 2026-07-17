@@ -110,9 +110,9 @@ select set_config('request.jwt.claim.sub', '92000000-0000-4000-8000-000000000001
 set local role authenticated;
 select throws_ok(
   $$update public.profiles set grade = 8 where id = '92000000-0000-4000-8000-000000000001'$$,
-  '23514',
-  'new row for relation "profiles" violates check constraint "profiles_grade_check"',
-  'an invalid grade is rejected'
+  '42501',
+  'grade_changes_require_administrator',
+  'an onboarded student cannot change their own grade'
 );
 select throws_ok(
   $$update public.profiles set privacy_setting = 'friends' where id = '92000000-0000-4000-8000-000000000001'$$,

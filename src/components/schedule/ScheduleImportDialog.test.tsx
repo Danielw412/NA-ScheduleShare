@@ -89,20 +89,37 @@ afterEach(() => {
 })
 
 describe('ScheduleImportDialog image input', () => {
-  it('makes one screenshot visibly sufficient and reveals the optional second upload only after the first image', async () => {
+  it('accepts up to three screenshots in one file-picker action', async () => {
     const user = userEvent.setup()
     renderDialog()
-    expect(screen.getByText('One screenshot is sufficient · PNG, JPEG, or WebP · 5 MB maximum')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Add a second screenshot')).not.toBeInTheDocument()
+    const picker = screen.getByLabelText('Choose schedule screenshots')
+    expect(picker).toHaveAttribute('multiple')
+    expect(screen.getByText('PNG, JPEG, or WebP · 5 MB maximum each')).toBeInTheDocument()
+    expect(screen.getByText('0 of 3')).toBeInTheDocument()
 
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    expect(await screen.findByLabelText('Add a second screenshot')).toBeInTheDocument()
+    await user.upload(picker, [scheduleFile('one.png'), scheduleFile('two.png'), scheduleFile('three.png')])
+    expect(await screen.findAllByRole('img', { name: /Schedule screenshot/ })).toHaveLength(3)
+    expect(screen.getByText('3 of 3')).toBeInTheDocument()
   })
 
-  it('supports file upload, clipboard paste into the first empty slot, and two previews', async () => {
+  it('does not silently discard a selection larger than three screenshots', async () => {
     const user = userEvent.setup()
     renderDialog()
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile('first.png'))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), [
+      scheduleFile('one.png'),
+      scheduleFile('two.png'),
+      scheduleFile('three.png'),
+      scheduleFile('four.png'),
+    ])
+    expect(await screen.findByRole('alert')).toHaveTextContent('up to 3 screenshots')
+    expect(screen.queryByAltText(/Schedule screenshot/)).not.toBeInTheDocument()
+    expect(screen.getByText('0 of 3')).toBeInTheDocument()
+  })
+
+  it('supports file upload and additional clipboard pastes until all three slots are full', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile('first.png'))
     expect(await screen.findByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
 
     fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('pasted.png')) })
@@ -110,27 +127,45 @@ describe('ScheduleImportDialog image input', () => {
     expect(screen.getByText('pasted.png')).toBeInTheDocument()
 
     fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('third.png')) })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Both screenshot slots are full')
+    expect(await screen.findByAltText('Schedule screenshot 3 preview')).toBeInTheDocument()
+
+    fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile('fourth.png')) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('up to 3 screenshots')
   })
 
-  it('supports drag-and-drop and sends both selected images in one request', async () => {
+  it('supports drag-and-drop and sends all selected images in one combined request', async () => {
     const importScreenshots = vi.fn(async () => importResult())
     renderDialog({ importScreenshots })
-    const dropZone = screen.getByText('Upload schedule screenshot').closest('.import-drop-zone')!
-    fireEvent.drop(dropZone, { dataTransfer: { files: [scheduleFile('one.png'), scheduleFile('two.png')] } })
-    expect(await screen.findAllByRole('img', { name: /Schedule screenshot/ })).toHaveLength(2)
-    await userEvent.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    const dropZone = screen.getByText('Drop, paste, or choose schedule screenshots').closest('.import-drop-zone')!
+    fireEvent.drop(dropZone, { dataTransfer: { files: [scheduleFile('one.png'), scheduleFile('two.png'), scheduleFile('three.png')] } })
+    expect(await screen.findAllByRole('img', { name: /Schedule screenshot/ })).toHaveLength(3)
+    await userEvent.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     await waitFor(() => expect(importScreenshots).toHaveBeenCalledWith([
       expect.objectContaining({ name: 'one.png' }),
       expect.objectContaining({ name: 'two.png' }),
+      expect.objectContaining({ name: 'three.png' }),
     ]))
+  })
+
+  it('can replace and remove individual screenshots before analysis', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), [scheduleFile('one.png'), scheduleFile('two.png')])
+    await user.upload(screen.getByLabelText('Replace screenshot 1'), scheduleFile('replacement.png'))
+    expect(await screen.findByText('replacement.png')).toBeInTheDocument()
+    expect(screen.queryByText('one.png')).not.toBeInTheDocument()
+
+    const secondPreview = screen.getByAltText('Schedule screenshot 2 preview').closest('.import-image-slot')!
+    await user.click(secondPreview.querySelector('button')!)
+    expect(screen.queryByText('two.png')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
   })
 
   it('keeps previews visible after a structured rejection so users can replace an image', async () => {
     const user = userEvent.setup()
     renderDialog({ importScreenshots: vi.fn(async () => { throw new Error('The screenshot shows classes but not their period numbers.') }) })
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('not their period numbers')
     expect(screen.getByAltText('Schedule screenshot 1 preview')).toBeInTheDocument()
     expect(screen.queryByText('Review every class')).not.toBeInTheDocument()
@@ -141,6 +176,26 @@ describe('ScheduleImportDialog image input', () => {
     rendered.rerender(<ScheduleImportDialog {...rendered.props} open={false} />)
     fireEvent.paste(window, { clipboardData: clipboardWith(scheduleFile()) })
     expect(screen.queryByAltText(/Schedule screenshot/)).not.toBeInTheDocument()
+  })
+
+  it('renders the onboarding flow and invokes manual entry or dismissal', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const onManualEntry = vi.fn()
+    renderDialog({ onboarding: true, onClose, onManualEntry })
+
+    expect(screen.getByRole('heading', { name: 'Add your schedule in about a minute' })).toBeInTheDocument()
+    expect(screen.getByText('Upload screenshots, and ScheduleShare will identify your classes.')).toBeInTheDocument()
+    expect(screen.getByText('Drop or paste your schedule here')).toBeInTheDocument()
+    expect(screen.getByText('Choose Screenshot')).toBeInTheDocument()
+    expect(screen.getByLabelText('Schedule import steps')).toHaveTextContent('Screenshot→Review classes→Find classmates')
+
+    await user.click(screen.getByRole('button', { name: 'Enter Schedule Manually' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onManualEntry).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: /do this later/i }))
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -183,8 +238,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(developerMode).not.toBeChecked()
     await user.click(developerMode)
     await user.selectOptions(await screen.findByLabelText('Reasoning'), 'high')
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     await waitFor(() => expect(importScreenshots).toHaveBeenCalledWith(
       [expect.objectContaining({ name: 'schedule.png' })],
       { enabled: true, modelId: 'gemini-3.5-flash', thinkingLevel: 'high' },
@@ -209,8 +264,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
       searchCourses: vi.fn(async () => [course]),
       confirmImport,
     })
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeDisabled()
 
@@ -247,8 +302,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
       warnings: ['Academic term was not visible, so Full Year was selected by default.'],
       class_options: [existing],
     })) })
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     const rowToggle = screen.getByRole('button', { name: /AP Statistics.*Lester.*Full Year.*A P1.*B P1.*Use existing class/i })
     expect(rowToggle).toHaveAttribute('aria-expanded', 'false')
     await user.click(rowToggle)
@@ -272,8 +327,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
       resolution: 'unresolved_course',
     })
     renderDialog({ importScreenshots: vi.fn(async () => result) })
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
 
     expect(screen.getByRole('button', { name: /AP Statistics.*Full Year.*Create class/i })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i })).toHaveAttribute('aria-expanded', 'true')
@@ -289,8 +344,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
   it('replaces a partially filled schedule instead of treating it as a conflict', async () => {
     const user = userEvent.setup()
     renderDialog({ currentEnrollments: [currentEnrollment()] })
-    await user.upload(screen.getByLabelText('Upload schedule screenshot'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: 'Review imported classes' }))
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
     expect(screen.queryByText('Schedule conflict')).not.toBeInTheDocument()
     expect(screen.getByText(/replace the 1 class currently on your schedule/i)).toBeInTheDocument()

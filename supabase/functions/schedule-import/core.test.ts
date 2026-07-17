@@ -146,16 +146,29 @@ describe('Gemini request and response handling', () => {
     })])
   })
 
-  it('passes two images in one Gemini request', async () => {
+  it('passes three images in one Gemini request', async () => {
     const providerFetch = vi.fn<typeof fetch>(async (_input, init) => {
       const body = JSON.parse(String(init?.body)) as Record<string, any>
-      expect(body.contents[0].parts).toHaveLength(3)
+      expect(body.contents[0].parts).toHaveLength(4)
       return geminiResponse()
     })
-    const response = await handleScheduleImportRequest(request([png('first.png'), jpeg('second.jpg')]), dependencies({ fetch: providerFetch }))
+    const response = await handleScheduleImportRequest(request([png('first.png'), jpeg('second.jpg'), png('third.png')]), dependencies({ fetch: providerFetch }))
     expect(response.status).toBe(200)
-    expect((await responseBody(response)).image_count).toBe(2)
+    expect((await responseBody(response)).image_count).toBe(3)
     expect(providerFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects more than three images before calling Gemini', async () => {
+    const providerFetch = vi.fn<typeof fetch>()
+    const response = await handleScheduleImportRequest(request([
+      png('first.png'),
+      png('second.png'),
+      png('third.png'),
+      png('fourth.png'),
+    ]), dependencies({ fetch: providerFetch }))
+    expect(response.status).toBe(400)
+    expect(await responseBody(response)).toMatchObject({ error: 'invalid_image_count' })
+    expect(providerFetch).not.toHaveBeenCalled()
   })
 
   it('rejects malformed, incomplete, and extra model output', async () => {

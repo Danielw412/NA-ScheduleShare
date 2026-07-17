@@ -9,11 +9,17 @@ export function useSchedule(studentId?: string) {
   const ownerId = studentId ?? user?.id
   const [enrollments, setEnrollments] = useState<ScheduleEnrollment[]>(isDemo ? demoEnrollments : [])
   const [history, setHistory] = useState<HistoryRecord[]>(isDemo ? demoHistory : [])
-  const [loading, setLoading] = useState(!isDemo)
+  const [loading, setLoading] = useState(Boolean(ownerId && !isDemo))
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    if (!ownerId) return
+    if (!ownerId) {
+      setEnrollments([])
+      setHistory([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     if (isDemo) {
       setLoading(false)
       return

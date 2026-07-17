@@ -1,20 +1,21 @@
-import { BrainCircuit, ChevronDown, ChevronRight, FileClock, Flag, GraduationCap, History, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { BarChart3, BrainCircuit, ChevronDown, ChevronRight, FileClock, Flag, GraduationCap, History, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type GeminiThinkingLevel, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord } from '../lib/domain'
+import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord } from '../lib/domain'
 import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateScheduleImportSettings, callAdminAction } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'ai' | 'history' | 'admins' | 'audit'
+type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'history' | 'admins' | 'audit'
 
 const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'users', label: 'User management', icon: Users },
   { id: 'reports', label: 'Reports', icon: Flag },
   { id: 'classes', label: 'Class management', icon: GraduationCap },
+  { id: 'homepage', label: 'Homepage', icon: BarChart3 },
   { id: 'ai', label: 'AI importer', icon: BrainCircuit },
   { id: 'history', label: 'Schedule history', icon: History },
   { id: 'admins', label: 'Admin management', icon: ShieldCheck },
@@ -204,6 +205,21 @@ export function AdminPage() {
     void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
   }
 
+  function changeGrade(user: Record<string, unknown>) {
+    const nextGrade = Number(window.prompt('Corrected grade (9-12)', String(user.grade)))
+    if (![9, 10, 11, 12].includes(nextGrade)) {
+      setError('Grade must be 9, 10, 11, or 12.')
+      return
+    }
+    void adminAction('admin_update_user', {
+      p_user_id: user.user_id,
+      p_full_name: user.full_name,
+      p_grade: nextGrade,
+      p_privacy_setting: user.privacy_setting,
+      p_reason: 'Administrator grade correction',
+    }, 'Student grade updated.')
+  }
+
   const selectedReport = reports.find((report) => report.report_id === selectedReportId) ?? null
 
   return (
@@ -214,7 +230,7 @@ export function AdminPage() {
 
       {tab === 'users' ? <section className="admin-section">
         <div className="admin-toolbar"><input placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /><select value={grade} onChange={(event) => setGrade(event.target.value ? Number(event.target.value) : '')}><option value="">All grades</option>{[9, 10, 11, 12].map((value) => <option key={value}>{value}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
-        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={String(user.user_id)}><span className="admin-user-cell"><ProfileAvatar userId={String(user.user_id)} fullName={String(user.full_name)} /><span><strong>{String(user.full_name)}</strong><small>{String(user.user_id)}</small></span></span><span>{String(user.grade)}</span><span>{privacyLabels[String(user.privacy_setting) as PrivacySetting] ?? String(user.privacy_setting)}</span><span className={`status-${String(user.status)}`}>{String(user.status)}</span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', String(user.full_name)); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile correction' }, 'Profile updated.') }}>Edit</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
+        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={String(user.user_id)}><span className="admin-user-cell"><ProfileAvatar userId={String(user.user_id)} fullName={String(user.full_name)} /><span><strong>{String(user.full_name)}</strong><small>{String(user.user_id)}</small></span></span><span>{String(user.grade)}</span><span>{privacyLabels[String(user.privacy_setting) as PrivacySetting] ?? String(user.privacy_setting)}</span><span className={`status-${String(user.status)}`}>{String(user.status)}</span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', String(user.full_name)); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
       </section> : null}
 
       {tab === 'reports' ? <section className="admin-section"><h2>Reports</h2><div className="admin-table admin-report-table"><div className="admin-table-head"><span>Category</span><span>Reported account or class</span><span>Reporter</span><span>Status / submitted</span><span>Actions</span></div>{reports.map((report) => <div className="admin-table-row" key={report.report_id}><span><strong>{reportReasonLabels[report.reason_category]}</strong></span><span><strong>{report.reported_user_name ?? report.reported_course_name ?? 'General issue'}</strong><small>{report.reported_user_id ? 'User' : report.reported_class_id || report.reported_course_name ? 'Class' : 'No target'}</small></span><span>{report.reporter_name ?? 'Deleted user'}</span><span><strong>{report.status.replace('_', ' ')}</strong><small>{new Date(report.created_at).toLocaleString()}</small></span><span className="row-actions"><button onClick={() => setSelectedReportId((current) => current === report.report_id ? null : report.report_id)}>{selectedReportId === report.report_id ? 'Hide details' : 'View details'}</button>{report.status === 'resolved' || report.status === 'dismissed' ? null : <button onClick={() => { const notes = window.prompt('Resolution notes'); if (notes) void adminAction('admin_resolve_report', { p_report_id: report.report_id, p_status: 'resolved', p_resolution_notes: notes }, 'Report resolved.') }}>Resolve</button>}</span></div>)}</div>{selectedReport ? <ReportDetails report={selectedReport} onClose={() => setSelectedReportId(null)} /> : null}</section> : null}
@@ -233,6 +249,8 @@ export function AdminPage() {
         onAdminAction={adminAction}
       /> : null}
 
+      {tab === 'homepage' ? <HomepageStatisticPanel isDemo={isDemo} /> : null}
+
       {tab === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
 
       {tab === 'history' ? <AdminLogTable title="Schedule history" rows={historyRows} primary="action" target="student_id" /> : null}
@@ -242,6 +260,86 @@ export function AdminPage() {
       {editingClass ? <AdminClassEditDialog key={editingClass.id} course={editingClass} courseNames={courseNames} saving={classSaving} onClose={() => setEditingClass(null)} onSave={saveClass} /> : null}
     </div>
   )
+}
+
+const defaultHomepageSettings: HomepageStatisticSettings = {
+  shown: false,
+  statistic_key: 'students_joined',
+  minimum_value: 25,
+  activity_scope: 'total',
+  updated_at: '',
+}
+
+const homepageStatisticLabels: Record<HomepageStatisticKey, string> = {
+  students_joined: 'NA students joined',
+  schedules_uploaded: 'Schedules uploaded',
+  class_connections: 'Class connections found',
+}
+
+export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {
+  const [settings, setSettings] = useState<HomepageStatisticSettings>(defaultHomepageSettings)
+  const [realValue, setRealValue] = useState<{ value: number; label: string } | null>(null)
+  const [loading, setLoading] = useState(!isDemo)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (isDemo) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [nextSettings, statistic] = await Promise.all([
+        adminGetHomepageStatisticSettings(),
+        getHomepageStatistic(),
+      ])
+      setSettings(nextSettings)
+      setRealValue(statistic ? { value: statistic.statistic_value, label: statistic.statistic_label } : null)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not load homepage statistic settings.')
+    } finally {
+      setLoading(false)
+    }
+  }, [isDemo])
+
+  useEffect(() => { void load() }, [load])
+
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      if (!isDemo) await adminUpdateHomepageStatisticSettings({
+        shown: settings.shown,
+        statistic_key: settings.statistic_key,
+        minimum_value: settings.minimum_value,
+        activity_scope: settings.activity_scope,
+      })
+      setMessage('Homepage statistic settings saved. The displayed number remains database-calculated.')
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not save homepage statistic settings.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <section className="admin-section"><p className="muted">Loading homepage settings…</p></section>
+  return <section className="admin-section homepage-stat-settings">
+    <div><h2>Homepage social proof</h2><p>Choose which aggregate appears and when. The number is always calculated from real database activity and cannot be entered manually.</p></div>
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    {message ? <p className="form-success" role="status">{message}</p> : null}
+    <form onSubmit={(event) => void save(event)}>
+      <label className="checkbox-row"><input type="checkbox" checked={settings.shown} onChange={(event) => setSettings((current) => ({ ...current, shown: event.target.checked }))} /><span><strong>Show homepage statistic</strong><small>It still stays hidden while the real value is below the minimum.</small></span></label>
+      <label>Statistic<select value={settings.statistic_key} onChange={(event) => setSettings((current) => ({ ...current, statistic_key: event.target.value as HomepageStatisticKey }))}>{(Object.entries(homepageStatisticLabels) as Array<[HomepageStatisticKey, string]>).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+      <label>Minimum real value<input min={0} max={1000000000} step={1} type="number" value={settings.minimum_value} onChange={(event) => setSettings((current) => ({ ...current, minimum_value: Math.max(0, Number(event.target.value)) }))} /></label>
+      <label>Activity window<select value={settings.activity_scope} onChange={(event) => setSettings((current) => ({ ...current, activity_scope: event.target.value as HomepageActivityScope }))}><option value="total">Total activity</option><option value="recent">Recent activity (last 30 days)</option></select></label>
+      <div className="homepage-stat-preview"><span>Current public result</span>{realValue ? <strong>{new Intl.NumberFormat().format(realValue.value)} {realValue.label}</strong> : <strong>Hidden by the current setting or minimum</strong>}</div>
+      <button className="button button-primary" disabled={saving || isDemo}>{saving ? 'Saving…' : 'Save homepage settings'}</button>
+      {isDemo ? <small className="muted">Connect Supabase to save or preview real statistics.</small> : null}
+    </form>
+  </section>
 }
 
 const demoImportModels: ScheduleImportModelRecord[] = [{

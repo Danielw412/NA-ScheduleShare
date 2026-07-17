@@ -1,6 +1,6 @@
 export const DEFAULT_GEMINI_TIMEOUT_MS = 45_000
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-export const MAX_IMAGES = 2
+export const MAX_IMAGES = 3
 
 const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
 const LOCAL_ORIGINS = new Set([
@@ -174,7 +174,7 @@ export class HttpError extends Error {
 }
 
 export function buildPrompt(): string {
-  return `Transcribe the student class schedule visible in the one or two supplied screenshots.
+  return `Transcribe the student class schedule visible in the one to three supplied screenshots.
 
 Return only the required structured JSON data. Do not use Markdown, explanations, warnings, confidence scores, catalogue IDs, or extra fields.
 
@@ -461,7 +461,7 @@ async function readUpload(request: Request): Promise<{
 
   const files = formData.getAll('images').filter((value): value is File => value instanceof File)
   if (files.length < 1 || files.length > MAX_IMAGES) {
-    throw new HttpError(400, 'invalid_image_count', 'Upload one or two schedule screenshots.')
+    throw new HttpError(400, 'invalid_image_count', 'Upload between one and three schedule screenshots.')
   }
 
   const developerValue = formData.get('developer_mode')

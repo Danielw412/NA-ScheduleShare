@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
+import { AllowGuest, RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
 import { AppShell } from './components/layout/AppShell'
 import { AdminPage } from './pages/AdminPage'
 import { AuthPage } from './pages/AuthPage'
@@ -19,6 +19,8 @@ export function App() {
       <Route path="/auth" element={<AuthPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
+      </Route>
+      <Route element={<AllowGuest />}>
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
           <Route path="schedule" element={<SchedulePage />} />
@@ -26,13 +28,15 @@ export function App() {
           <Route path="classes/:classId" element={<ClassesPage />} />
           <Route path="students" element={<StudentsPage />} />
           <Route path="students/:studentId" element={<StudentDetailPage />} />
-          <Route path="classmates" element={<ClassmatesPage />} />
           <Route path="directory" element={<StudentsPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-          <Route path="privacy" element={<Navigate to="/profile" replace />} />
-          <Route path="report" element={<ReportPage />} />
-          <Route element={<RequireAdmin />}>
-            <Route path="admin" element={<AdminPage />} />
+          <Route element={<RequireAuth />}>
+            <Route path="classmates" element={<ClassmatesPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="privacy" element={<Navigate to="/profile" replace />} />
+            <Route path="report" element={<ReportPage />} />
+            <Route element={<RequireAdmin />}>
+              <Route path="admin" element={<AdminPage />} />
+            </Route>
           </Route>
         </Route>
       </Route>

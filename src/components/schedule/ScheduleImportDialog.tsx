@@ -8,6 +8,7 @@ import {
   findClassesForCourse,
   importClassOptionLabel,
   importRowError,
+  MAX_SCHEDULE_IMAGES,
   normalizeReviewTerm,
   prepareScheduleImage,
   reconcileExactClassSelection,
@@ -31,6 +32,7 @@ interface ImportImage {
 
 export interface ScheduleImportDialogProps {
   open: boolean
+  onboarding?: boolean
   isAdmin?: boolean
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
@@ -40,6 +42,7 @@ export interface ScheduleImportDialogProps {
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
   confirmImport?: (rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>
   loadDeveloperModels?: () => Promise<ScheduleImportModelRecord[]>
+  onManualEntry?: () => void
 }
 
 function DeveloperDiagnosticsPanel({ diagnostics }: { diagnostics: ScheduleImportDeveloperDiagnostics }) {
@@ -175,6 +178,7 @@ function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | nu
 
 export function ScheduleImportDialog({
   open,
+  onboarding = false,
   isAdmin = false,
   currentEnrollments,
   onClose,
@@ -184,8 +188,9 @@ export function ScheduleImportDialog({
   loadClassOptions = findClassesForCourse,
   confirmImport = confirmScheduleImport,
   loadDeveloperModels = adminListScheduleImportModels,
+  onManualEntry,
 }: ScheduleImportDialogProps) {
-  const [images, setImages] = useState<Array<ImportImage | null>>([null, null])
+  const [images, setImages] = useState<ImportImage[]>([])
   const [rows, setRows] = useState<EditableScheduleImportRow[]>([])
   const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set())
   const [phase, setPhase] = useState<'upload' | 'processing' | 'review' | 'saving'>('upload')
@@ -201,30 +206,41 @@ export function ScheduleImportDialog({
   imagesRef.current = images
 
   useEffect(() => () => {
-    imagesRef.current.forEach((item) => { if (item) URL.revokeObjectURL(item.previewUrl) })
+    imagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
   }, [])
 
   const addFiles = useCallback(async (incoming: File[], preferredIndex?: number) => {
     setError(null)
-    for (const input of incoming.slice(0, 2)) {
-      try {
-        const file = await prepareScheduleImage(input)
-        setImages((current) => {
-          const next = [...current]
-          const index = preferredIndex ?? next.findIndex((item) => item === null)
-          if (index < 0) {
-            setError('Both screenshot slots are full. Replace or remove one before adding another image.')
-            return current
-          }
-          const previous = next[index]
-          if (previous) URL.revokeObjectURL(previous.previewUrl)
-          next[index] = { file, previewUrl: URL.createObjectURL(file) }
-          preferredIndex = undefined
-          return next
-        })
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'The screenshot could not be added.')
-      }
+    if (incoming.length === 0) return
+    if (preferredIndex !== undefined && incoming.length !== 1) {
+      setError('Choose one screenshot when replacing an individual image.')
+      return
+    }
+    const available = MAX_SCHEDULE_IMAGES - imagesRef.current.length
+    if (preferredIndex === undefined && incoming.length > available) {
+      setError(`You can add up to ${MAX_SCHEDULE_IMAGES} screenshots. Remove ${incoming.length - available} ${incoming.length - available === 1 ? 'file' : 'files'} and try again.`)
+      return
+    }
+
+    try {
+      const prepared = await Promise.all(incoming.map(prepareScheduleImage))
+      setImages((current) => {
+        if (preferredIndex !== undefined) {
+          const previous = current[preferredIndex]
+          if (!previous) return current
+          URL.revokeObjectURL(previous.previewUrl)
+          return current.map((item, index) => index === preferredIndex
+            ? { file: prepared[0], previewUrl: URL.createObjectURL(prepared[0]) }
+            : item)
+        }
+        if (current.length + prepared.length > MAX_SCHEDULE_IMAGES) {
+          setError(`You can add up to ${MAX_SCHEDULE_IMAGES} screenshots.`)
+          return current
+        }
+        return [...current, ...prepared.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]
+      })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The screenshot could not be added.')
     }
   }, [])
 
@@ -280,8 +296,8 @@ export function ScheduleImportDialog({
 
   function closeDialog() {
     setImages((current) => {
-      current.forEach((item) => { if (item) URL.revokeObjectURL(item.previewUrl) })
-      return [null, null]
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+      return []
     })
     setRows([])
     setExpandedRowIds(new Set())
@@ -298,7 +314,7 @@ export function ScheduleImportDialog({
   }
 
   async function processImages() {
-    const files = images.flatMap((item) => item ? [item.file] : [])
+    const files = images.map((item) => item.file)
     if (files.length === 0) {
       setError('Add at least one schedule screenshot.')
       return
@@ -351,8 +367,7 @@ export function ScheduleImportDialog({
     setImages((current) => {
       const removed = current[index]
       if (removed) URL.revokeObjectURL(removed.previewUrl)
-      const compacted = current.filter((candidate, candidateIndex): candidate is ImportImage => candidateIndex !== index && candidate !== null)
-      return [compacted[0] ?? null, compacted[1] ?? null]
+      return current.filter((_, candidateIndex) => candidateIndex !== index)
     })
   }
 
@@ -367,13 +382,17 @@ export function ScheduleImportDialog({
       <section className="class-dialog schedule-import-dialog" role="dialog" aria-modal="true" aria-labelledby="schedule-import-title">
         <div className="sheet-handle" aria-hidden="true" />
         <header>
-          <div><h2 id="schedule-import-title">Import screenshots</h2><p>AI-assisted review · Nothing is saved until you confirm</p></div>
+          <div>
+            <h2 id="schedule-import-title">{onboarding ? 'Add your schedule in about a minute' : 'Import screenshots'}</h2>
+            <p>{onboarding ? 'Upload screenshots, and ScheduleShare will identify your classes.' : 'AI-assisted review · Nothing is saved until you confirm'}</p>
+          </div>
           <button className="icon-button" type="button" aria-label="Close import dialog" onClick={closeDialog} disabled={phase === 'saving'}><X aria-hidden="true" /></button>
         </header>
 
         {phase === 'upload' || phase === 'processing' ? (
           <div className="import-upload-step">
-            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>One PowerSchool screenshot is usually all you need.</strong><span>Crop out your name and student ID. Add a second image only when the full schedule does not fit in one screenshot.</span></p></div>
+            {onboarding ? <div className="import-onboarding-flow" aria-label="Schedule import steps"><span>Screenshot</span><strong>→</strong><span>Review classes</span><strong>→</strong><span>Find classmates</span></div> : null}
+            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>One PowerSchool screenshot is usually all you need.</strong><span>Crop out your name and student ID. Add up to three images when the full schedule does not fit in one screenshot.</span></p></div>
             {isAdmin ? <section className="import-developer-controls">
               <label className="checkbox-row"><input type="checkbox" checked={developerMode} onChange={(event) => { setDeveloperMode(event.target.checked); setDeveloperData(null) }} /><span><strong>AI developer mode</strong><small>Current admin session only. Bypasses only ScheduleShare's import rate limit and stores temporary diagnostics.</small></span></label>
               {developerMode ? <div className="two-field-row">
@@ -388,51 +407,46 @@ export function ScheduleImportDialog({
               </div> : null}
               {developerModelError ? <p className="form-error" role="alert">{developerModelError}</p> : null}
             </section> : null}
-            <div className={images[0] ? 'import-drop-zone has-image' : 'import-drop-zone'} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
-              {images[0] ? <img src={images[0].previewUrl} alt="Schedule screenshot 1 preview" /> : <Upload aria-hidden="true" />}
-              <strong>Upload schedule screenshot</strong>
-              <span>{images[0] ? images[0].file.name : 'One screenshot is sufficient · PNG, JPEG, or WebP · 5 MB maximum'}</span>
+            <div className={images.length > 0 ? 'import-drop-zone has-images' : 'import-drop-zone'} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+              <Upload aria-hidden="true" />
+              <strong>{onboarding ? 'Drop or paste your schedule here' : 'Drop, paste, or choose schedule screenshots'}</strong>
+              <span>PNG, JPEG, or WebP · 5 MB maximum each</span>
               <div className="import-upload-actions">
                 <label className="button button-primary">
-                  {images[0] ? 'Replace screenshot' : 'Choose screenshot'}
+                  {onboarding ? 'Choose Screenshot' : images.length > 0 ? 'Add screenshots' : 'Choose screenshots'}
                   <input
                     accept="image/png,image/jpeg,image/webp"
-                    aria-label={images[0] ? 'Replace screenshot 1' : 'Upload schedule screenshot'}
+                    aria-label="Choose schedule screenshots"
                     hidden
+                    multiple
                     type="file"
-                    onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 0); event.target.value = '' }}
+                    onChange={(event) => { void addFiles([...event.target.files ?? []]); event.target.value = '' }}
                   />
                 </label>
-                {images[0] ? <button type="button" onClick={() => removeImage(0)}>Remove</button> : null}
               </div>
-              <small><ClipboardPaste size={15} aria-hidden="true" /> Drag and drop here, choose a file, or press Ctrl+V / Cmd+V to paste.</small>
+              <small><ClipboardPaste size={15} aria-hidden="true" /> Select or drop up to three together, or press Ctrl+V / Cmd+V to paste.</small>
             </div>
-            {images[0] && !images[1] ? <div className="import-second-image-prompt">
-              <p><strong>Does your full schedule fit above?</strong><span>If not, add one optional second screenshot.</span></p>
-              <label className="button button-secondary">
-                <FileImage size={17} aria-hidden="true" /> Add a second screenshot
-                <input
-                  accept="image/png,image/jpeg,image/webp"
-                  aria-label="Add a second screenshot"
-                  hidden
-                  type="file"
-                  onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 1); event.target.value = '' }}
-                />
-              </label>
-            </div> : null}
-            {images[1] ? <div className="import-image-slot import-image-slot-secondary">
-              <img src={images[1].previewUrl} alt="Schedule screenshot 2 preview" />
-              <span>{images[1].file.name}</span>
-              <div>
-                <label className="button button-secondary">Replace<input accept="image/png,image/jpeg,image/webp" aria-label="Replace screenshot 2" hidden type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], 1); event.target.value = '' }} /></label>
-                <button type="button" onClick={() => removeImage(1)}>Remove</button>
-              </div>
+            <p className="import-image-count" aria-live="polite"><strong>{images.length} of {MAX_SCHEDULE_IMAGES}</strong> screenshots added</p>
+            {images.length > 0 ? <div className="import-image-grid">
+              {images.map((image, index) => <article className="import-image-slot" key={image.previewUrl}>
+                <img src={image.previewUrl} alt={`Schedule screenshot ${index + 1} preview`} />
+                <span title={image.file.name}>{image.file.name}</span>
+                <div>
+                  <label className="button button-secondary">Replace<input accept="image/png,image/jpeg,image/webp" aria-label={`Replace screenshot ${index + 1}`} hidden type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addFiles([file], index); event.target.value = '' }} /></label>
+                  <button type="button" onClick={() => removeImage(index)}>Remove</button>
+                </div>
+              </article>)}
             </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            <button className="button button-primary button-block" disabled={phase === 'processing' || images.every((item) => !item) || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
-              {phase === 'processing' ? 'Reading schedule…' : 'Review imported classes'}
+            {phase === 'processing' ? <div className="import-progress" role="status"><span /><div><strong>Analyzing screenshots…</strong><small>Identifying classes and combining results for review.</small></div></div> : null}
+            <button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
+              {phase === 'processing' ? 'Analyzing screenshots…' : 'Analyze screenshots'}
             </button>
+            {onboarding && phase !== 'processing' ? <div className="import-onboarding-actions">
+              <button className="button button-secondary" type="button" onClick={() => { closeDialog(); onManualEntry?.() }}><FileImage size={17} aria-hidden="true" /> Enter Schedule Manually</button>
+              <button className="text-button" type="button" onClick={closeDialog}>I’ll do this later</button>
+            </div> : null}
           </div>
         ) : (
           <div className="import-review-step">

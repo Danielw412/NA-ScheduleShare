@@ -143,6 +143,30 @@ export const privacyLabels: Record<PrivacySetting, string> = {
   school: 'Anyone',
 }
 
+export interface GuestStudentResult {
+  first_name: string
+  last_initial: string
+  display_name: string
+}
+
+export type HomepageStatisticKey = 'students_joined' | 'schedules_uploaded' | 'class_connections'
+export type HomepageActivityScope = 'total' | 'recent'
+
+export interface HomepageStatistic {
+  statistic_key: HomepageStatisticKey
+  activity_scope: HomepageActivityScope
+  statistic_value: number
+  statistic_label: string
+}
+
+export interface HomepageStatisticSettings {
+  shown: boolean
+  statistic_key: HomepageStatisticKey
+  minimum_value: number
+  activity_scope: HomepageActivityScope
+  updated_at: string
+}
+
 export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
 
 export interface ScheduleImportModelRecord {

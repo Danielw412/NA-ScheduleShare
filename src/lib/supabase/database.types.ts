@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -419,9 +399,23 @@ export type Database = {
         Args: { p_class_id: string; p_reason: string }
         Returns: undefined
       }
+      admin_delete_schedule_import_diagnostic: {
+        Args: { p_diagnostic_id: string }
+        Returns: undefined
+      }
       admin_delete_user: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
+      }
+      admin_get_homepage_statistic_settings: {
+        Args: never
+        Returns: {
+          activity_scope: string
+          minimum_value: number
+          shown: boolean
+          statistic_key: string
+          updated_at: string
+        }[]
       }
       admin_list_classes: {
         Args: never
@@ -473,6 +467,40 @@ export type Database = {
           resolution_notes: string
           resolved_at: string
           status: Database["public"]["Enums"]["report_status"]
+        }[]
+      }
+      admin_list_schedule_import_diagnostics: {
+        Args: never
+        Returns: {
+          created_at: string
+          diagnostic_id: string
+          expires_at: string
+          image_metadata: Json
+          model_id: string
+          output_token_limit: number
+          parsed_output: Json
+          prompt: string
+          provider_error: Json
+          raw_output: string
+          status: string
+          thinking_level: string
+          timing_ms: number
+          validation_errors: Json
+        }[]
+      }
+      admin_list_schedule_import_models: {
+        Args: never
+        Returns: {
+          display_name: string
+          enabled: boolean
+          is_active: boolean
+          max_output_tokens: number
+          model_id: string
+          production_output_token_limit: number
+          production_thinking_level: string
+          supported_thinking_levels: string[]
+          supports_image_input: boolean
+          supports_structured_output: boolean
         }[]
       }
       admin_list_users: {
@@ -558,6 +586,23 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_update_homepage_statistic_settings: {
+        Args: {
+          p_activity_scope: string
+          p_minimum_value: number
+          p_shown: boolean
+          p_statistic_key: string
+        }
+        Returns: undefined
+      }
+      admin_update_schedule_import_settings: {
+        Args: {
+          p_model_id: string
+          p_output_token_limit: number
+          p_thinking_level: string
+        }
+        Returns: undefined
+      }
       admin_update_user: {
         Args: {
           p_full_name: string
@@ -618,6 +663,15 @@ export type Database = {
           student_id: string
         }[]
       }
+      get_homepage_statistic: {
+        Args: never
+        Returns: {
+          activity_scope: string
+          statistic_key: string
+          statistic_label: string
+          statistic_value: number
+        }[]
+      }
       get_my_account_state: {
         Args: never
         Returns: {
@@ -640,7 +694,31 @@ export type Database = {
           teacher_last_name: string
         }[]
       }
+      guest_search_students: {
+        Args: { p_first_name: string; p_limit?: number }
+        Returns: {
+          display_name: string
+          first_name: string
+          last_initial: string
+        }[]
+      }
       is_current_user_admin: { Args: never; Returns: boolean }
+      record_schedule_import_diagnostic: {
+        Args: {
+          p_image_metadata: Json
+          p_model_id: string
+          p_output_token_limit: number
+          p_parsed_output: Json
+          p_prompt: string
+          p_provider_error: Json
+          p_raw_output: string
+          p_status: string
+          p_thinking_level: string
+          p_timing_ms: number
+          p_validation_errors: Json
+        }
+        Returns: string
+      }
       remove_enrollment: {
         Args: { p_enrollment_id: string }
         Returns: undefined
@@ -659,6 +737,21 @@ export type Database = {
         Returns: {
           added_count: number
           removed_count: number
+        }[]
+      }
+      schedule_import_prepare: {
+        Args: {
+          p_developer_mode?: boolean
+          p_model_id?: string
+          p_thinking_level?: string
+        }
+        Returns: {
+          bypassed_rate_limit: boolean
+          is_admin: boolean
+          model_id: string
+          output_token_limit: number
+          thinking_level: string
+          user_id: string
         }[]
       }
       search_classes: {
@@ -864,9 +957,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       academic_term: ["full_year", "semester_1", "semester_2"],

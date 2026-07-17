@@ -16,6 +16,17 @@ export function RequireAuth() {
   return <Outlet />
 }
 
+export function AllowGuest() {
+  const auth = useAuth()
+  const location = useLocation()
+  if (auth.loading) return <LoadingScreen />
+  if (auth.user && (auth.accountState?.suspended || auth.accountState?.deleted)) return <SuspensionNotice />
+  if (auth.user && auth.profile && !auth.profile.onboarding_completed && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />
+  }
+  return <Outlet />
+}
+
 export function RequireAdmin() {
   const { isAdmin, loading } = useAuth()
   if (loading) return <LoadingScreen />

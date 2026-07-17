@@ -18,6 +18,7 @@ import {
   importClassOptionLabel,
   normalizeReviewTerm,
   reconcileExactClassSelection,
+  validateScheduleImageCount,
 } from './scheduleImport'
 
 const option: ImportClassOption = {
@@ -51,6 +52,14 @@ beforeEach(() => {
 })
 
 describe('schedule import replacement', () => {
+  it('accepts one to three screenshots and rejects every other count', () => {
+    expect(() => validateScheduleImageCount(1)).not.toThrow()
+    expect(() => validateScheduleImageCount(2)).not.toThrow()
+    expect(() => validateScheduleImageCount(3)).not.toThrow()
+    expect(() => validateScheduleImageCount(0)).toThrow('between 1 and 3')
+    expect(() => validateScheduleImageCount(4)).toThrow('between 1 and 3')
+  })
+
   it('defaults blank, missing, unknown, and not-visible review terms to Full Year', () => {
     expect([undefined, null, '', 'unknown', 'not visible', 'not-visible', 'unexpected'].map(normalizeReviewTerm)).toEqual([
       'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year',

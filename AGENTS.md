@@ -18,8 +18,8 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 
 ## Repository map
 
-- `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, profile/privacy/account management, reporting, and the six-section admin page.
-- `src/components/` — reusable UI. `auth/` has route/discovery/suspension guards, `layout/` has the shell/navigation/footer, `schedule/` has the grid/add flow/term controls/utility rail, and `ui/` has shared brand/loading components.
+- `src/pages/` — routed screens: home, authentication/onboarding, schedule, class search/detail, student/classmate directories, profile/privacy/account management, reporting, and the multi-section admin page.
+- `src/components/` — reusable UI. `auth/` has route/discovery/suspension guards and the guest schedule prompt, `layout/` has the shell/navigation/footer, `schedule/` has the grid/add/import flow/term controls/utility rail, and `ui/` has shared brand/loading components.
 - `src/hooks/useSchedule.ts` and `src/hooks/useClassSearch.ts` — schedule loading/mutations and shared debounced class-search state.
 - `src/hooks/useCourseNameSearch.ts` — debounced reusable course-catalog search used before creating a class section.
 - `src/lib/supabase/client.ts` — browser Supabase client; only public URL/publishable-key variables belong here.
@@ -31,6 +31,7 @@ Removing an enrollment must never delete a shared class. Never collapse meeting 
 - `src/lib/teacher.ts` — teacher last-name normalization and practical invalid-input checks shared by forms and tests.
 - `src/lib/scheduleImport.ts` and `src/components/schedule/ScheduleImportDialog.tsx` — screenshot preparation, Worker client, editable import review, exact class reconciliation, and transactional whole-schedule replacement.
 - `src/lib/profile.ts`, `src/components/ui/ProfileAvatar.tsx`, and `src/pages/ProfilePage.tsx` — profile editing, public avatar presentation with fallback initials, Storage upload/removal, privacy controls, and confirmed self-service account deletion.
+- `src/lib/authDestination.ts` and `src/hooks/useNoIndex.ts` — safe post-auth routing intent plus guest discovery/public-preview indexing protection.
 - `src/pages/AdminPage.tsx` — admin user/report/class/history/role/audit workflows; the database still authorizes every action.
 - `src/config/brand.ts` — single source for site name, organization, attribution, URLs, and temporary logo path.
 - `src/styles.css` — centralized design tokens and responsive styles.
