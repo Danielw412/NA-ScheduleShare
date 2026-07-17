@@ -82,6 +82,16 @@ describe('schedule import replacement', () => {
     expect(importClassOptionLabel(option)).toBe('Use Lester · A Day P1 / B Day P1 · Full Year')
   })
 
+  it('clears a stale incomplete flag after every required field is valid', () => {
+    const reconciled = reconcileExactClassSelection({ ...row, flags: ['incomplete'] })
+    expect(reconciled.flags).not.toContain('incomplete')
+  })
+
+  it('keeps the incomplete flag while the row still fails validation', () => {
+    const reconciled = reconcileExactClassSelection({ ...row, term: 'unknown', flags: ['incomplete'] })
+    expect(reconciled.flags).toContain('incomplete')
+  })
+
   it('maps database replacement conflicts to a reviewable message', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'import_schedule_conflict' } })
     await expect(confirmScheduleImport([row])).rejects.toThrow('imported classes conflict with each other')

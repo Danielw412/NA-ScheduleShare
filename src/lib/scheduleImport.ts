@@ -195,17 +195,22 @@ export function exactClassOption(row: EditableScheduleImportRow, options = row.c
 
 export function reconcileExactClassSelection(row: EditableScheduleImportRow): EditableScheduleImportRow {
   const exact = exactClassOption(row)
-  if (exact) {
-    return {
-      ...row,
-      selected_existing_class_id: exact.id,
-      resolution: 'existing_class',
-    }
-  }
+  const reconciled = exact
+    ? {
+        ...row,
+        selected_existing_class_id: exact.id,
+        resolution: 'existing_class' as const,
+      }
+    : {
+        ...row,
+        selected_existing_class_id: null,
+        resolution: row.course ? 'new_class' as const : 'unresolved_course' as const,
+      }
+
+  if (importRowError(reconciled)) return reconciled
   return {
-    ...row,
-    selected_existing_class_id: null,
-    resolution: row.course ? 'new_class' : 'unresolved_course',
+    ...reconciled,
+    flags: reconciled.flags.filter((flag) => flag !== 'incomplete'),
   }
 }
 
