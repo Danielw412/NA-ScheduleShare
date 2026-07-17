@@ -190,6 +190,7 @@ Extraction rules:
 - Support visible formats such as P01(A-B), P02(A), P06(B), A Day Period 3, B4, and equivalent formats.
 - Convert full-year terms such as 25-26 to FY, semester 1 to S1, and semester 2 to S2.
 - Include Lunch and Study Hall.
+- "Health & PE" and variations should be canonicalized to "Gym"
 - Ignore grade-level, counselor, case-manager, attendance, and other administrative rows.
 - Preserve visible course and teacher names exactly. Do not invent, correct, expand, rename, or canonicalize them.
 - Return unknown when the term is not visible. The application will default an unknown term to Full Year during review.
