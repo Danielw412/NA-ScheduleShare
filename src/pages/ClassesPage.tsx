@@ -1,4 +1,4 @@
-import { CalendarDays, Flag, LockKeyhole, Search, Users } from 'lucide-react'
+import { CalendarDays, Flag, LockKeyhole, Search, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
@@ -53,8 +53,10 @@ function GuestClassesPage() {
             </div>
           </section>
         </section>
-        <section className="class-detail-panel">
+        {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
+        <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>
           {selected ? <>
+            <Link className="mobile-class-detail-close icon-button" to="/classes" aria-label="Close class details"><X aria-hidden="true" /></Link>
             <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
             <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{selected.meeting_slots.map((slot) => `${slot.day_type} Day, Period ${slot.period_number}`).join(' · ')}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
             <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Create an account and add your schedule to see who is in this class. Student privacy settings still apply.</p><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create Account</button></section>
@@ -101,6 +103,7 @@ function AuthenticatedClassesPage() {
     query,
     dayType: dayType || undefined,
     period: period || undefined,
+    limit: 1000,
   }, { search: executeSearch })
 
   const ownClasses = useMemo(() => schedule.enrollments
@@ -145,8 +148,10 @@ function AuthenticatedClassesPage() {
           {hasSchedule ? <section className="your-classes-section" aria-labelledby="your-classes-heading"><div><h2 id="your-classes-heading">Your Classes</h2><span>{ownClasses.length} active</span></div><p>Classes currently on your saved schedule.</p><div className="class-list">{filteredOwnClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{filteredOwnClasses.length === 0 ? <p className="empty-inline">None of your classes match these filters.</p> : null}</div></section> : <section className="your-classes-empty"><ImagePrompt /></section>}
           <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Discoverable sections</span></div><div className="class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : otherClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{!loading && !searchError && otherClasses.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
         </section>
-        <section className="class-detail-panel">
+        {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
+        <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>
           {selected ? <>
+            <Link className="mobile-class-detail-close icon-button" to="/classes" aria-label="Close class details"><X aria-hidden="true" /></Link>
             <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
             <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{selected.meeting_slots.map((slot) => `${slot.day_type} Day, Period ${slot.period_number}`).join(' · ')}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
             {ownClassIds.has(selected.id) ? <Link className="manage-class-link" to="/schedule">Manage this class on your schedule</Link> : null}

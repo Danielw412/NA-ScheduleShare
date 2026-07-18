@@ -46,7 +46,7 @@ export function useClassSearch(input: ClassSearchInput, options: UseClassSearchO
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [debounceMs, enabled, input.dayType, input.period, input.query, search])
+  }, [debounceMs, enabled, input.dayType, input.limit, input.period, input.query, search])
 
   return { error, loading, results }
 }

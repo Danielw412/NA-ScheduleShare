@@ -30,6 +30,7 @@ const catalog: CourseRecord[] = [
 
 const transcription = {
   schedule: true,
+  issue: '',
   rows: [{
     course: 'AP Biology (CHS)',
     teacher: 'Spak, Jill',
@@ -119,12 +120,13 @@ describe('Gemini request and response handling', () => {
         responseMimeType: 'application/json',
         thinkingConfig: { thinkingLevel: 'LOW', includeThoughts: false },
       })
-      expect(body.generationConfig.responseJsonSchema).toMatchObject({ required: ['schedule', 'rows'] })
+      expect(body.generationConfig.responseJsonSchema).toMatchObject({ required: ['schedule', 'issue', 'rows'] })
       const parts = body.contents[0].parts as Array<Record<string, unknown>>
       expect(parts).toHaveLength(2)
       expect(parts[1]).toHaveProperty('inlineData.mimeType', 'image/png')
       const prompt = String((parts[0] as { text: string }).text)
       expect(prompt).toContain('Never infer periods from row order')
+      expect(prompt).toContain('assign the other row to the complementary semester')
       expect(prompt).not.toContain(COURSE_ID)
       expect(prompt).not.toContain('ACTIVE CATALOGUE')
       return geminiResponse()
@@ -174,8 +176,8 @@ describe('Gemini request and response handling', () => {
   it('rejects malformed, incomplete, and extra model output', async () => {
     for (const output of [
       'not-json',
-      { schedule: true, rows: [{ course: 'AP Biology', teacher: 'Spak', term: 'FY' }] },
-      { schedule: true, rows: [{ ...transcription.rows[0], catalogue_id: COURSE_ID }] },
+      { schedule: true, issue: '', rows: [{ course: 'AP Biology', teacher: 'Spak', term: 'FY' }] },
+      { schedule: true, issue: '', rows: [{ ...transcription.rows[0], catalogue_id: COURSE_ID }] },
     ]) {
       const response = await handleScheduleImportRequest(request([png()]), dependencies({ output }))
       expect(response.status).toBe(502)
@@ -186,6 +188,17 @@ describe('Gemini request and response handling', () => {
   it('parses only the required structured shape', () => {
     expect(parseGeminiSchedule(JSON.stringify(transcription))).toEqual(transcription)
     expect(() => parseGeminiSchedule(JSON.stringify({ ...transcription, secret: 'no' }))).toThrow('invalid structured data')
+  })
+
+  it('returns the model\'s actionable screenshot problem to the user', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: { schedule: false, issue: 'The period column is cropped out. Include the period numbers and course names.', rows: [] },
+    }))
+    expect(response.status).toBe(422)
+    expect(await responseBody(response)).toMatchObject({
+      error: 'schedule_not_detected',
+      message: expect.stringContaining('The period column is cropped out'),
+    })
   })
 })
 
@@ -216,6 +229,7 @@ describe('normalization and backend catalogue matching', () => {
     const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
       output: {
         schedule: true,
+        issue: '',
         rows: [
           { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A1'] },
           { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A3'] },
@@ -232,7 +246,7 @@ describe('normalization and backend catalogue matching', () => {
   it('still merges exact duplicate screenshot rows', async () => {
     const duplicateRow = { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A2', 'B2'] }
     const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
-      output: { schedule: true, rows: [duplicateRow, duplicateRow] },
+      output: { schedule: true, issue: '', rows: [duplicateRow, duplicateRow] },
     }))
     expect(response.status).toBe(200)
     expect((await responseBody(response)).rows).toEqual([
@@ -247,6 +261,7 @@ describe('normalization and backend catalogue matching', () => {
     const defaulted = await handleScheduleImportRequest(request([png()]), dependencies({
       output: {
         schedule: true,
+        issue: '',
         rows: [{ course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: '', slots: ['A2', 'B2'] }],
       },
     }))
@@ -260,6 +275,7 @@ describe('normalization and backend catalogue matching', () => {
     const semesters = await handleScheduleImportRequest(request([png()]), dependencies({
       output: {
         schedule: true,
+        issue: '',
         rows: [
           { course: 'Lunch (SEM 1)', teacher: 'Staff, Unassigned', term: 'FY', slots: ['P07(A-B)'] },
           { course: 'Lunch (SEM 2)', teacher: 'Staff, Unassigned', term: '', slots: ['P07(A-B)'] },
@@ -272,6 +288,30 @@ describe('normalization and backend catalogue matching', () => {
     ])
   })
 
+  it('infers complementary semesters for distinct courses in the same complete meeting slot', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [
+          { course: 'Business Communications (CHS)', teacher: 'Sestili, Christopher', term: 'unknown', slots: ['P05(A-B)'] },
+          { course: 'Lunch (SEM 2)', teacher: 'Staff, Unassigned', term: 'S2', slots: ['P05(A-B)'] },
+          { course: 'Lunch (SEM 1)', teacher: 'Staff, Unassigned', term: 'S1', slots: ['P07(A-B)'] },
+          { course: 'Business Management', teacher: 'Sorisio, John', term: 'unknown', slots: ['P07(A-B)'] },
+        ],
+      },
+    }))
+    const rows = (await responseBody(response)).rows as Array<{ source_course_name: string; term: string; warnings: string[] }>
+    expect(rows.find((row) => row.source_course_name.startsWith('Business Communications'))).toMatchObject({
+      term: 'semester_1',
+      warnings: [expect.stringContaining('complementary semester')],
+    })
+    expect(rows.find((row) => row.source_course_name === 'Business Management')).toMatchObject({
+      term: 'semester_2',
+      warnings: [expect.stringContaining('complementary semester')],
+    })
+  })
+
   it('normalizes explicit semester spellings without defaulting them to full year', () => {
     expect(['SEM 1', 'Semester 1', 'S1'].map(normalizeTerm)).toEqual(Array(3).fill('semester_1'))
     expect(['SEM 2', 'Semester 2', 'S2'].map(normalizeTerm)).toEqual(Array(3).fill('semester_2'))
@@ -282,6 +322,7 @@ describe('normalization and backend catalogue matching', () => {
     const response = await handleScheduleImportRequest(request([png()]), dependencies({
       output: {
         schedule: true,
+        issue: '',
         rows: [{ course: 'Health & PE (FY/PT) 11', teacher: 'Winters, Heather', term: '', slots: ['P02(A)'] }],
       },
     }))

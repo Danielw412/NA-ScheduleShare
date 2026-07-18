@@ -72,7 +72,6 @@ export function SchedulePage() {
   }, [schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
-    if (!window.confirm(`Remove ${enrollment.class.course_name} from your schedule? The shared class will not be deleted.`)) return
     if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
     else {
       await removeEnrollment(enrollment.id)
@@ -136,7 +135,7 @@ export function SchedulePage() {
       <header className="page-heading schedule-heading">
         <div><h1>My Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
         <div className="schedule-heading-actions">
-          <button className="button button-secondary" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import screenshots</button>
+          <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import screenshots</button>
           <button className="button button-secondary" type="button" disabled={!hasSchedule} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> Share schedule</button>
         </div>
       </header>

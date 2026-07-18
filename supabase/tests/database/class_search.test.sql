@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(10);
 
 insert into public.course_names (id, name, normalized_name, source)
 values ('92000000-0000-4000-8000-000000000011', 'Cross Slot Lab', 'cross slot lab', 'admin');
@@ -31,6 +31,11 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
 
 select cmp_ok((select count(*) from public.search_classes('', null::public.day_type, null::smallint, 20)), '>=', 3::bigint, 'an empty search returns active classes for an authenticated student');
+select is(
+  (select count(*) from public.search_classes('', null::public.day_type, null::smallint, 1000)),
+  (select count(distinct c.id) from public.classes c join public.class_meeting_slots s on s.class_id = c.id where c.status = 'active'),
+  'the complete-catalog limit returns every active class section'
+);
 select is((select count(*) from public.search_classes('chem', null::public.day_type, null::smallint, 20) where class_id = '92000000-0000-4000-8000-000000000002'), 1::bigint, 'course-name search finds Academic Chemistry');
 select is((select count(*) from public.search_classes('patel', null::public.day_type, null::smallint, 20) where class_id = '92000000-0000-4000-8000-000000000002'), 1::bigint, 'teacher-last-name search finds Patel');
 select is((select count(*) from public.search_classes('', 'A'::public.day_type, null::smallint, 20) where class_id = '92000000-0000-4000-8000-000000000003'), 1::bigint, 'day-only filtering includes a matching A-day class');

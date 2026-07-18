@@ -147,6 +147,21 @@ describe('ScheduleImportDialog image input', () => {
     ]))
   })
 
+  it('shows the AI progress bar while screenshot analysis is running', async () => {
+    const user = userEvent.setup()
+    let finishImport: ((result: ScheduleImportResult) => void) | undefined
+    const importScreenshots = vi.fn(() => new Promise<ScheduleImportResult>((resolve) => { finishImport = resolve }))
+    renderDialog({ importScreenshots })
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
+
+    expect(screen.getByRole('progressbar', { name: 'AI screenshot analysis progress' })).toBeInTheDocument()
+    expect(screen.getByText('AI is analyzing your screenshots…')).toBeInTheDocument()
+
+    finishImport?.(importResult())
+    expect(await screen.findByText('Review every class')).toBeInTheDocument()
+  })
+
   it('can replace and remove individual screenshots before analysis', async () => {
     const user = userEvent.setup()
     renderDialog()

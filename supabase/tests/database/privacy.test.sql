@@ -1,5 +1,5 @@
 begin;
-select plan(16);
+select plan(20);
 
 -- Test identities
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_current, email_change_token_new, recovery_token)
@@ -58,6 +58,26 @@ select is(
   (select count(*) from public.class_enrollments where student_id = '90000000-0000-4000-8000-000000000001'),
   0::bigint,
   'direct enrollment queries do not reveal a shared class for a Private user'
+);
+select is(
+  (select full_name from public.search_student_directory('Private', null, null, null) where student_id = '90000000-0000-4000-8000-000000000001'),
+  'Private'::text,
+  'the directory exposes only a Private student first name'
+);
+select is(
+  (select can_view_schedule from public.search_student_directory('Private', null, null, null) where student_id = '90000000-0000-4000-8000-000000000001'),
+  false,
+  'the directory does not offer a Private student schedule'
+);
+select is(
+  (select count(*) from public.search_student_directory('Student', null, null, null) where student_id = '90000000-0000-4000-8000-000000000001'),
+  0::bigint,
+  'a hidden last name cannot be used to find a Private student'
+);
+select is(
+  (select count(*) from public.search_student_directory(null, null, 'Private Elective', null) where student_id = '90000000-0000-4000-8000-000000000001'),
+  0::bigint,
+  'course filters cannot reveal a Private student schedule'
 );
 
 reset role;

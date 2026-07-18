@@ -40,6 +40,7 @@ export interface ClassSearchInput {
   query: string
   dayType?: DayType
   period?: number
+  limit?: number
 }
 
 function safeClassSearchError(error: { code?: string; message?: string }) {
@@ -100,7 +101,7 @@ export async function searchClasses(input: ClassSearchInput, signal?: AbortSigna
     p_query: input.query,
     p_day_type: input.dayType,
     p_period_number: input.period,
-    p_limit: 20,
+    p_limit: input.limit ?? 20,
   })
   const { data, error } = await (signal ? request.abortSignal(signal) : request)
   if (error) {
@@ -353,7 +354,7 @@ export async function searchGuestClasses(input: ClassSearchInput): Promise<Class
     p_query: input.query,
     p_day_type: input.dayType,
     p_period_number: input.period,
-    p_limit: 20,
+    p_limit: input.limit ?? 20,
   })
   return (data as Array<Record<string, unknown>>).map((row) => ({
     id: row.class_id as string,

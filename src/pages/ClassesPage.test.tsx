@@ -54,6 +54,7 @@ afterEach(() => {
 describe('ClassesPage organization', () => {
   it('lists active classes first and removes them from Other Classes', () => {
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
+    expect(mocks.useClassSearch).toHaveBeenCalledWith(expect.objectContaining({ limit: 1000 }), expect.any(Object))
     expect(screen.getByRole('heading', { name: 'Your Classes' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Other Classes' })).toBeInTheDocument()
     expect(screen.getAllByText('My Biology')).toHaveLength(1)

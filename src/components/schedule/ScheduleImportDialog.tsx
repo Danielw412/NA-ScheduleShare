@@ -439,7 +439,7 @@ export function ScheduleImportDialog({
             </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {phase === 'processing' ? <div className="import-progress" role="status"><span /><div><strong>Analyzing screenshots…</strong><small>Identifying classes and combining results for review.</small></div></div> : null}
+            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes and combining results for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress"><span /></div></div> : null}
             <button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
               {phase === 'processing' ? 'Analyzing screenshots…' : 'Analyze screenshots'}
             </button>

@@ -1,4 +1,4 @@
-import { Menu, ShieldCheck, X } from 'lucide-react'
+import { LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
@@ -46,7 +46,7 @@ export function AppShell() {
           <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
           <div>
             <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
-            <button type="button" onClick={() => void signOut()}>Sign out</button>
+            <button className="profile-sign-out" type="button" onClick={() => void signOut()}><LogOut size={13} aria-hidden="true" /> Sign out</button>
           </div>
         </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
       </header>

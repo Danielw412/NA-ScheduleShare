@@ -135,6 +135,7 @@ interface GeminiRow {
 
 export interface GeminiSchedule {
   schedule: boolean
+  issue: string
   rows: GeminiRow[]
 }
 
@@ -145,6 +146,7 @@ interface NormalizedGeminiRow {
   meeting_slots: MeetingSlot[]
   duplicate: boolean
   term_defaulted: boolean
+  term_inferred: boolean
 }
 
 interface EncodedImage {
@@ -176,10 +178,10 @@ export class HttpError extends Error {
 export function buildPrompt(): string {
   return `Transcribe the student class schedule visible in the one to three supplied screenshots.
 
-Return only the required structured JSON data. Do not use Markdown, explanations, warnings, confidence scores, catalogue IDs, or extra fields.
+Return only the required structured JSON data. Do not use Markdown, confidence scores, catalogue IDs, or extra fields.
 
 Required shape:
-{"schedule":true,"rows":[{"course":"AP Biology (CHS)","teacher":"Spak, Jill","term":"FY","slots":["A1","B1","A2"]}]}
+{"schedule":true,"issue":"","rows":[{"course":"AP Biology (CHS)","teacher":"Spak, Jill","term":"FY","slots":["A1","B1","A2"]}]}
 
 Extraction rules:
 - Read every visible class from all supplied screenshots.
@@ -194,8 +196,13 @@ Extraction rules:
 - Ignore grade-level, counselor, case-manager, attendance, and other administrative rows.
 - Preserve visible course and teacher names exactly. Do not invent, correct, expand, rename, or canonicalize them.
 - Return unknown when the term is not visible. The application will default an unknown term to Full Year during review.
+- Resolve semester terms as a schedule constraint, not from row order: two distinct courses cannot occupy the same A/B day and period during the same semester.
+- When exactly two distinct rows have the same complete set of meeting slots, one row explicitly says semester 1 or semester 2, and the other row has no visible term, assign the other row to the complementary semester. Lunch follows the same rule as every other course; do not special-case a course name.
+- Apply that complementary-semester inference only when it is uniquely determined. If several rows conflict, both terms are unknown, a row explicitly says full year, or the meeting slots are not identical, leave the uncertain term as unknown.
+- Never infer a semester from vertical proximity, row order, or the mere fact that two rows are near one another.
 - Use slot strings in A1 through A9 or B1 through B9 form. Include every explicitly visible A/B meeting slot and remove duplicate slots.
-- If the images are not a readable student schedule, return {"schedule":false,"rows":[]}.
+- If the images are not a readable student schedule, return {"schedule":false,"issue":"a short, specific explanation of what is wrong and what the user should recapture","rows":[]}.
+- For a readable schedule, issue must be an empty string. For an unreadable, cropped, obstructed, unrelated, or blurry image, issue must explain the visible problem in plain language rather than using a generic failure message.
 - Return only the required structured data.
 
 The following courses are normally double-period courses and should have two meeting periods on each applicable day:
@@ -217,6 +224,7 @@ export const GEMINI_RESPONSE_SCHEMA = {
   additionalProperties: false,
   properties: {
     schedule: { type: 'boolean' },
+    issue: { type: 'string', maxLength: 280, description: 'Empty for a readable schedule; otherwise a concise, actionable description of the screenshot problem.' },
     rows: {
       type: 'array',
       maxItems: 30,
@@ -237,7 +245,7 @@ export const GEMINI_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['schedule', 'rows'],
+  required: ['schedule', 'issue', 'rows'],
 } as const
 
 export function buildGeminiRequest(
@@ -620,8 +628,12 @@ export function parseGeminiSchedule(rawOutput: string): GeminiSchedule {
       'The top-level Gemini output must be an object.',
     ])
   }
-  exactKeys(value, ['schedule', 'rows'], '$', errors)
+  exactKeys(value, ['schedule', 'issue', 'rows'], '$', errors)
   if (typeof value.schedule !== 'boolean') errors.push('$.schedule must be a boolean.')
+  if (typeof value.issue !== 'string' || value.issue.length > 280) errors.push('$.issue must be a string no longer than 280 characters.')
+  if (value.schedule === false && (typeof value.issue !== 'string' || collapseWhitespace(value.issue).length < 3)) {
+    errors.push('$.issue must explain why the screenshot cannot be used when $.schedule is false.')
+  }
   if (!Array.isArray(value.rows)) errors.push('$.rows must be an array.')
   if (Array.isArray(value.rows) && value.rows.length > 30) errors.push('$.rows may contain at most 30 rows.')
 
@@ -666,7 +678,7 @@ export function parseGeminiSchedule(rawOutput: string): GeminiSchedule {
   if (errors.length) {
     throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned invalid structured data.', errors)
   }
-  return { schedule: value.schedule as boolean, rows }
+  return { schedule: value.schedule as boolean, issue: collapseWhitespace(value.issue as string), rows }
 }
 
 export function normalizeTerm(value: string): ImportTerm | null {
@@ -724,32 +736,56 @@ function parseVisibleSlot(value: string): MeetingSlot[] {
 
 function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
   if (!schedule.schedule) {
-    throw new HttpError(422, 'schedule_not_detected', 'The uploaded image does not appear to contain a readable student schedule.')
+    throw new HttpError(422, 'schedule_not_detected', `The screenshot could not be used: ${schedule.issue}`)
   }
   const visibleRows = schedule.rows.filter((row) => !ADMINISTRATIVE_COURSE_PATTERN.test(row.course.trim()))
   if (visibleRows.length === 0) {
     throw new HttpError(422, 'schedule_unreadable', 'No visible schedule classes with explicit periods could be read.')
   }
 
-  const merged = new Map<string, NormalizedGeminiRow>()
-  for (const row of visibleRows) {
+  const preparedRows = visibleRows.map((row) => {
     const parsedTerm = normalizeTerm(row.term)
     if (!parsedTerm) throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid term.')
-    const embeddedTerm = termFromCourseName(row.course)
-    const visibleTerm = embeddedTerm ?? parsedTerm
+    return {
+      source_course_name: collapseWhitespace(row.course),
+      teacher_raw: collapseWhitespace(row.teacher),
+      term: termFromCourseName(row.course) ?? parsedTerm,
+      meeting_slots: normalizeSlots(row.slots),
+      term_inferred: false,
+    }
+  })
+
+  const rowsBySlots = new Map<string, typeof preparedRows>()
+  for (const row of preparedRows) {
+    const key = slotsKey(row.meeting_slots)
+    rowsBySlots.set(key, [...(rowsBySlots.get(key) ?? []), row])
+  }
+  for (const sameSlotRows of rowsBySlots.values()) {
+    if (sameSlotRows.length !== 2) continue
+    const unknownRows = sameSlotRows.filter((row) => row.term === 'unknown')
+    const semesterRows = sameSlotRows.filter((row) => row.term === 'semester_1' || row.term === 'semester_2')
+    if (unknownRows.length !== 1 || semesterRows.length !== 1) continue
+    if (normalizeCourseName(unknownRows[0].source_course_name) === normalizeCourseName(semesterRows[0].source_course_name)) continue
+    unknownRows[0].term = semesterRows[0].term === 'semester_1' ? 'semester_2' : 'semester_1'
+    unknownRows[0].term_inferred = true
+  }
+
+  const merged = new Map<string, NormalizedGeminiRow>()
+  for (const row of preparedRows) {
+    const visibleTerm = row.term
     const termDefaulted = visibleTerm === 'unknown'
     const term: ImportTerm = termDefaulted ? 'full_year' : visibleTerm
-    const meetingSlots = normalizeSlots(row.slots)
-    const key = `${normalizeCourseName(row.course)}|${collapseWhitespace(row.teacher).toLowerCase()}|${term}|${slotsKey(meetingSlots)}`
+    const key = `${normalizeCourseName(row.source_course_name)}|${row.teacher_raw.toLowerCase()}|${term}|${slotsKey(row.meeting_slots)}`
     const current = merged.get(key)
     if (!current) {
       merged.set(key, {
-        source_course_name: collapseWhitespace(row.course),
-        teacher_raw: collapseWhitespace(row.teacher),
+        source_course_name: row.source_course_name,
+        teacher_raw: row.teacher_raw,
         term,
-        meeting_slots: meetingSlots,
+        meeting_slots: row.meeting_slots,
         duplicate: false,
         term_defaulted: termDefaulted,
+        term_inferred: row.term_inferred,
       })
       continue
     }
@@ -757,6 +793,7 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
       ...current,
       duplicate: true,
       term_defaulted: current.term_defaulted && termDefaulted,
+      term_inferred: current.term_inferred || row.term_inferred,
     })
   }
   return [...merged.values()]
@@ -809,6 +846,9 @@ function buildReviewRows(
     }
     if (entry.term_defaulted) {
       warnings.push('Academic term was not visible, so Full Year was selected by default.')
+    }
+    if (entry.term_inferred) {
+      warnings.push('Academic term was inferred from the complementary semester course in the same meeting slot.')
     }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
