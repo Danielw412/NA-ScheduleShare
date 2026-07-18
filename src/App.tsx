@@ -26,10 +26,10 @@ export function App() {
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="classes" element={<ClassesPage />} />
           <Route path="classes/:classId" element={<ClassesPage />} />
-          <Route path="students" element={<StudentsPage />} />
-          <Route path="students/:studentId" element={<StudentDetailPage />} />
-          <Route path="directory" element={<StudentsPage />} />
           <Route element={<RequireAuth />}>
+            <Route path="students" element={<StudentsPage />} />
+            <Route path="students/:studentId" element={<StudentDetailPage />} />
+            <Route path="directory" element={<StudentsPage />} />
             <Route path="classmates" element={<ClassmatesPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="privacy" element={<Navigate to="/profile" replace />} />

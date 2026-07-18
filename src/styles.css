@@ -193,7 +193,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .home-links h2 { margin-bottom: 8px; font-size: 22px; }
 .home-links p { color: var(--muted); line-height: 1.5; }
 .home-links span { margin-top: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 800; }
-.home-links > a, .guest-student-card, .guest-class-preview-grid > article, .classmate-list article { animation: card-rise 200ms ease-out both; }
+.home-links > a, .guest-class-preview-grid > article, .classmate-list article { animation: card-rise 200ms ease-out both; }
 
 .schedule-heading { align-items: flex-end; }
 .schedule-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
@@ -452,14 +452,6 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .guest-unlock-card > svg { color: var(--brand-gold-dark); }
 .guest-unlock-card h2 { margin: 0 0 5px; font-size: 19px; }
 .guest-unlock-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.guest-student-search { width: min(620px, 100%); }
-.guest-search-help { margin: 8px 0 18px; color: var(--muted); font-size: 12px; }
-.guest-student-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.guest-student-card { min-width: 0; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 13px; padding: 18px; border: 1px solid var(--border-strong); background: var(--white); }
-.guest-student-card > .button { grid-column: 1 / -1; }
-.guest-student-card h2 { margin: 0 0 4px; font-size: 18px; }
-.guest-student-card p { margin: 0; color: var(--muted); font-size: 12px; }
-.guest-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: var(--brand-gold); }
 .guest-feature-preview { margin-top: 28px; padding: 24px; background: var(--ink); color: var(--white); }
 .guest-feature-preview h2 { font-size: 21px; }
 .guest-feature-preview > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -604,7 +596,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .class-browser { grid-template-columns: 1fr; }
   .class-list-panel { border-right: 0; border-bottom: 1px solid var(--border-strong); }
   .class-detail-panel { min-height: 430px; }
-  .guest-student-grid, .guest-class-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guest-class-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .directory-filters { grid-template-columns: 1fr 1fr; }
   .directory-filters .search-input { grid-column: 1 / -1; }
   .directory-filters > svg { display: none; }
@@ -707,7 +699,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .classmate-list article { grid-template-columns: 1fr; }
   .classmate-list article > .avatar { width: 46px; height: 46px; }
   .classmate-list article > :last-child { grid-column: 1; }
-  .guest-student-grid, .guest-class-preview-grid, .guest-feature-preview > div { grid-template-columns: 1fr; }
+  .guest-class-preview-grid, .guest-feature-preview > div { grid-template-columns: 1fr; }
   .profile-picture-card, .danger-zone { grid-template-columns: 1fr; align-items: start; }
   .profile-picture-actions, .profile-picture-actions .button, .danger-zone > .button, .profile-form > .button { width: 100%; }
   .profile-avatar-large { width: 92px; height: 92px; }
@@ -723,6 +715,6 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-  .page-transition, .home-links > a, .guest-student-card, .guest-class-preview-grid > article, .classmate-list article, .import-review-step, .success-checkmark { transform: none !important; }
+  .page-transition, .home-links > a, .guest-class-preview-grid > article, .classmate-list article, .import-review-step, .success-checkmark { transform: none !important; }
   ::view-transition-group(*) { animation-duration: .01ms !important; }
 }

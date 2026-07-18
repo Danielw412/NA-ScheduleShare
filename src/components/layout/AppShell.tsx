@@ -19,7 +19,6 @@ const guestNavigation = [
   { to: '/', label: 'Home' },
   { to: '/schedule', label: 'Schedule Preview' },
   { to: '/classes', label: 'View Classes' },
-  { to: '/students', label: 'Students' },
 ]
 
 export function AppShell() {
@@ -53,7 +52,7 @@ export function AppShell() {
       <footer className="site-footer">
         <p>{brand.attribution}</p>
         <nav aria-label="Footer navigation">
-          {user ? <NavLink to="/profile">Profile & privacy</NavLink> : <NavLink to="/students">Explore students</NavLink>}
+          {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
           {user ? <NavLink to="/report">Report an issue</NavLink> : null}
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
