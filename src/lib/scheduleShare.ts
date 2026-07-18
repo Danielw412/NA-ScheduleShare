@@ -2,7 +2,7 @@ import { supabase } from './supabase/client'
 import type { AcademicTerm, DayType, ScheduleEnrollment } from './domain'
 
 export const scheduleShareTitle = 'My A/B-Day Schedule | NA ScheduleShare'
-export const scheduleShareDescription = 'View my A/B-day class schedule on NA ScheduleShare.'
+export const scheduleShareDescription = 'View my schedule on NA ScheduleShare'
 
 const shareServiceBaseUrl = import.meta.env.VITE_SCHEDULE_SHARE_BASE_URL?.trim().replace(/\/$/, '')
 const tokenPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -11,6 +11,7 @@ export interface PublicScheduleRow {
   day_type: DayType
   period_number: number
   course_name: string
+  teacher_last_name: string
   academic_term: AcademicTerm
 }
 
@@ -30,11 +31,13 @@ function parsePublicScheduleRow(value: unknown): PublicScheduleRow | null {
   if (value.day_type !== 'A' && value.day_type !== 'B') return null
   if (!Number.isInteger(value.period_number) || Number(value.period_number) < 1 || Number(value.period_number) > 9) return null
   if (typeof value.course_name !== 'string' || value.course_name.trim().length === 0) return null
+  if (typeof value.teacher_last_name !== 'string' || value.teacher_last_name.trim().length === 0) return null
   if (value.academic_term !== 'full_year' && value.academic_term !== 'semester_1' && value.academic_term !== 'semester_2') return null
   return {
     day_type: value.day_type,
     period_number: Number(value.period_number),
     course_name: value.course_name.trim().slice(0, 120),
+    teacher_last_name: value.teacher_last_name.trim().slice(0, 120),
     academic_term: value.academic_term,
   }
 }
@@ -50,7 +53,7 @@ export function parsePublicScheduleShare(value: unknown): PublicScheduleShare {
 export function publicRowsToEnrollments(rows: PublicScheduleRow[]): ScheduleEnrollment[] {
   const grouped = new Map<string, PublicScheduleRow[]>()
   for (const row of rows) {
-    const key = `${row.academic_term}\u0000${row.course_name}`
+    const key = `${row.academic_term}\u0000${row.course_name}\u0000${row.teacher_last_name}`
     grouped.set(key, [...(grouped.get(key) ?? []), row])
   }
   return [...grouped.values()].map((courseRows, index) => {
@@ -72,7 +75,7 @@ export function publicRowsToEnrollments(rows: PublicScheduleRow[]): ScheduleEnro
         id: syntheticId,
         course_name_id: syntheticId,
         course_name: first.course_name,
-        teacher_last_name: '',
+        teacher_last_name: first.teacher_last_name,
         default_academic_term: first.academic_term,
         is_double_period: false,
         meeting_slots: meetingSlots,

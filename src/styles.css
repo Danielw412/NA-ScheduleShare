@@ -486,6 +486,11 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .schedule-import-empty-card p, .schedule-discovery-callout p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
 .schedule-import-empty-card > div:last-child { display: flex; flex-direction: column; gap: 8px; }
 .schedule-discovery-callout { margin-top: 22px; }
+.shared-schedule-upload { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 18px; margin-top: 24px; padding: 22px; border: 2px solid var(--brand-gold); border-left-width: 7px; background: #fff8e9; box-shadow: 4px 4px 0 #ead3a2; }
+.shared-schedule-upload > svg { color: var(--brand-gold-dark); }
+.shared-schedule-upload h2 { margin: 0 0 5px; font-size: 21px; }
+.shared-schedule-upload p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.shared-schedule-upload .button { white-space: nowrap; }
 
 .homepage-stat-settings { width: min(760px, 100%); display: grid; gap: 16px; }
 .homepage-stat-settings > div > p { color: var(--muted); line-height: 1.5; }
@@ -713,8 +718,8 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .mobile-class-detail-backdrop { position: fixed; inset: 0; z-index: 79; display: block; background: rgb(0 0 0 / 48%); }
   .class-detail-panel.is-open { position: fixed; inset: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); z-index: 80; display: block; min-height: 0; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--white); box-shadow: var(--shadow-lg); }
   .mobile-class-detail-close { position: sticky; top: 0; z-index: 1; display: grid; margin: 0 0 10px auto; background: var(--white); }
-  .your-classes-empty, .guest-unlock-card, .schedule-import-empty-card, .schedule-discovery-callout { grid-template-columns: 1fr; align-items: start; }
-  .your-classes-empty .button, .guest-unlock-card .button, .schedule-discovery-callout .button { width: 100%; }
+  .your-classes-empty, .guest-unlock-card, .schedule-import-empty-card, .schedule-discovery-callout, .shared-schedule-upload { grid-template-columns: 1fr; align-items: start; }
+  .your-classes-empty .button, .guest-unlock-card .button, .schedule-discovery-callout .button, .shared-schedule-upload .button { width: 100%; }
   .class-facts { grid-template-columns: 1fr; }
   .directory-filters { grid-template-columns: 1fr; }
   .directory-filters .search-input { grid-column: auto; }

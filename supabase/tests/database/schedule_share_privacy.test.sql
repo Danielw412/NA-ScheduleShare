@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(14);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -108,9 +108,14 @@ select is(
   '2',
   'the public response includes the schedule period'
 );
+select is(
+  public.get_public_schedule_share('99300000-0000-4000-8000-000000000001') #>> '{schedule,0,teacher_last_name}',
+  'Darwin',
+  'the public response includes the teacher last name'
+);
 select ok(
-  public.get_public_schedule_share('99300000-0000-4000-8000-000000000001')::text !~ '(99000000|99200000|share-owner|Darwin)',
-  'the public response omits user IDs, class IDs, emails, and teachers'
+  public.get_public_schedule_share('99300000-0000-4000-8000-000000000001')::text !~ '(99000000|99200000|share-owner)',
+  'the public response omits user IDs, class IDs, and emails'
 );
 select is(
   public.get_public_schedule_share('99300000-0000-4000-8000-000000000099')->>'available',

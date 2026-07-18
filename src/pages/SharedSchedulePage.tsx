@@ -1,10 +1,13 @@
-import { Link2Off } from 'lucide-react'
+import { ImagePlus, Link2Off } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
 import { TermSelector } from '../components/schedule/TermSelector'
+import { useAuth } from '../features/auth/AuthProvider'
+import { useSchedule } from '../hooks/useSchedule'
 import { useNoIndex } from '../hooks/useNoIndex'
 import type { AcademicTerm } from '../lib/domain'
+import { scheduleCompletion } from '../lib/schedule'
 import { fetchPublicScheduleShare, publicRowsToEnrollments, type PublicScheduleShare } from '../lib/scheduleShare'
 
 type LoadState =
@@ -14,6 +17,8 @@ type LoadState =
 
 export function SharedSchedulePage() {
   const { token = '' } = useParams()
+  const { user } = useAuth()
+  const schedule = useSchedule()
   const [term, setTerm] = useState<AcademicTerm>('semester_1')
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' })
   useNoIndex(true)
@@ -33,6 +38,7 @@ export function SharedSchedulePage() {
 
   const rows = loadState.status === 'loaded' ? loadState.share.schedule : []
   const enrollments = useMemo(() => publicRowsToEnrollments(rows), [rows])
+  const showScheduleUpload = !user || (!schedule.loading && scheduleCompletion(schedule.enrollments) < 100)
 
   if (loadState.status === 'loading') return <p className="muted" role="status">Loading shared schedule…</p>
   if (loadState.status === 'error') {
@@ -44,7 +50,7 @@ export function SharedSchedulePage() {
 
   return (
     <div className="shared-schedule-page">
-      <header className="page-heading"><div><h1>Shared Schedule</h1><p>A read-only A/B-day schedule shared through ScheduleShare.</p></div></header>
+      <header className="page-heading"><div><h1>Shared Schedule</h1></div></header>
       <TermSelector value={term} onChange={setTerm} />
       <div className="schedule-layout">
         <ScheduleGrid
@@ -57,6 +63,11 @@ export function SharedSchedulePage() {
           readOnly
         />
       </div>
+      {showScheduleUpload ? <section className="shared-schedule-upload">
+        <ImagePlus size={30} aria-hidden="true" />
+        <div><h2>Build your own schedule</h2><p>Upload your schedule to find classmates and share it with friends.</p></div>
+        <Link className="button button-import" to="/schedule?import=1"><ImagePlus size={18} aria-hidden="true" /> Upload My Schedule</Link>
+      </section> : null}
     </div>
   )
 }

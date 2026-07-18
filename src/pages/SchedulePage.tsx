@@ -35,6 +35,13 @@ function hasHandledOnboarding(userId: string): boolean {
   }
 }
 
+function isMobileShareDevice(): boolean {
+  const navigatorWithUserAgentData = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
+  if (typeof navigatorWithUserAgentData.userAgentData?.mobile === 'boolean') return navigatorWithUserAgentData.userAgentData.mobile
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 export function SchedulePage() {
   const { user, isAdmin, isDemo } = useAuth()
   const { openAccountPrompt } = useGuestAccountPrompt()
@@ -95,14 +102,14 @@ export function SchedulePage() {
   async function shareSchedule() {
     try {
       const url = await createScheduleShareUrl()
-      if (typeof navigator.share === 'function') {
+      if (isMobileShareDevice() && typeof navigator.share === 'function') {
         try {
           await navigator.share({
             title: scheduleShareTitle,
             text: scheduleShareDescription,
             url,
           })
-          setMessage('Schedule shared. Privacy rules still apply to anyone who opens it.')
+          setMessage('Schedule shared.')
         } catch (caught) {
           if (caught instanceof DOMException && caught.name === 'AbortError') return
           if (caught instanceof Error && caught.name === 'AbortError') return
@@ -110,7 +117,7 @@ export function SchedulePage() {
         }
       } else {
         await navigator.clipboard.writeText(url)
-        setMessage('Schedule link copied. Privacy rules still apply to anyone who opens it.')
+        setMessage('Schedule link copied.')
       }
       setShowSavedCheck(false)
     } catch (caught) {

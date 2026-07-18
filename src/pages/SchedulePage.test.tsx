@@ -18,7 +18,7 @@ vi.mock('../lib/supabase/data', () => ({ removeEnrollment: mocks.removeEnrollmen
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
   scheduleShareTitle: 'My A/B-Day Schedule | NA ScheduleShare',
-  scheduleShareDescription: 'View my A/B-day class schedule on NA ScheduleShare.',
+  scheduleShareDescription: 'View my schedule on NA ScheduleShare',
 }))
 vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ onRemove }: { onRemove: (enrollment: unknown) => void }) => <div data-testid="schedule-grid"><button type="button" onClick={() => onRemove({ id: 'enrollment-test', class: { course_name: 'Test Biology' } })}>Remove test class</button></div> }))
 vi.mock('../components/schedule/TermSelector', () => ({ TermSelector: () => <div data-testid="term-selector" /> }))
@@ -50,6 +50,9 @@ function renderPage(initialEntry = '/schedule') {
 
 beforeEach(() => {
   localStorage.clear()
+  Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Desktop browser' })
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
+  Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
   Object.defineProperty(navigator, 'share', { configurable: true, value: undefined })
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn() } })
   mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isAdmin: false, isDemo: false })
@@ -112,6 +115,7 @@ describe('SchedulePage onboarding', () => {
 
   it('opens the native share sheet with the dedicated URL, title, and description', async () => {
     const nativeShare = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone' })
     Object.defineProperty(navigator, 'share', { configurable: true, value: nativeShare })
     mocks.useSchedule.mockReturnValue({
       ...emptySchedule(),
@@ -123,7 +127,7 @@ describe('SchedulePage onboarding', () => {
 
     await waitFor(() => expect(nativeShare).toHaveBeenCalledWith({
       title: 'My A/B-Day Schedule | NA ScheduleShare',
-      text: 'View my A/B-day class schedule on NA ScheduleShare.',
+      text: 'View my schedule on NA ScheduleShare',
       url: 'https://share.example/share/99300000-0000-4000-8000-000000000001',
     }))
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
@@ -131,6 +135,7 @@ describe('SchedulePage onboarding', () => {
 
   it('treats AbortError as the user closing the native share sheet', async () => {
     const nativeShare = vi.fn().mockRejectedValue(new DOMException('Closed', 'AbortError'))
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone' })
     Object.defineProperty(navigator, 'share', { configurable: true, value: nativeShare })
     mocks.useSchedule.mockReturnValue({
       ...emptySchedule(),
@@ -158,5 +163,22 @@ describe('SchedulePage onboarding', () => {
       'https://share.example/share/99300000-0000-4000-8000-000000000001',
     ))
     expect(screen.getByRole('status')).toHaveTextContent('Schedule link copied')
+  })
+
+  it('copies the link on desktop even when native sharing is available', async () => {
+    const nativeShare = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'share', { configurable: true, value: nativeShare })
+    mocks.useSchedule.mockReturnValue({
+      ...emptySchedule(),
+      enrollments: [{ id: 'enrollment-1', student_id: 'student-1' }],
+    })
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Share schedule' }))
+
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      'https://share.example/share/99300000-0000-4000-8000-000000000001',
+    ))
+    expect(nativeShare).not.toHaveBeenCalled()
   })
 })
