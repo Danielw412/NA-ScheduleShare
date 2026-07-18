@@ -4,7 +4,7 @@
 
 NA ScheduleShare is a React + TypeScript + Vite website backed by Supabase. It lets students build and share A/B-day schedules with privacy controls. It is not an official school website.
 
-Make the smallest change that solves the request. Do not scan the entire repository unless the task genuinely affects multiple systems.
+Make the smallest change that solves the request if its a simple request. Do not scan the entire repository unless the task genuinely affects multiple systems.
 
 ## Start with the likely file
 
