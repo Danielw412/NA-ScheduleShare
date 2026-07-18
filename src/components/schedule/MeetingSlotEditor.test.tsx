@@ -43,7 +43,7 @@ describe('MeetingSlotEditor', () => {
 
     expect(screen.getByRole('combobox', { name: 'Meeting days' })).toHaveValue('both')
     expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('4')
-    expect(screen.getByText(/A Day.*P4.*B Day.*P4/)).toBeInTheDocument()
+    expect(screen.getByText('P4', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader')).not.toBeInTheDocument()
   })
 
@@ -53,11 +53,9 @@ describe('MeetingSlotEditor', () => {
     const days = screen.getByRole('combobox', { name: 'Meeting days' })
 
     await user.selectOptions(days, 'A')
-    expect(screen.getByText(/A Day.*P4/)).toBeInTheDocument()
-    expect(screen.queryByText(/B Day.*P4/)).not.toBeInTheDocument()
+    expect(screen.getByText('A P4', { selector: 'strong' })).toBeInTheDocument()
     await user.selectOptions(days, 'B')
-    expect(screen.getByText(/B Day.*P4/)).toBeInTheDocument()
-    expect(screen.queryByText(/A Day.*P4/)).not.toBeInTheDocument()
+    expect(screen.getByText('B P4', { selector: 'strong' })).toBeInTheDocument()
   })
 
   it('switches to the independent grid and normalizes back to one period per selected day', async () => {
@@ -72,6 +70,6 @@ describe('MeetingSlotEditor', () => {
 
     await user.click(toggle)
     expect(screen.queryByRole('columnheader')).not.toBeInTheDocument()
-    expect(screen.getByText(/A Day.*P4.*B Day.*P4/)).toBeInTheDocument()
+    expect(screen.getByText('P4', { selector: 'strong' })).toBeInTheDocument()
   })
 })

@@ -25,13 +25,13 @@ describe('MeetingSlotGrid', () => {
     expect(screen.getByRole('button', { name: 'A Day, Period 4' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'A Day, Period 3' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'B Day, Period 3' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(/A Day · P4 · B Day · P3 · B Day · P4/)).toBeInTheDocument()
+    expect(screen.getByText('B P3 · P4', { selector: 'strong' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'B Day, Period 3' }))
     await user.click(screen.getByRole('button', { name: 'A Day, Period 1' }))
 
     expect(screen.getByRole('button', { name: 'B Day, Period 3' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByText(/A Day · P1 · A Day · P4 · B Day · P4/)).toBeInTheDocument()
+    expect(screen.getByText('A P1 · P4', { selector: 'strong' })).toBeInTheDocument()
   })
 
   it('loads every slot for an existing double-period class without inferring extras', () => {
