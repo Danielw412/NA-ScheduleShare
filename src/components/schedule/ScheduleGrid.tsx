@@ -45,7 +45,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
                 <div className={`schedule-cell filled-cell ${isDoublePeriod ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
                   {conflicted ? <AlertTriangle className="conflict-icon" size={18} aria-label="Schedule conflict" /> : null}
                   <div className="class-cell-copy">
-                    <strong>{continuation ? `${enrollment.class.course_name} — continues` : enrollment.class.course_name}</strong>
+                    <strong>{continuation ? `${enrollment.class.course_name} - continues` : enrollment.class.course_name}</strong>
                     <span>{continuation ? 'Continues from previous period' : enrollment.class.teacher_last_name}</span>
                     {hasMultiplePeriods && !continuation ? <small>{dayType} Day · {daySlots.map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
                   </div>
