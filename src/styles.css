@@ -653,6 +653,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .onboarding-form { border-left: 0; border-right: 0; }
   .grade-options { grid-template-columns: repeat(4, 1fr); }
   .home-hero { margin-inline: -16px; padding: 34px 22px; }
+  .home-hero::after { display: none; }
   .home-hero h1 { font-size: 48px; }
   .completion-callout { grid-template-columns: auto 1fr; }
   .completion-callout a { grid-column: 2; }
