@@ -33,7 +33,7 @@ afterEach(() => {
 })
 
 describe('HomePage hero', () => {
-  it('opens registration in a modal for a guest upload and keeps exploration public', async () => {
+  it('opens registration in a modal for a guest upload', async () => {
     const user = userEvent.setup()
     renderPage()
     expect(screen.getByRole('heading', { name: 'Find out who’s in your classes.' })).toBeInTheDocument()
@@ -41,7 +41,7 @@ describe('HomePage hero', () => {
     await user.click(screen.getByRole('button', { name: /Upload My Schedule/ }))
     expect(screen.getByRole('dialog', { name: 'Create an account' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Explore ScheduleShare' })).toHaveAttribute('href', '/students')
+    expect(screen.queryByRole('link', { name: 'Explore ScheduleShare' })).not.toBeInTheDocument()
   })
 
   it('takes an authenticated user directly to the Schedule tab', () => {

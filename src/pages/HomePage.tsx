@@ -40,7 +40,6 @@ export function HomePage() {
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
           <div className="hero-actions">
             {user ? <Link className="button button-primary" to="/schedule">Upload My Schedule <ArrowRight size={18} /></Link> : <button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Upload My Schedule <ArrowRight size={18} /></button>}
-            <Link className="button button-secondary" to="/students">Explore ScheduleShare</Link>
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
