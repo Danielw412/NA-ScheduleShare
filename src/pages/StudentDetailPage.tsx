@@ -46,7 +46,7 @@ export function StudentDetailPage() {
       <Link className="back-link" to="/students"><ArrowLeft size={17} /> Student schedules</Link>
       <header className="page-heading"><div className="student-profile-heading" style={student ? { viewTransitionName: `student-${student.student_id}` } : undefined}>{student ? <ProfileAvatar userId={student.student_id} fullName={student.full_name} className="profile-avatar-heading" /> : null}<div><h1>{student ? `${student.full_name}’s Schedule` : 'Student Schedule'}</h1><p>Visible because this student’s privacy setting permits it.</p></div></div>{student ? <Link className="button button-secondary" to="/report" state={{ reportedUser: student }}><Flag size={17} /> Report user</Link> : null}</header>
       <TermSelector value={term} onChange={setTerm} />
-      {loading ? <p className="muted">Loading schedule…</p> : <ScheduleGrid enrollments={schedule} selectedTerm={term} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} readOnly />}
+      {loading ? <p className="muted">Loading schedule…</p> : <div className="schedule-layout"><ScheduleGrid enrollments={schedule} selectedTerm={term} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} readOnly /></div>}
     </div>
   )
 }
