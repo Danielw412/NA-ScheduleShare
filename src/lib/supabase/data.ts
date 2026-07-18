@@ -348,6 +348,25 @@ export async function adminUpdateClass(input: {
   if (error) throw error
 }
 
+export async function searchGuestClasses(input: ClassSearchInput): Promise<ClassSearchResult[]> {
+  const data = await callUntypedRpc('guest_search_classes', {
+    p_query: input.query,
+    p_day_type: input.dayType,
+    p_period_number: input.period,
+    p_limit: 20,
+  })
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    id: row.class_id as string,
+    course_name_id: row.course_name_id as string,
+    course_name: row.course_name as string,
+    teacher_last_name: row.teacher_last_name as string,
+    default_academic_term: row.default_academic_term as AcademicTerm,
+    is_double_period: Boolean(row.is_double_period),
+    meeting_slots: slotsFrom(row.meeting_slots),
+    score: Number(row.score),
+  }))
+}
+
 async function callUntypedRpc(functionName: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const client = requireClient()
   const rpc = client.rpc.bind(client) as unknown as (

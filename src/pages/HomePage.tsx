@@ -5,12 +5,14 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import { clearAuthDestination, hasPendingAuthDestination, pendingAuthDestination } from '../lib/authDestination'
+import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import type { HomepageStatistic } from '../lib/domain'
 import { scheduleCompletion } from '../lib/schedule'
 import { getHomepageStatistic } from '../lib/supabase/data'
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
+  const { openAccountPrompt } = useGuestAccountPrompt()
   const { enrollments } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const navigate = useNavigate()
@@ -37,7 +39,7 @@ export function HomePage() {
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
           <div className="hero-actions">
-            <Link className="button button-primary" to={user ? '/schedule' : '/auth?mode=sign-up&next=/schedule'}>Upload My Schedule <ArrowRight size={18} /></Link>
+            {user ? <Link className="button button-primary" to="/schedule">Upload My Schedule <ArrowRight size={18} /></Link> : <button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Upload My Schedule <ArrowRight size={18} /></button>}
             <Link className="button button-secondary" to="/students">Explore ScheduleShare</Link>
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
@@ -51,7 +53,7 @@ export function HomePage() {
         </section>
       ) : null}
       <section className="home-links" aria-label="Major features">
-        <Link to="/schedule"><CalendarDays aria-hidden="true" /><h2>{user ? 'My Schedule' : 'Schedule Preview'}</h2><p>{user ? 'Add, replace, and review your A/B-day classes.' : 'See how an A/B-day schedule is organized before joining.'}</p><span>{user ? 'Build schedule' : 'See preview'} <ArrowRight size={16} /></span></Link>
+        <Link to="/schedule"><CalendarDays aria-hidden="true" /><h2>{user ? 'My Schedule' : 'Schedule'}</h2><p>Add, replace, and review A/B-day classes.</p><span>Build schedule <ArrowRight size={16} /></span></Link>
         <Link to="/classes"><Search aria-hidden="true" /><h2>View Classes</h2><p>Search by class, teacher, day, or period.</p><span>Search classes <ArrowRight size={16} /></span></Link>
         <Link to={user ? '/classmates' : '/students'}><Users aria-hidden="true" /><h2>Classmates</h2><p>See what schedule uploading unlocks and find public student previews.</p><span>Find classmates <ArrowRight size={16} /></span></Link>
       </section>

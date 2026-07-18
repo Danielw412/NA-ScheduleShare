@@ -39,7 +39,7 @@ export function StudentDetailPage() {
     }
     void searchReportableUsers('', studentId).then((results) => setStudent(results[0] ?? null)).catch(() => undefined)
   }, [isDemo, navigationUser?.full_name, navigationUser?.grade, studentId, user])
-  if (!user) return <><section className="empty-state"><LockKeyhole size={38} /><h1>Schedule preview locked</h1><p>Real schedule data is never exposed to logged-out visitors.</p></section><GuestSchedulePrompt open onClose={() => void navigate('/students', { replace: true })} /></>
+  if (!user) return <><section className="empty-state"><LockKeyhole size={38} /><h1>Schedule locked</h1><p>Real schedule data is never exposed to logged-out visitors.</p></section><GuestSchedulePrompt open onClose={() => void navigate('/students', { replace: true })} /></>
   if (denied) return <section className="empty-state"><LockKeyhole size={38} /><h1>This schedule isn’t available</h1><p>The student’s current privacy setting does not allow you to view it.</p><Link to="/students">Back to students</Link></section>
   return (
     <div className="student-detail-page">

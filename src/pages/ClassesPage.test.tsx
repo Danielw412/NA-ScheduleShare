@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClassesPage } from './ClassesPage'
 
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
 vi.mock('../hooks/useClassSearch', () => ({ useClassSearch: mocks.useClassSearch }))
-vi.mock('../lib/supabase/data', () => ({ searchClasses: vi.fn(), getClassMembers: mocks.getClassMembers }))
+vi.mock('../lib/supabase/data', () => ({ searchClasses: vi.fn(), searchGuestClasses: vi.fn(), getClassMembers: mocks.getClassMembers }))
 
 const ownClass = {
   id: 'class-own',
@@ -57,7 +57,7 @@ describe('ClassesPage organization', () => {
     expect(screen.getByRole('heading', { name: 'Your Classes' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Other Classes' })).toBeInTheDocument()
     expect(screen.getAllByText('My Biology')).toHaveLength(1)
-    expect(screen.getByText('Other Chemistry')).toBeInTheDocument()
+    expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
   })
 
   it('shows the upload prompt when the student has no classes', () => {
@@ -67,11 +67,12 @@ describe('ClassesPage organization', () => {
     expect(screen.getByRole('link', { name: 'Upload Schedule' })).toHaveAttribute('href', '/schedule?import=1')
   })
 
-  it('uses only static roster-locked previews for logged-out visitors', () => {
+  it('shows real class search results but keeps rosters locked for logged-out visitors', () => {
     mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
-    render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
+    render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
     expect(screen.queryByRole('heading', { name: 'Your Classes' })).not.toBeInTheDocument()
-    expect(screen.getAllByText('Roster locked')).not.toHaveLength(0)
+    expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
+    expect(screen.getByText(/Create an account and add your schedule to see who is in this class/)).toBeInTheDocument()
     expect(mocks.getClassMembers).not.toHaveBeenCalled()
   })
 })

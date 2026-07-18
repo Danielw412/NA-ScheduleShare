@@ -90,6 +90,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 .guest-account-actions { justify-self: end; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 750; }
 .guest-account-actions > a:first-child { text-underline-offset: 4px; }
 .guest-nav-auth { display: none !important; }
+.guest-account-trigger { appearance: none; border: 0; background: transparent; font-weight: 680; text-align: left; }
 .page-container { width: min(100%, var(--max-width)); margin-inline: auto; padding: 34px var(--page-gutter) 64px; }
 .page-transition { animation: page-fade 180ms ease-out both; }
 .site-footer { min-height: 80px; padding: 22px var(--page-gutter); display: flex; align-items: center; justify-content: space-between; gap: 24px; background: var(--ink); color: var(--white); border-top: 3px solid var(--brand-gold); font-size: 13px; }
@@ -241,6 +242,10 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .success-checkmark { flex: 0 0 auto; animation: success-pop 220ms ease-out both; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgb(0 0 0 / 52%); }
+.account-dialog { position: relative; width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: clamp(28px, 5vw, 46px); background: var(--white); border-top: 6px solid var(--brand-gold); box-shadow: var(--shadow-lg); }
+.account-dialog > .icon-button { position: absolute; z-index: 1; top: 14px; right: 14px; }
+.account-dialog .auth-form-wrap { width: 100%; }
+.account-dialog .auth-form-wrap h2 { padding-right: 44px; }
 .guest-lock-dialog { position: relative; width: min(540px, calc(100vw - 32px)); display: grid; justify-items: start; gap: 14px; padding: clamp(24px, 5vw, 42px); background: var(--white); border-top: 6px solid var(--brand-gold); box-shadow: var(--shadow-lg); }
 .guest-lock-dialog > .icon-button { position: absolute; top: 14px; right: 14px; }
 .guest-lock-dialog > svg { color: var(--brand-gold-dark); }
@@ -586,6 +591,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .profile-menu { display: none; }
   .guest-account-actions { display: none; }
   .guest-nav-auth { display: inline-flex !important; }
+  .primary-nav .guest-account-trigger { min-height: 46px; align-items: center; padding: 0 2px; color: #292929; font-size: 14px; }
   .auth-page { grid-template-columns: 1fr; }
   .auth-brand-panel { min-height: 360px; border-right: 0; border-bottom: 7px solid var(--brand-gold); }
   .auth-brand-panel > p { display: none; }

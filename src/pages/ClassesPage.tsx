@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
+import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../hooks/useClassSearch'
 import { useNoIndex } from '../hooks/useNoIndex'
@@ -10,25 +11,56 @@ import { useSchedule } from '../hooks/useSchedule'
 import { demoEnrollments } from '../lib/demo-data'
 import type { ClassMemberResult, ClassSearchResult, DayType, ScheduleEnrollment } from '../lib/domain'
 import { hasMultiplePeriodsOnAnyDay, PERIOD_NUMBERS } from '../lib/schedule'
-import { getClassMembers, searchClasses } from '../lib/supabase/data'
+import { getClassMembers, searchClasses, searchGuestClasses } from '../lib/supabase/data'
 
 const demoClasses: ClassSearchResult[] = demoEnrollments.map((enrollment, index) => ({ ...enrollment.class, score: 100 - index }))
 
 export function ClassesPage() {
   const { user } = useAuth()
   useNoIndex(!user)
-  return user ? <AuthenticatedClassesPage /> : <GuestClassesPreview />
+  return user ? <AuthenticatedClassesPage /> : <GuestClassesPage />
 }
 
-function GuestClassesPreview() {
+function GuestClassesPage() {
+  const { classId } = useParams()
+  const { openAccountPrompt } = useGuestAccountPrompt()
+  const [query, setQuery] = useState('')
+  const [dayType, setDayType] = useState<DayType | ''>('')
+  const [period, setPeriod] = useState<number | ''>('')
+  const { error, loading, results } = useClassSearch({
+    query,
+    dayType: dayType || undefined,
+    period: period || undefined,
+  }, { search: searchGuestClasses })
+  const selected = results.find((result) => result.id === classId)
+
   return (
     <div className="classes-page guest-classes-page">
-      <header className="page-heading"><div><span className="eyebrow">Guest preview</span><h1>View Classes</h1><p>Explore a sample of the class browser. These are examples and contain no real rosters or student schedules.</p></div></header>
-      <section className="guest-unlock-card"><LockKeyhole aria-hidden="true" /><div><h2>Create an account and add your schedule to discover classmates.</h2><p>Class rosters and schedule matches remain unavailable until you sign in and are authorized by each student’s privacy setting.</p></div><Link className="button button-primary" to="/auth?mode=sign-up&next=/schedule">Create Account</Link></section>
-      <div className="guest-class-preview-grid">
-        {demoClasses.slice(0, 3).map((course) => <article key={course.id}><CalendarDays aria-hidden="true" /><div><h2>{course.course_name}</h2><p>{course.teacher_last_name}</p><span>{course.meeting_slots.map((slot) => `${slot.day_type} Day · Period ${slot.period_number}`).join(' · ')}</span></div><span className="private-label"><LockKeyhole size={15} /> Roster locked</span></article>)}
+      <header className="page-heading"><div><h1>View Classes</h1><p>Search actual classes by course, teacher, day, or period. Create an account to see who is enrolled.</p></div></header>
+      <div className="search-toolbar class-page-search-toolbar">
+        <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
+        <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
       </div>
-      <section className="guest-feature-preview"><h2>Build your schedule to unlock</h2><div><span>Personalized “Your Classes”</span><span>Privacy-aware class rosters</span><span>Shared-classmate matches</span></div></section>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      <div className="class-browser">
+        <section className="class-list-panel organized-class-list">
+          <section className="other-classes-section" aria-labelledby="guest-classes-heading">
+            <div><h2 id="guest-classes-heading">Classes</h2><span>Current class catalog</span></div>
+            <div className="class-list" aria-live="polite">
+              {loading ? <p className="muted">Searching…</p> : results.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}
+              {!loading && !error && results.length === 0 ? <p className="empty-inline">No matching classes.</p> : null}
+            </div>
+          </section>
+        </section>
+        <section className="class-detail-panel">
+          {selected ? <>
+            <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
+            <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{selected.meeting_slots.map((slot) => `${slot.day_type} Day, Period ${slot.period_number}`).join(' · ')}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
+            <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Create an account and add your schedule to see who is in this class. Student privacy settings still apply.</p><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create Account</button></section>
+          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Open a result to see its real meeting slots. Rosters remain private until you create an account.</p></div>}
+        </section>
+      </div>
     </div>
   )
 }

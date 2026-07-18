@@ -1,6 +1,7 @@
-import { CheckCircle2, ImagePlus, LockKeyhole, Share2, Users } from 'lucide-react'
+import { CheckCircle2, ImagePlus, Plus, Share2, Users } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
 import { ScheduleImportDialog } from '../components/schedule/ScheduleImportDialog'
@@ -8,7 +9,6 @@ import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
-import { demoEnrollments } from '../lib/demo-data'
 import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
 import { removeEnrollment, updateEnrollmentTerm } from '../lib/supabase/data'
 
@@ -36,6 +36,7 @@ function hasHandledOnboarding(userId: string): boolean {
 
 export function SchedulePage() {
   const { user, isAdmin, isDemo } = useAuth()
+  const { openAccountPrompt } = useGuestAccountPrompt()
   const schedule = useSchedule()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedTerm, setSelectedTerm] = useState<AcademicTerm>('full_year')
@@ -116,14 +117,15 @@ export function SchedulePage() {
   if (!user) {
     return (
       <div className="schedule-page guest-schedule-page">
-        <header className="page-heading"><div><span className="eyebrow">Guest preview</span><h1>Schedule Preview</h1><p>Explore the A/B-day layout. The classes below are examples, not student data.</p></div></header>
-        <section className="guest-unlock-card">
-          <LockKeyhole aria-hidden="true" />
-          <div><h2>Create an account and add your schedule to discover classmates.</h2><p>Your real classes and schedule matches stay protected by each student’s privacy setting.</p></div>
-          <Link className="button button-primary" to="/auth?mode=sign-up&next=/schedule">Create Account</Link>
-        </section>
+        <header className="page-heading schedule-heading">
+          <div><h1>Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
+          <div className="schedule-heading-actions">
+            <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
+            <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
+          </div>
+        </header>
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-        <ScheduleGrid enrollments={demoEnrollments.slice(0, 3)} selectedTerm={selectedTerm} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} readOnly />
+        <ScheduleGrid enrollments={[]} selectedTerm={selectedTerm} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
       </div>
     )
   }
