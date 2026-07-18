@@ -88,7 +88,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 .profile-avatar > img { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; background: var(--brand-gold); }
 .mobile-menu-button { display: none; justify-self: end; width: 44px; height: 44px; border: 0; background: transparent; }
 .guest-account-actions { justify-self: end; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 750; }
-.guest-account-actions > a:first-child { text-underline-offset: 4px; }
+.guest-account-actions > .text-button { font-size: 13px; }
 .guest-nav-auth { display: none !important; }
 .guest-account-trigger { appearance: none; border: 0; background: transparent; font-weight: 680; text-align: left; }
 .page-container { width: min(100%, var(--max-width)); margin-inline: auto; padding: 34px var(--page-gutter) 64px; }

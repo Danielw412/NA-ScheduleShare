@@ -1,8 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AllowGuest, RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
+import { AuthPromptRoute } from './components/auth/AuthPromptRoute'
 import { AppShell } from './components/layout/AppShell'
 import { AdminPage } from './pages/AdminPage'
-import { AuthPage } from './pages/AuthPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ClassmatesPage } from './pages/ClassmatesPage'
 import { HomePage } from './pages/HomePage'
@@ -16,7 +16,7 @@ import { StudentsPage } from './pages/StudentsPage'
 export function App() {
   return (
     <Routes>
-      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth" element={<AuthPromptRoute />} />
       <Route element={<RequireAuth />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
       </Route>

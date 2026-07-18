@@ -1,6 +1,6 @@
 import { Menu, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
@@ -25,7 +25,7 @@ const guestNavigation = [
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user, profile, isAdmin, signOut } = useAuth()
-  const { openAccountPrompt } = useGuestAccountPrompt()
+  const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
   return (
@@ -39,7 +39,7 @@ export function AppShell() {
           {primaryNavigation.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
           ))}
-          {!user ? <><NavLink className="guest-nav-auth" to="/auth" onClick={() => setMenuOpen(false)}>Sign in</NavLink><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openAccountPrompt('/schedule') }}>Create account</button></> : null}
+          {!user ? <><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openSignInPrompt('/schedule') }}>Sign in</button><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openAccountPrompt('/schedule') }}>Create account</button></> : null}
           {isAdmin ? <NavLink to="/admin" onClick={() => setMenuOpen(false)}><ShieldCheck size={16} aria-hidden="true" /> Admin</NavLink> : null}
         </nav>
         {user ? <div className="profile-menu">
@@ -48,7 +48,7 @@ export function AppShell() {
             <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
             <button type="button" onClick={() => void signOut()}>Sign out</button>
           </div>
-        </div> : <div className="guest-account-actions"><Link to="/auth">Sign in</Link><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
+        </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
       </header>
       <main className="page-container"><div className="page-transition" key={location.pathname}><Outlet /></div></main>
       <footer className="site-footer">

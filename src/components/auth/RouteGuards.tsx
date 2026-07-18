@@ -1,14 +1,19 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { LoadingScreen } from '../ui/LoadingScreen'
+import { useGuestAccountPrompt } from './GuestAccountPrompt'
 import { SuspensionNotice } from './SuspensionNotice'
 
 export function RequireAuth() {
   const auth = useAuth()
   const location = useLocation()
+  const { openSignInPrompt } = useGuestAccountPrompt()
+  useEffect(() => {
+    if (!auth.loading && !auth.user) openSignInPrompt(location.pathname)
+  }, [auth.loading, auth.user, location.pathname, openSignInPrompt])
   if (auth.loading) return <LoadingScreen />
-  if (auth.configurationMissing) return <Navigate to="/auth" replace />
-  if (!auth.user) return <Navigate to="/auth" replace state={{ from: location.pathname }} />
+  if (!auth.user) return <Navigate to="/" replace />
   if (auth.accountState?.suspended || auth.accountState?.deleted) return <SuspensionNotice />
   if (auth.profile && !auth.profile.onboarding_completed && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
