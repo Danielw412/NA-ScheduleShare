@@ -198,3 +198,7 @@ export interface ScheduleImportDiagnosticLog {
   created_at: string
   expires_at: string
 }
+
+export interface ScheduleImportUiSettings {
+  progress_bar_duration_ms: number
+}

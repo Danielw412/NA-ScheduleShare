@@ -1,8 +1,9 @@
 import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
-import { hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
+import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
   findClassesForCourse,
@@ -21,7 +22,7 @@ import {
   type ScheduleImportDeveloperDiagnostics,
   type ScheduleImportDeveloperOptions,
 } from '../../lib/scheduleImport'
-import { adminListScheduleImportModels } from '../../lib/supabase/data'
+import { adminListScheduleImportModels, getScheduleImportUiSettings } from '../../lib/supabase/data'
 import { normalizeTeacherLastName } from '../../lib/teacher'
 import { MeetingSlotGrid } from './MeetingSlotGrid'
 
@@ -42,6 +43,7 @@ export interface ScheduleImportDialogProps {
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
   confirmImport?: (rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>
   loadDeveloperModels?: () => Promise<ScheduleImportModelRecord[]>
+  loadUiSettings?: () => Promise<{ progress_bar_duration_ms: number }>
   onManualEntry?: () => void
 }
 
@@ -164,10 +166,6 @@ function academicTermLabel(term: EditableScheduleImportRow['term']): string {
   return 'Full Year'
 }
 
-function meetingSlotsLabel(slots: MeetingSlot[]): string {
-  return sortMeetingSlots(slots).map((slot) => `${slot.day_type} P${slot.period_number}`).join(' · ') || 'No periods'
-}
-
 function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
   return Boolean(rowError)
     || conflict
@@ -188,6 +186,7 @@ export function ScheduleImportDialog({
   loadClassOptions = findClassesForCourse,
   confirmImport = confirmScheduleImport,
   loadDeveloperModels = adminListScheduleImportModels,
+  loadUiSettings = getScheduleImportUiSettings,
   onManualEntry,
 }: ScheduleImportDialogProps) {
   const [images, setImages] = useState<ImportImage[]>([])
@@ -202,12 +201,24 @@ export function ScheduleImportDialog({
   const [developerThinkingLevel, setDeveloperThinkingLevel] = useState<NonNullable<ScheduleImportDeveloperOptions['thinkingLevel']>>('low')
   const [developerData, setDeveloperData] = useState<ScheduleImportDeveloperDiagnostics | null>(null)
   const [developerModelError, setDeveloperModelError] = useState<string | null>(null)
+  const [progressDurationMs, setProgressDurationMs] = useState(6500)
   const imagesRef = useRef(images)
   imagesRef.current = images
 
   useEffect(() => () => {
     imagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
   }, [])
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    void loadUiSettings().then((settings) => {
+      if (active && Number.isFinite(settings.progress_bar_duration_ms)) {
+        setProgressDurationMs(Math.min(30000, Math.max(1000, settings.progress_bar_duration_ms)))
+      }
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [loadUiSettings, open])
 
   const addFiles = useCallback(async (incoming: File[], preferredIndex?: number) => {
     setError(null)
@@ -341,6 +352,24 @@ export function ScheduleImportDialog({
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
       setMessage(result.warnings.join(' '))
       setDeveloperData(result.developer ?? null)
+      const canAutoReplace = !developerMode
+        && editable.length > 0
+        && editable.every((row) => row.confidence > 0.8 && !importRowError(row))
+        && editable.every((row) => !row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag)))
+        && duplicateImportIndexes(editable).size === 0
+        && conflictingImportIndexes(editable).size === 0
+      if (canAutoReplace) {
+        setPhase('saving')
+        try {
+          const replacement = await confirmImport(editable)
+          await onImported(replacement)
+          closeDialog()
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : 'The automatically reviewed schedule could not be saved.')
+          setPhase('review')
+        }
+        return
+      }
       setPhase('review')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The schedule could not be imported.')
@@ -377,14 +406,14 @@ export function ScheduleImportDialog({
   }
 
   if (!open) return null
-  return (
+  return createPortal(
     <div className="dialog-backdrop import-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && phase !== 'saving') closeDialog() }}>
       <section className="class-dialog schedule-import-dialog" role="dialog" aria-modal="true" aria-labelledby="schedule-import-title">
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
             <h2 id="schedule-import-title">{onboarding ? 'Add your schedule in about a minute' : 'Import screenshots'}</h2>
-            <p>{onboarding ? 'Upload screenshots, and ScheduleShare will identify your classes.' : 'AI-assisted review · Nothing is saved until you confirm'}</p>
+            <p>{onboarding ? 'Upload screenshots, and ScheduleShare will identify your classes.' : 'Create your schedule using a screenshot · Powered by Google Gemini'}</p>
           </div>
           <button className="icon-button" type="button" aria-label="Close import dialog" onClick={closeDialog} disabled={phase === 'saving'}><X aria-hidden="true" /></button>
         </header>
@@ -439,7 +468,7 @@ export function ScheduleImportDialog({
             </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes and combining results for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress"><span /></div></div> : null}
+            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes and combining results for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
             <button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
               {phase === 'processing' ? 'Analyzing screenshots…' : 'Analyze screenshots'}
             </button>
@@ -488,7 +517,7 @@ export function ScheduleImportDialog({
                         <span><small>Course</small><strong>{row.course?.name ?? row.source_course_name}</strong></span>
                         <span><small>Teacher</small><strong>{teacherForImportedCourse(row.teacher_last_name, row.course?.name) || 'Not resolved'}</strong></span>
                         <span><small>Term</small><strong>{academicTermLabel(row.term)}</strong></span>
-                        <span><small>Periods</small><strong>{meetingSlotsLabel(row.meeting_slots)}</strong></span>
+                        <span><small>Periods</small><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'No periods'}</strong></span>
                         <span><small>Class action</small><strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong></span>
                       </span>
                       <div className="import-flags">
@@ -564,6 +593,7 @@ export function ScheduleImportDialog({
           </div>
         )}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }

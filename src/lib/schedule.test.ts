@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MeetingSlot, ScheduleEnrollment } from './domain'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
+import { buildNormalMeetingSlots, compactMeetingSlotLabels, defaultDoubleMeetingSlots, defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
 
 function enrollment(id: string, term: ScheduleEnrollment['academic_term'], meetingSlots: MeetingSlot[]): ScheduleEnrollment {
   return {
@@ -150,5 +150,18 @@ describe('explicit meeting-slot selections', () => {
       { day_type: 'B', period_number: 4 },
     ])).toBe(true)
     expect(hasMultiplePeriodsOnAnyDay(defaultMeetingSlots('A', 4))).toBe(false)
+  })
+
+  it('groups matching A/B periods while preserving single-day periods', () => {
+    expect(compactMeetingSlotLabels([
+      { day_type: 'A', period_number: 5 },
+      { day_type: 'B', period_number: 5 },
+    ])).toEqual(['P5'])
+    expect(compactMeetingSlotLabels([{ day_type: 'B', period_number: 5 }])).toEqual(['B P5'])
+    expect(compactMeetingSlotLabels([
+      { day_type: 'A', period_number: 1 },
+      { day_type: 'A', period_number: 2 },
+      { day_type: 'B', period_number: 1 },
+    ])).toEqual(['P1', 'A P2'])
   })
 })

@@ -151,7 +151,8 @@ describe('ScheduleImportDialog image input', () => {
     const user = userEvent.setup()
     let finishImport: ((result: ScheduleImportResult) => void) | undefined
     const importScreenshots = vi.fn(() => new Promise<ScheduleImportResult>((resolve) => { finishImport = resolve }))
-    renderDialog({ importScreenshots })
+    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
+    renderDialog({ importScreenshots, confirmImport })
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
 
@@ -159,7 +160,8 @@ describe('ScheduleImportDialog image input', () => {
     expect(screen.getByText('AI is analyzing your screenshots…')).toBeInTheDocument()
 
     finishImport?.(importResult())
-    expect(await screen.findByText('Review every class')).toBeInTheDocument()
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Review every class')).not.toBeInTheDocument()
   })
 
   it('can replace and remove individual screenshots before analysis', async () => {
@@ -303,8 +305,9 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(rows[0].meeting_slots).toContainEqual({ day_type: 'A', period_number: 2 })
   })
 
-  it('defaults a missing review term to Full Year and automatically joins the exact existing class', async () => {
+  it('defaults a missing term to Full Year and automatically joins the exact existing class', async () => {
     const user = userEvent.setup()
+    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
     const existing = {
       id: 'class-existing',
       course_id: COURSE_ID,
@@ -312,20 +315,18 @@ describe('ScheduleImportDialog review and confirmation', () => {
       term: 'full_year' as const,
       meeting_slots: [{ day_type: 'A' as const, period_number: 1 }, { day_type: 'B' as const, period_number: 1 }],
     }
-    renderDialog({ importScreenshots: vi.fn(async () => importResult({
+    renderDialog({ confirmImport, importScreenshots: vi.fn(async () => importResult({
       term: 'unknown',
       warnings: ['Academic term was not visible, so Full Year was selected by default.'],
       class_options: [existing],
     })) })
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
-    const rowToggle = screen.getByRole('button', { name: /AP Statistics.*Lester.*Full Year.*A P1.*B P1.*Use existing class/i })
-    expect(rowToggle).toHaveAttribute('aria-expanded', 'false')
-    await user.click(rowToggle)
-    expect(screen.getByRole('option', { name: 'Use Lester · A Day P1 / B Day P1 · Full Year' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Academic term')).toHaveValue('full_year')
-    await waitFor(() => expect(screen.getByLabelText('Class action')).toHaveValue('class-existing'))
-    expect(screen.getByText('Will use an existing class.')).toBeInTheDocument()
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
+    expect(confirmImport.mock.calls[0][0][0]).toMatchObject({
+      term: 'full_year',
+      selected_existing_class_id: 'class-existing',
+    })
   })
 
   it('collapses high-confidence reviewed rows while keeping problematic rows expanded', async () => {
@@ -356,14 +357,28 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
   })
 
-  it('replaces a partially filled schedule instead of treating it as a conflict', async () => {
+  it('keeps an 80%-confidence extraction in review', async () => {
     const user = userEvent.setup()
-    renderDialog({ currentEnrollments: [currentEnrollment()] })
+    const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
+    renderDialog({
+      confirmImport,
+      importScreenshots: vi.fn(async () => importResult({ confidence: 0.8 })),
+    })
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
+
     expect(await screen.findByText('Review every class')).toBeInTheDocument()
+    expect(confirmImport).not.toHaveBeenCalled()
+  })
+
+  it('automatically replaces a partially filled schedule instead of treating it as a conflict', async () => {
+    const user = userEvent.setup()
+    const confirmImport = vi.fn(async () => ({ added: 1, removed: 1 }))
+    renderDialog({ currentEnrollments: [currentEnrollment()], confirmImport })
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: 'Analyze screenshots' }))
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
     expect(screen.queryByText('Schedule conflict')).not.toBeInTheDocument()
-    expect(screen.getByText(/replace the 1 class currently on your schedule/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeEnabled()
+    expect(screen.queryByText('Review every class')).not.toBeInTheDocument()
   })
 })

@@ -26,7 +26,7 @@ export function ClassmatesPage() {
   return (
     <DiscoveryGate>
       <div className="classmates-page">
-        <header className="page-heading"><div><h1>Classmate Schedules</h1><p>People who share at least one active class with you. Each student’s privacy setting is applied automatically.</p></div></header>
+        <header className="page-heading"><div><h1>Classmate Schedules</h1><p>People who share at least one class with you</p></div></header>
         {loading ? <p className="muted">Loading classmates…</p> : null}
         {error ? <p className="error-banner" role="alert">{error}</p> : null}
         {!loading && !error && classmates.length === 0 ? <section className="empty-state"><Users size={36} /><h2>No shared classmates found yet.</h2><p>Finish your schedule or check back as more students join.</p><Link to="/schedule">Finish my schedule</Link></section> : null}

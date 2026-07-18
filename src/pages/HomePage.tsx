@@ -38,6 +38,7 @@ export function HomePage() {
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
+          <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
           <div className="hero-actions">
             {user ? <Link className="button button-primary" to="/schedule">Upload My Schedule <ArrowRight size={18} /></Link> : <button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Upload My Schedule <ArrowRight size={18} /></button>}
           </div>
@@ -52,9 +53,9 @@ export function HomePage() {
         </section>
       ) : null}
       <section className="home-links" aria-label="Major features">
-        <Link to="/schedule"><CalendarDays aria-hidden="true" /><h2>{user ? 'My Schedule' : 'Schedule'}</h2><p>Add, replace, and review A/B-day classes.</p><span>Build schedule <ArrowRight size={16} /></span></Link>
-        <Link to="/classes"><Search aria-hidden="true" /><h2>View Classes</h2><p>Search by class, teacher, day, or period.</p><span>Search classes <ArrowRight size={16} /></span></Link>
-        <Link to={user ? '/classmates' : '/students'}><Users aria-hidden="true" /><h2>Classmates</h2><p>See what schedule uploading unlocks and find public student previews.</p><span>Find classmates <ArrowRight size={16} /></span></Link>
+        <Link to="/schedule"><CalendarDays aria-hidden="true" /><h2>{user ? 'My Schedule' : 'Schedule'}</h2><p>Create and view your schedule.</p><span>Build schedule <ArrowRight size={16} /></span></Link>
+        <Link to="/classes"><Search aria-hidden="true" /><h2>View Classes</h2><p>Find out who's in each class</p><span>Search classes <ArrowRight size={16} /></span></Link>
+        <Link to={user ? '/classmates' : '/students'}><Users aria-hidden="true" /><h2>Classmates</h2><p>Find who you share a class with</p><span>Find classmates <ArrowRight size={16} /></span></Link>
       </section>
     </div>
   )

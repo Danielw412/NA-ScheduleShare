@@ -4,7 +4,7 @@ import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { AcademicTerm, ClassDefinition, ClassSearchResult, CourseNameSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, type MeetingDaySelection, validateMeetingSlots } from '../../lib/schedule'
+import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, formatMeetingSlotSummary, type MeetingDaySelection, validateMeetingSlots } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
 import { normalizeTeacherLastName, teacherLastNameError } from '../../lib/teacher'
 import { MeetingSlotEditor } from './MeetingSlotEditor'
@@ -209,7 +209,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
               {loading ? <p className="muted">Searching…</p> : searchError ? null : results.length === 0 ? <p className="empty-inline">No classes match this cell and search.</p> : results.map((result) => (
                 <label className={selected?.id === result.id ? 'class-result is-selected' : 'class-result'} key={result.id}>
                   <input type="radio" name="class-result" checked={selected?.id === result.id} onChange={() => { setSelected(result); setTerm(result.default_academic_term) }} />
-                  <span><strong>{result.course_name}</strong><small>{result.teacher_last_name}</small><em>{result.meeting_slots.map((slot) => `${slot.day_type} Day · P${slot.period_number}`).join(' · ')} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
+                  <span><strong>{result.course_name}</strong><small>{result.teacher_last_name}</small><em>{formatMeetingSlotSummary(result.meeting_slots)} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
                 </label>
               ))}
             </div>

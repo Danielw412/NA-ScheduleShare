@@ -52,6 +52,20 @@ export function sortMeetingSlots(meetingSlots: MeetingSlot[]): MeetingSlot[] {
   )
 }
 
+export function compactMeetingSlotLabels(meetingSlots: MeetingSlot[]): string[] {
+  const daysByPeriod = new Map<number, Set<DayType>>()
+  for (const slot of meetingSlots) {
+    const days = daysByPeriod.get(slot.period_number) ?? new Set<DayType>()
+    days.add(slot.day_type)
+    daysByPeriod.set(slot.period_number, days)
+  }
+  return [...daysByPeriod.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([period, days]) => days.has('A') && days.has('B')
+      ? `P${period}`
+      : `${days.has('A') ? 'A' : 'B'} P${period}`)
+}
+
 export function defaultMeetingSlots(dayType: DayType, period: number): MeetingSlot[] {
   if (!Number.isInteger(period) || period < 1 || period > MAX_PERIOD) throw new Error('invalid_period')
   const otherDay: DayType = dayType === 'A' ? 'B' : 'A'
@@ -111,9 +125,7 @@ export function isMeetingSlotContinuation(meetingSlots: MeetingSlot[], slot: Mee
 }
 
 export function formatMeetingSlotSummary(meetingSlots: MeetingSlot[]): string {
-  return sortMeetingSlots(meetingSlots)
-    .map((slot) => `${slot.day_type} Day · P${slot.period_number}`)
-    .join(' · ')
+  return compactMeetingSlotLabels(meetingSlots).join(' · ')
 }
 
 export function validateMeetingSlots(meetingSlots: MeetingSlot[], isDoublePeriod = hasMultiplePeriodsOnAnyDay(meetingSlots)): string | null {

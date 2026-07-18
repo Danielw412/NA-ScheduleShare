@@ -69,7 +69,6 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
           </div>
         ))}
       </div>
-      {!readOnly ? <p className="schedule-help">Click “Add class” to search and add. Classes with multiple meeting slots appear in every selected cell.</p> : null}
     </div>
   )
 }

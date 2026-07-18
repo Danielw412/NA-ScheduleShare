@@ -18,6 +18,7 @@ import type {
   ScheduleEnrollment,
   ScheduleImportDiagnosticLog,
   ScheduleImportModelRecord,
+  ScheduleImportUiSettings,
   StudentDirectoryResult,
 } from '../domain'
 import { supabase } from './client'
@@ -477,6 +478,18 @@ export async function adminListScheduleImportDiagnostics(): Promise<ScheduleImpo
 
 export async function adminDeleteScheduleImportDiagnostic(diagnosticId: string): Promise<void> {
   await callUntypedRpc('admin_delete_schedule_import_diagnostic', { p_diagnostic_id: diagnosticId })
+}
+
+export async function getScheduleImportUiSettings(): Promise<ScheduleImportUiSettings> {
+  const data = await callUntypedRpc('get_schedule_import_ui_settings')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  return { progress_bar_duration_ms: Number(row?.progress_bar_duration_ms ?? 6500) }
+}
+
+export async function adminUpdateScheduleImportProgressDuration(progressBarDurationMs: number): Promise<void> {
+  await callUntypedRpc('admin_update_schedule_import_progress_duration', {
+    p_progress_bar_duration_ms: progressBarDurationMs,
+  })
 }
 
 export async function callAdminAction(

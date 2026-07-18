@@ -4,9 +4,9 @@ import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/M
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord } from '../lib/domain'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
+import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
 type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'history' | 'admins' | 'audit'
@@ -361,6 +361,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
   const [modelId, setModelId] = useState(isDemo ? demoImportModels[0].model_id : '')
   const [thinkingLevel, setThinkingLevel] = useState<GeminiThinkingLevel>('low')
   const [outputTokenLimit, setOutputTokenLimit] = useState(4096)
+  const [progressDurationSeconds, setProgressDurationSeconds] = useState(6.5)
   const [loading, setLoading] = useState(!isDemo)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -371,9 +372,10 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
     setLoading(true)
     setError(null)
     try {
-      const [nextModels, nextLogs] = await Promise.all([
+      const [nextModels, nextLogs, uiSettings] = await Promise.all([
         adminListScheduleImportModels(),
         adminListScheduleImportDiagnostics(),
+        getScheduleImportUiSettings(),
       ])
       setModels(nextModels)
       setLogs(nextLogs)
@@ -381,6 +383,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
       setModelId(active?.model_id ?? '')
       setThinkingLevel(active?.production_thinking_level ?? 'low')
       setOutputTokenLimit(active?.production_output_token_limit ?? 4096)
+      setProgressDurationSeconds(uiSettings.progress_bar_duration_ms / 1000)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load AI importer settings.')
     } finally {
@@ -399,6 +402,9 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
     && Number.isInteger(outputTokenLimit)
     && outputTokenLimit >= 256
     && outputTokenLimit <= Math.min(8192, selectedModel.max_output_tokens)
+    && Number.isFinite(progressDurationSeconds)
+    && progressDurationSeconds >= 1
+    && progressDurationSeconds <= 30
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault()
@@ -406,8 +412,11 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
     setSaving(true)
     setError(null)
     try {
-      if (!isDemo) await adminUpdateScheduleImportSettings({ modelId, thinkingLevel, outputTokenLimit })
-      setMessage('Production Gemini configuration updated. New imports will use it immediately.')
+      if (!isDemo) await Promise.all([
+        adminUpdateScheduleImportSettings({ modelId, thinkingLevel, outputTokenLimit }),
+        adminUpdateScheduleImportProgressDuration(Math.round(progressDurationSeconds * 1000)),
+      ])
+      setMessage('Production Gemini and progress-bar settings updated. New imports will use them immediately.')
       await load()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not update the AI importer settings.')
@@ -442,6 +451,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
       }}>{models.map((model) => <option key={model.model_id} value={model.model_id} disabled={!model.enabled || !model.supports_image_input || !model.supports_structured_output}>{model.display_name}{model.enabled ? '' : ' (disabled)'}</option>)}</select></label>
       <label>Thinking level<select value={thinkingLevel} disabled={!selectedModel || saving} onChange={(event) => setThinkingLevel(event.target.value as GeminiThinkingLevel)}>{(selectedModel?.supported_thinking_levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
       <label>Output-token limit<input type="number" min={256} max={Math.min(8192, selectedModel?.max_output_tokens ?? 8192)} step={128} value={outputTokenLimit} disabled={saving} onChange={(event) => setOutputTokenLimit(Number(event.target.value))} /></label>
+      <label>Progress duration (seconds)<input type="number" min={1} max={30} step={0.5} value={progressDurationSeconds} disabled={saving} onChange={(event) => setProgressDurationSeconds(Number(event.target.value))} /></label>
       <button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Update production configuration'}</button>
     </form>
     <div className="notice-box"><BrainCircuit aria-hidden="true" /><span><strong>Developer mode stays off by default.</strong> An administrator must enable it inside the screenshot importer for the current dialog session. It bypasses only ScheduleShare's database rate limit; authentication, file validation, model allowlisting, Gemini quotas, and all other checks remain enforced.</span></div>
@@ -485,6 +495,7 @@ function ClassManagementPanel({
   const [duplicateCourseNameId, setDuplicateCourseNameId] = useState('')
   const [courseCatalogExpanded, setCourseCatalogExpanded] = useState(false)
   const visibleClasses = courseFilter ? classes.filter((course) => course.course_name_id === courseFilter) : classes
+  const unusedClassCount = visibleClasses.filter((course) => course.active_enrollment_count === 0).length
 
   function addCourseName() {
     const name = window.prompt('New course name')?.trim()
@@ -506,9 +517,9 @@ function ClassManagementPanel({
     <div className="merge-tool"><Merge /><label>Canonical course-name ID<input value={canonicalCourseNameId} onChange={(event) => setCanonicalCourseNameId(event.target.value)} /></label><label>Duplicate course-name ID<input value={duplicateCourseNameId} onChange={(event) => setDuplicateCourseNameId(event.target.value)} /></label><button className="button button-primary" disabled={!canonicalCourseNameId || !duplicateCourseNameId} onClick={() => { if (window.confirm('Relink every section to the canonical course name and mark the duplicate name as merged? Sections will remain separate.')) void onAdminAction('admin_merge_course_names', { p_canonical_course_name_id: canonicalCourseNameId, p_duplicate_course_name_id: duplicateCourseNameId, p_reason: 'Duplicate course-name merge' }, 'Course names merged without merging sections.') }}>Merge course names</button></div>
 
     </div> : null}
-    <div className="section-heading class-sections-heading"><div><h2>Class sections</h2><p>Archive sections to deactivate schedules, or permanently delete a section with an impact-aware confirmation.</p></div>{courseFilter ? <button className="button button-secondary" type="button" onClick={() => onCourseFilter(null)}>Show all sections</button> : null}</div>
+    <div className="section-heading class-sections-heading"><div><h2>Class sections</h2><p>Archive sections to deactivate schedules, or permanently delete a section with an impact-aware confirmation. <strong>{unusedClassCount}</strong> {unusedClassCount === 1 ? 'section is' : 'sections are'} not on anyone's schedule.</p></div>{courseFilter ? <button className="button button-secondary" type="button" onClick={() => onCourseFilter(null)}>Show all sections</button> : null}</div>
     <div className="merge-tool"><Merge /><label>Canonical section ID<input value={canonicalId} onChange={(event) => onCanonicalId(event.target.value)} /></label><label>Duplicate section ID<input value={duplicateId} onChange={(event) => onDuplicateId(event.target.value)} /></label><button className="button button-primary" disabled={!canonicalId || !duplicateId} onClick={() => { if (window.confirm('Move all enrollments and archive the duplicate section?')) void onAdminAction('admin_merge_classes', { p_canonical_class_id: canonicalId, p_duplicate_class_id: duplicateId, p_reason: 'Duplicate class-section merge' }, 'Class sections merged transactionally.') }}>Merge sections</button></div>
-    <div className="admin-table admin-class-table"><div className="admin-table-head"><span>Course / section</span><span>Teacher / slots</span><span>Term</span><span>Status</span><span>Actions</span></div>{visibleClasses.map((course) => <div className="admin-table-row" key={course.id}><span><strong>{course.course_name}</strong><small>{course.id}</small></span><span><strong>{course.teacher_last_name}</strong><small>{course.meeting_slots.map((slot) => `${slot.day_type} P${slot.period_number}`).join(' · ')}</small></span><span>{course.default_academic_term.replace('_', ' ')}</span><span><strong>{course.status}</strong><small>{course.active_enrollment_count} active / {course.total_enrollment_count} total</small></span><span className="row-actions">{course.status === 'active' ? <button onClick={() => onEdit(course)}>Edit</button> : null}{course.status === 'active' ? <button className="danger-text" onClick={() => { if (window.confirm(`Archive ${course.course_name} with ${course.teacher_last_name}? Active enrollments will be deactivated.`)) void onAdminAction('admin_archive_class', { p_class_id: course.id, p_reason: 'Archived from admin console' }, 'Class section archived.') }}>Archive</button> : null}<button className="danger-text" onClick={() => onPermanentDelete(course)}>Delete permanently</button></span></div>)}</div>
+    <div className="admin-table admin-class-table"><div className="admin-table-head"><span>Course / section</span><span>Teacher / slots</span><span>Term</span><span>Status</span><span>Actions</span></div>{visibleClasses.map((course) => <div className={course.active_enrollment_count === 0 ? 'admin-table-row is-unused' : 'admin-table-row'} key={course.id}><span><strong>{course.course_name}</strong><small>{course.id}</small></span><span><strong>{course.teacher_last_name}</strong><small>{formatMeetingSlotSummary(course.meeting_slots)}</small></span><span>{course.default_academic_term.replace('_', ' ')}</span><span><strong>{course.status}</strong><small>{course.active_enrollment_count === 0 ? 'Not on any schedule' : `${course.active_enrollment_count} active / ${course.total_enrollment_count} total`}</small></span><span className="row-actions">{course.status === 'active' ? <button onClick={() => onEdit(course)}>Edit</button> : null}{course.status === 'active' ? <button className="danger-text" onClick={() => { if (window.confirm(`Archive ${course.course_name} with ${course.teacher_last_name}? Active enrollments will be deactivated.`)) void onAdminAction('admin_archive_class', { p_class_id: course.id, p_reason: 'Archived from admin console' }, 'Class section archived.') }}>Archive</button> : null}<button className="danger-text" onClick={() => onPermanentDelete(course)}>Delete permanently</button></span></div>)}</div>
   </section>
 }
 

@@ -157,7 +157,7 @@ export function SchedulePage() {
           onTermChange={(enrollment, term) => void changeTerm(enrollment, term)}
         />
       </div>
-      {hasSchedule ? <section className="schedule-discovery-callout"><Users aria-hidden="true" /><div><h2>See Who You Share Classes With</h2><p>Find students who share at least one active class with you. Privacy settings still apply.</p></div><Link className="button button-primary" to="/classmates">Find Classmates</Link></section> : null}
+      {hasSchedule ? <section className="schedule-discovery-callout"><Users aria-hidden="true" /><div><h2>See Who You Share Classes With</h2></div><Link className="button button-primary" to="/classmates">Find Classmates</Link></section> : null}
       {activeCell ? <AddClassDialog
         open
         dayType={activeCell.dayType}

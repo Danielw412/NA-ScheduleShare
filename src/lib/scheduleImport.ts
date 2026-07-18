@@ -1,5 +1,5 @@
 import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, MeetingSlot } from './domain'
-import { hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
+import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
 import { searchClasses } from './supabase/data'
 import { supabase } from './supabase/client'
 import type { Json } from './supabase/database.types'
@@ -229,9 +229,7 @@ function academicTermLabel(term: AcademicTerm): string {
 }
 
 export function importClassOptionLabel(option: ImportClassOption): string {
-  const slots = sortMeetingSlots(option.meeting_slots)
-    .map((slot) => `${slot.day_type} Day P${slot.period_number}`)
-    .join(' / ')
+  const slots = formatMeetingSlotSummary(option.meeting_slots)
   return `Use ${option.teacher_last_name} · ${slots} · ${academicTermLabel(option.term)}`
 }
 

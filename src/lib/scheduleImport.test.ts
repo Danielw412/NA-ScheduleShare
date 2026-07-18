@@ -88,7 +88,7 @@ describe('schedule import replacement', () => {
   it('reselects an exact existing class after review fields change and labels it with periods', () => {
     const reconciled = reconcileExactClassSelection({ ...row, term: 'full_year' })
     expect(reconciled).toMatchObject({ selected_existing_class_id: option.id, resolution: 'existing_class' })
-    expect(importClassOptionLabel(option)).toBe('Use Lester · A Day P1 / B Day P1 · Full Year')
+    expect(importClassOptionLabel(option)).toBe('Use Lester · P1 · Full Year')
   })
 
   it('clears a stale incomplete flag after every required field is valid', () => {
