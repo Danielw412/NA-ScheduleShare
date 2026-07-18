@@ -124,7 +124,9 @@ export function SchedulePage() {
           </div>
         </header>
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-        <ScheduleGrid enrollments={[]} selectedTerm={selectedTerm} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
+        <div className="schedule-layout">
+          <ScheduleGrid enrollments={[]} selectedTerm={selectedTerm} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
+        </div>
       </div>
     )
   }
