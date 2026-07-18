@@ -382,6 +382,41 @@ export type Database = {
           },
         ]
       }
+      schedule_share_links: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          owner_id: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          owner_id: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          owner_id?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_share_links_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -680,6 +715,8 @@ export type Database = {
           suspension_reason: string
         }[]
       }
+      get_or_create_schedule_share: { Args: never; Returns: string }
+      get_public_schedule_share: { Args: { p_token: string }; Returns: Json }
       get_visible_schedule: {
         Args: { p_student_id: string }
         Returns: {

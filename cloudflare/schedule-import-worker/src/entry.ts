@@ -1,4 +1,5 @@
 import { handleRequest, type Env } from './index'
+import { handleShareRequest } from './share'
 
 const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
 const LOCAL_ORIGINS = new Set([
@@ -110,6 +111,9 @@ export default {
     const cleanEnv = normalizedEnv(env)
     const origin = request.headers.get('Origin') ?? ''
     const url = new URL(request.url)
+
+    const shareResponse = await handleShareRequest(request, cleanEnv)
+    if (shareResponse) return shareResponse
 
     if (
       request.method !== 'POST'

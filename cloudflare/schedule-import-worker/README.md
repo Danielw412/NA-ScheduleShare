@@ -1,4 +1,4 @@
-# Schedule import Worker
+# Schedule import and share Worker
 
 This Worker accepts one to three PowerSchool schedule screenshots, validates the signed-in Supabase user, asks Cloudflare Workers AI to transcribe the visible schedule, validates the response, and resolves every extracted row against the active Supabase course catalogue and class list. It never stores images or writes schedule data.
 
@@ -21,7 +21,7 @@ This Worker accepts one to three PowerSchool schedule screenshots, validates the
    pnpm exec wrangler secret put SUPABASE_PUBLISHABLE_KEY --config cloudflare/schedule-import-worker/wrangler.toml
    ```
 
-6. Deploy with `pnpm worker:deploy`. The deployed route is `POST /api/schedule-import`.
+6. Deploy with `pnpm worker:deploy`. The deployed routes are `POST /api/schedule-import`, `GET /share/:token`, and `GET /share/:token/image.png`.
 
 Moondream is invoked through the configured Workers AI binding. Its current model schema requires `image` to be a public HTTPS URL or base64 data URI, so the Worker creates one in request memory from the uploaded bytes. No Cloudflare AI API token is needed by the Worker.
 
@@ -41,6 +41,7 @@ Set the following in the frontend `.env.local`:
 
 ```dotenv
 VITE_SCHEDULE_IMPORT_API_URL=http://127.0.0.1:8787
+VITE_SCHEDULE_SHARE_BASE_URL=http://127.0.0.1:8787
 ```
 
 The browser forwards only the current Supabase access token and image files. The Worker verifies the token with Supabase Auth and derives the user ID from that response. Catalogue and class reads use the same token, so existing RLS and suspension enforcement remain in effect.
@@ -63,7 +64,7 @@ The manually triggered `deploy-worker.yml` workflow expects these GitHub product
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 
-After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` to the repository Actions secrets with the Worker origin, such as `https://na-scheduleshare-import.YOUR_SUBDOMAIN.workers.dev`. The Pages workflow injects it into the Vite build.
+After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` and `VITE_SCHEDULE_SHARE_BASE_URL` to the repository Actions secrets with the Worker origin, such as `https://na-scheduleshare-import.YOUR_SUBDOMAIN.workers.dev`. The Pages workflow injects them into the Vite build.
 
 ## Privacy and operational behavior
 
@@ -74,3 +75,5 @@ After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` to the reposito
 - Model output is untrusted input and must pass an exact runtime schema before it is used.
 - The Worker returns proposals only. The frontend rechecks duplicates and saves through the existing authorized class/enrollment functions after explicit confirmation.
 - If the period column is missing, the Worker returns HTTP 422 and the frontend keeps the selected previews available for replacement.
+- Share pages fetch only the bounded anonymous preview RPC. Invalid, disabled, suspended, Classmates, and Private links return the same generic no-data HTML and image response.
+- Share HTML and 1200 × 630 PNG responses use `Cache-Control: no-store`, so privacy changes take effect on the next request.

@@ -71,6 +71,7 @@ Add the local Supabase values printed by `pnpm supabase:start` to `.env.local`:
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=your-local-public-key
 VITE_SCHEDULE_IMPORT_API_URL=http://127.0.0.1:8787
+VITE_SCHEDULE_SHARE_BASE_URL=http://127.0.0.1:8787
 VITE_ENABLE_DEMO_MODE=false
 ```
 
@@ -142,6 +143,7 @@ Required GitHub Actions secrets:
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
 VITE_SCHEDULE_IMPORT_API_URL
+VITE_SCHEDULE_SHARE_BASE_URL
 ```
 
 GitHub Pages must use **GitHub Actions** as its deployment source. Pushing to `main` runs the frontend validation and deployment workflow.

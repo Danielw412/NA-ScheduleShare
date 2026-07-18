@@ -10,6 +10,7 @@ import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
+import { createScheduleShareUrl, scheduleShareDescription, scheduleShareTitle } from '../lib/scheduleShare'
 import { removeEnrollment, updateEnrollmentTerm } from '../lib/supabase/data'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
@@ -92,12 +93,30 @@ export function SchedulePage() {
   }
 
   async function shareSchedule() {
-    const ownerId = schedule.enrollments[0]?.student_id
-    if (!ownerId) return
-    const url = `${window.location.origin}${window.location.pathname}#/students/${encodeURIComponent(ownerId)}`
-    await navigator.clipboard.writeText(url)
-    setMessage('Schedule link copied. Privacy rules still apply to anyone who opens it.')
-    setShowSavedCheck(false)
+    try {
+      const url = await createScheduleShareUrl()
+      if (typeof navigator.share === 'function') {
+        try {
+          await navigator.share({
+            title: scheduleShareTitle,
+            text: scheduleShareDescription,
+            url,
+          })
+          setMessage('Schedule shared. Privacy rules still apply to anyone who opens it.')
+        } catch (caught) {
+          if (caught instanceof DOMException && caught.name === 'AbortError') return
+          if (caught instanceof Error && caught.name === 'AbortError') return
+          throw caught
+        }
+      } else {
+        await navigator.clipboard.writeText(url)
+        setMessage('Schedule link copied. Privacy rules still apply to anyone who opens it.')
+      }
+      setShowSavedCheck(false)
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'The schedule link could not be shared.')
+      setShowSavedCheck(false)
+    }
   }
 
   function openImport(onboarding = false) {
