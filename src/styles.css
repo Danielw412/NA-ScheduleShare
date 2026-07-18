@@ -173,7 +173,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .student-profile-heading { display: flex; align-items: center; gap: 14px; }
 .profile-avatar-heading { width: 58px; height: 58px; font-size: 17px; }
 
-.home-hero { min-height: 350px; display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: clamp(34px, 8vw, 120px); padding: clamp(26px, 5vw, 68px); background: var(--ink); color: var(--white); position: relative; overflow: hidden; }
+.home-hero { min-height: 350px; display: grid; grid-template-columns: 1fr; align-items: center; gap: clamp(34px, 8vw, 120px); padding: clamp(26px, 5vw, 68px); background: var(--ink); color: var(--white); position: relative; overflow: hidden; }
 .home-hero::after { content: ""; position: absolute; width: 190px; height: 190px; right: -80px; bottom: -100px; border: 46px solid var(--brand-gold); transform: rotate(45deg); }
 .home-hero h1 { font-size: clamp(46px, 6vw, 78px); line-height: .94; letter-spacing: -.06em; margin-bottom: 20px; }
 .home-hero p { max-width: 650px; color: #d7d7d7; font-size: 18px; line-height: 1.55; }
@@ -181,11 +181,6 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .home-statistic strong { color: var(--brand-gold); font-size: 22px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 .hero-actions .button-secondary { color: var(--white); border-color: #777; background: transparent; }
-.hero-schedule-preview { position: relative; z-index: 1; min-height: 190px; padding: 28px; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 18px; border: 1px solid #555; background: #121212; clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%); }
-.hero-schedule-preview > span { font-size: 52px; font-weight: 850; color: var(--brand-gold); letter-spacing: -.05em; }
-.hero-schedule-preview > div { display: grid; gap: 4px; }
-.hero-schedule-preview small { color: #aaa; }
-.hero-schedule-preview .progress-track { grid-column: 1 / -1; }
 .progress-track { height: 6px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: #dedede; }
 .progress-track > span, .progress-track > i { display: block; height: 100%; border-radius: inherit; background: var(--brand-gold); }
 .completion-callout { margin: 24px 0; display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center; padding: 20px 24px; border: 1px solid var(--border); border-left: 7px solid var(--brand-gold); }
@@ -604,7 +599,6 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
   .auth-brand-panel > p { display: none; }
   .auth-brand-panel h1 { font-size: 54px; }
   .home-hero { grid-template-columns: 1fr; }
-  .hero-schedule-preview { min-height: 130px; }
   .home-links { grid-template-columns: 1fr; }
   .home-links > a { min-height: 190px; }
   .class-browser { grid-template-columns: 1fr; }

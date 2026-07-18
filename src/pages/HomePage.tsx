@@ -11,7 +11,7 @@ import { getHomepageStatistic } from '../lib/supabase/data'
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
-  const { enrollments, loading } = useSchedule()
+  const { enrollments } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const navigate = useNavigate()
   const completion = scheduleCompletion(enrollments)
@@ -41,11 +41,6 @@ export function HomePage() {
             <Link className="button button-secondary" to="/students">Explore ScheduleShare</Link>
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
-        </div>
-        <div className="hero-schedule-preview" aria-label="Schedule summary">
-          <span>{user ? loading ? '…' : `${completion}%` : 'A/B'}</span>
-          <div><strong>{user ? 'Schedule progress' : 'Schedule preview'}</strong><small>{user ? `${enrollments.length} classes added` : 'Upload · Review · Discover'}</small></div>
-          <div className="progress-track"><span style={{ width: user ? `${completion}%` : '72%' }} /></div>
         </div>
       </section>
       {user && completion < 100 ? (
