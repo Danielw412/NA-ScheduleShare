@@ -10,6 +10,7 @@ import { OnboardingPage } from './pages/OnboardingPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ReportPage } from './pages/ReportPage'
 import { SchedulePage } from './pages/SchedulePage'
+import { SharedSchedulePage } from './pages/SharedSchedulePage'
 import { StudentDetailPage } from './pages/StudentDetailPage'
 import { StudentsPage } from './pages/StudentsPage'
 
@@ -19,6 +20,9 @@ export function App() {
       <Route path="/auth" element={<AuthPromptRoute />} />
       <Route element={<RequireAuth />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
+      </Route>
+      <Route element={<AppShell />}>
+        <Route path="share/:token" element={<SharedSchedulePage />} />
       </Route>
       <Route element={<AllowGuest />}>
         <Route element={<AppShell />}>

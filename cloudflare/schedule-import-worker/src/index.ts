@@ -110,6 +110,7 @@ export interface Env {
   RATE_LIMIT: KvBinding
   SUPABASE_URL: string
   SUPABASE_PUBLISHABLE_KEY: string
+  SITE_URL?: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
 }

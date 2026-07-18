@@ -13,6 +13,7 @@ preview_id = "50dc62af983a4f69a91a89aed2a56a4e"
 [vars]
 RATE_LIMIT_MAX = "6"
 RATE_LIMIT_WINDOW_SECONDS = "3600"
+SITE_URL = "https://danielw412.github.io/NA-ScheduleShare/"
 
 [secrets]
 required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"]

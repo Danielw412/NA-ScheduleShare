@@ -2,10 +2,12 @@ const SHARE_PATH = /^\/share\/([^/]+)(\/image\.png)?$/i
 const SHARE_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WIDTH = 1200
 const HEIGHT = 630
+const DEFAULT_SITE_URL = 'https://danielw412.github.io/NA-ScheduleShare/'
 
 export interface ShareEnv {
   SUPABASE_URL: string
   SUPABASE_PUBLISHABLE_KEY: string
+  SITE_URL?: string
 }
 
 export interface PublicScheduleRow {
@@ -32,7 +34,7 @@ function safeRow(value: unknown): PublicScheduleRow | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const row = value as Record<string, unknown>
   if (row.day_type !== 'A' && row.day_type !== 'B') return null
-  if (!Number.isInteger(row.period_number) || Number(row.period_number) < 1 || Number(row.period_number) > 8) return null
+  if (!Number.isInteger(row.period_number) || Number(row.period_number) < 1 || Number(row.period_number) > 9) return null
   if (typeof row.course_name !== 'string' || row.course_name.trim().length === 0) return null
   if (!['full_year', 'semester_1', 'semester_2'].includes(String(row.academic_term))) return null
   return {
@@ -70,22 +72,17 @@ async function fetchPublicSchedule(token: string, env: ShareEnv): Promise<Public
   }
 }
 
-function pageHtml(url: URL, share: PublicScheduleShare): string {
+function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: ShareEnv): string {
   const canonicalUrl = `${url.origin}${url.pathname}`
   const imageUrl = `${canonicalUrl}/image.png`
+  const siteUrl = (env.SITE_URL?.trim() || DEFAULT_SITE_URL).replace(/\/$/, '')
+  const reactUrl = `${siteUrl}/#/share/${encodeURIComponent(token)}`
   const title = share.available
     ? 'A/B-Day Schedule | NA ScheduleShare'
     : 'Schedule unavailable | NA ScheduleShare'
   const description = share.available
     ? 'A shared A/B-day class schedule with periods and course names.'
-    : 'This shared schedule is private, disabled, or no longer available.'
-  const scheduleRows = share.schedule.map((row) => (
-    `<li><strong>${row.day_type} Day · Period ${row.period_number}</strong><span>${escapeHtml(row.course_name)}</span></li>`
-  )).join('')
-  const body = share.available
-    ? `<h1>A/B-Day Schedule</h1><p>Shared with NA ScheduleShare</p><ul>${scheduleRows}</ul>`
-    : '<h1>This schedule isn’t available</h1><p>It may be private, disabled, or the link may be invalid.</p>'
-
+    : 'This shared schedule link is invalid, disabled, or no longer available.'
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -105,8 +102,8 @@ function pageHtml(url: URL, share: PublicScheduleShare): string {
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
-<style>body{margin:0;background:#f7f0dd;color:#172235;font:16px system-ui,sans-serif}main{max-width:760px;margin:64px auto;padding:32px;background:#fff;border-top:8px solid #f2b928;box-shadow:0 12px 36px #1722351f}h1{margin-top:0}ul{display:grid;gap:10px;padding:0;list-style:none}li{display:flex;justify-content:space-between;gap:24px;padding:12px;border:1px solid #d9d2c2}footer{max-width:760px;margin:auto;padding:0 32px 48px;color:#5d6573}</style>
-</head><body><main>${body}</main><footer>NA ScheduleShare · Built by the NA Computer and AI Club · Not an official school website.</footer></body></html>`
+<script>window.location.replace(${JSON.stringify(reactUrl)})</script>
+</head><body><p>Opening ScheduleShare… <a href="${escapeHtml(reactUrl)}">Continue to the shared schedule</a>.</p></body></html>`
 }
 
 export async function handleShareRequest(request: Request, env: ShareEnv): Promise<Response | null> {
@@ -132,7 +129,7 @@ export async function handleShareRequest(request: Request, env: ShareEnv): Promi
   }
 
   headers.set('Content-Type', 'text/html; charset=utf-8')
-  return new Response(request.method === 'HEAD' ? null : pageHtml(url, share), { status, headers })
+  return new Response(request.method === 'HEAD' ? null : pageHtml(url, token, share, env), { status, headers })
 }
 
 const FONT: Record<string, string[]> = {
@@ -163,7 +160,7 @@ const FONT: Record<string, string[]> = {
 }
 
 const PALETTE = new Uint8Array([
-  247,240,221, 23,34,53, 242,185,40, 255,255,255,
+  247,240,221, 0,0,0, 242,185,40, 255,255,255,
   93,101,115, 217,210,194, 181,121,0,
 ])
 
@@ -234,8 +231,12 @@ function drawText(pixels: Uint8Array, value: string, x: number, y: number, scale
   }
 }
 
-function periodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', period: number): string {
-  const matches = rows.filter((row) => row.day_type === day && row.period_number === period)
+export function previewPeriodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', period: number): string {
+  const matches = rows.filter((row) => (
+    row.day_type === day
+    && row.period_number === period
+    && row.academic_term !== 'semester_2'
+  ))
   if (matches.length === 0) return 'OPEN'
   const names = [...new Set(matches.map((row) => row.course_name))]
   const value = names.join(' / ').toLocaleUpperCase()
@@ -245,32 +246,31 @@ function periodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', period: number):
 export function renderPreviewPng(share: PublicScheduleShare): Uint8Array<ArrayBuffer> {
   const pixels = new Uint8Array(WIDTH * HEIGHT)
   pixels.fill(0)
-  drawRect(pixels, 0, 0, WIDTH, 116, 1)
-  drawRect(pixels, 0, 108, WIDTH, 8, 2)
-  drawText(pixels, 'NA SCHEDULESHARE', 48, 28, 6, 3)
-  drawText(pixels, share.available ? 'A/B-DAY CLASS SCHEDULE' : 'SCHEDULE UNAVAILABLE', 48, 80, 3, 2)
+  drawRect(pixels, 0, 0, WIDTH, 92, 1)
+  drawRect(pixels, 0, 84, WIDTH, 8, 2)
+  drawText(pixels, 'NA SCHEDULESHARE', 48, 22, 6, 3)
 
   if (share.available) {
     for (const [column, day] of (['A', 'B'] as const).entries()) {
       const x = column === 0 ? 48 : 624
-      drawRect(pixels, x, 140, 528, 42, 2)
-      drawText(pixels, `${day} DAY`, x + 18, 150, 3, 1)
-      for (let period = 1; period <= 8; period += 1) {
-        const y = 190 + (period - 1) * 48
-        drawRect(pixels, x, y, 528, 42, 3)
-        drawRect(pixels, x, y, 54, 42, 1)
-        drawText(pixels, String(period), x + 20, y + 10, 3, 3)
-        drawText(pixels, periodLabel(share.schedule, day, period), x + 72, y + 11, 3, 1)
+      drawRect(pixels, x, 106, 528, 40, 2)
+      drawText(pixels, `${day} DAY`, x + 18, 115, 3, 1)
+      for (let period = 1; period <= 9; period += 1) {
+        const y = 154 + (period - 1) * 46
+        drawRect(pixels, x, y, 528, 40, 3)
+        drawRect(pixels, x, y, 54, 40, 1)
+        drawText(pixels, String(period), x + 20, y + 9, 3, 3)
+        drawText(pixels, previewPeriodLabel(share.schedule, day, period), x + 72, y + 10, 3, 1)
       }
     }
   } else {
     drawRect(pixels, 130, 190, 940, 250, 3)
     drawRect(pixels, 130, 190, 12, 250, 2)
-    drawText(pixels, 'THIS SCHEDULE IS PRIVATE,', 190, 250, 5, 1)
+    drawText(pixels, 'THIS LINK IS INVALID,', 190, 250, 5, 1)
     drawText(pixels, 'DISABLED, OR UNAVAILABLE.', 190, 310, 5, 1)
     drawText(pixels, 'NO SCHEDULE DATA IS SHOWN.', 190, 385, 3, 4)
   }
-  drawText(pixels, 'BUILT BY THE NA COMPUTER AND AI CLUB', 48, 598, 3, 4)
+  drawText(pixels, 'BUILT BY THE NA COMPUTER AND AI CLUB', 48, 600, 3, 4)
 
   const scanlines = new Uint8Array((WIDTH + 1) * HEIGHT)
   for (let y = 0; y < HEIGHT; y += 1) scanlines.set(pixels.subarray(y * WIDTH, (y + 1) * WIDTH), y * (WIDTH + 1) + 1)

@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(13);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -62,8 +62,20 @@ where owner_id = '99000000-0000-4000-8000-000000000001';
 set local role anon;
 select is(
   public.get_public_schedule_share('99300000-0000-4000-8000-000000000001')->>'available',
-  'false',
-  'Classmates privacy does not expose a public preview'
+  'true',
+  'an explicitly created link works with Classmates directory privacy'
+);
+
+reset role;
+update public.profiles
+set privacy_setting = 'private'
+where id = '99000000-0000-4000-8000-000000000001';
+
+set local role anon;
+select is(
+  public.get_public_schedule_share('99300000-0000-4000-8000-000000000001')->>'available',
+  'true',
+  'an explicitly created link works with Private directory privacy'
 );
 
 reset role;
@@ -77,6 +89,15 @@ select is(
   'true',
   'Anyone privacy permits the explicit public share token'
 );
+reset role;
+set local role authenticated;
+select is(
+  public.get_public_schedule_share('99300000-0000-4000-8000-000000000001')->>'available',
+  'true',
+  'signed-in visitors can open the same public share link'
+);
+reset role;
+set local role anon;
 select is(
   public.get_public_schedule_share('99300000-0000-4000-8000-000000000001') #>> '{schedule,0,course_name}',
   'Preview Biology',
