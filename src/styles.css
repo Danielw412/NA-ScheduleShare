@@ -157,6 +157,7 @@ legend { margin-bottom: 10px; font-size: 13px; font-weight: 800; }
 .privacy-page form { display: grid; gap: 20px; }
 .profile-page { display: grid; gap: 20px; }
 .profile-page > .page-heading { margin-bottom: 4px; }
+.profile-page-actions { display: flex; align-items: center; gap: 18px; }
 .profile-card { display: grid; gap: 18px; padding: clamp(18px, 4vw, 28px); border: 1px solid var(--border-strong); background: var(--white); }
 .profile-card h2 { margin: 0; font-size: 22px; }
 .profile-card p { margin: 5px 0 0; color: var(--muted); line-height: 1.5; }

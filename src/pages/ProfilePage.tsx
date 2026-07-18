@@ -1,4 +1,4 @@
-import { AlertTriangle, Camera, ShieldCheck, Trash2, UserRound, X } from 'lucide-react'
+import { AlertTriangle, Camera, LogOut, ShieldCheck, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
@@ -98,7 +98,7 @@ export function ProfilePage() {
   }
 
   return <div className="profile-page narrow-page">
-    <header className="page-heading"><div><h1>My Profile</h1><p>Manage how you appear in ScheduleShare and who can discover your schedule.</p></div><UserRound size={34} aria-hidden="true" /></header>
+    <header className="page-heading"><div><h1>My Profile</h1><p>Manage how you appear in ScheduleShare and who can discover your schedule.</p></div><div className="profile-page-actions"><button className="button button-secondary" type="button" onClick={() => void auth.signOut()}><LogOut size={17} aria-hidden="true" /> Sign out</button><UserRound size={34} aria-hidden="true" /></div></header>
 
     <section className="profile-card profile-picture-card" aria-labelledby="profile-picture-heading">
       <ProfileAvatar userId={auth.user.id} fullName={auth.profile.full_name} revision={avatarRevision} className="profile-avatar-large" />
