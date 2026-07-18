@@ -84,7 +84,7 @@ export class ScheduleImportRequestError extends Error {
   }
 }
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const MAX_SCHEDULE_IMAGES = 3
 const RESIZE_THRESHOLD_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 2200
@@ -93,7 +93,7 @@ export async function prepareScheduleImage(file: File): Promise<File> {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
     throw new Error('Use a PNG, JPEG, or WebP image.')
   }
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('Each screenshot must be 5 MB or smaller.')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('Each screenshot must be 10 MB or smaller.')
   if (file.size === 0) throw new Error('The selected screenshot is empty.')
   if (file.size < RESIZE_THRESHOLD_BYTES || typeof createImageBitmap !== 'function') return file
 

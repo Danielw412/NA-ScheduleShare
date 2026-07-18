@@ -196,7 +196,20 @@ Extraction rules:
 - Return unknown when the term is not visible. The application will default an unknown term to Full Year during review.
 - Use slot strings in A1 through A9 or B1 through B9 form. Include every explicitly visible A/B meeting slot and remove duplicate slots.
 - If the images are not a readable student schedule, return {"schedule":false,"rows":[]}.
-- Return only the required structured data.`
+- Return only the required structured data.
+
+The following courses are normally double-period courses and should have two meeting periods on each applicable day:
+  - AP Calculus BC (CHS)
+  - Academic Biology
+  - Honors Biology
+  - Honors Chemistry
+  - Academic Chemistry
+  - AP Chemistry (CHS)
+  - Honors Physics
+  - AP Physics 1 & 2 (CHS)
+  - AP Physics C
+  - AP Biology (CHS)
+`
 }
 
 export const GEMINI_RESPONSE_SCHEMA = {

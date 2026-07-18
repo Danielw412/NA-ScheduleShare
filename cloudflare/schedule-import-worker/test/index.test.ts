@@ -308,7 +308,7 @@ describe('image input and rate limiting', () => {
     expect(unsupported.status).toBe(415)
     expect(await body(unsupported)).toMatchObject({ error: 'unsupported_file_type' })
 
-    const oversized = await handleRequest(requestWithImages([image('large.png', 'image/png', 5 * 1024 * 1024 + 1)]), createEnv())
+    const oversized = await handleRequest(requestWithImages([image('large.png', 'image/png', 10 * 1024 * 1024 + 1)]), createEnv())
     expect(oversized.status).toBe(413)
     expect(await body(oversized)).toMatchObject({ error: 'image_too_large' })
   })

@@ -410,7 +410,7 @@ export function ScheduleImportDialog({
             <div className={images.length > 0 ? 'import-drop-zone has-images' : 'import-drop-zone'} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
               <Upload aria-hidden="true" />
               <strong>{onboarding ? 'Drop or paste your schedule here' : 'Drop, paste, or choose schedule screenshots'}</strong>
-              <span>PNG, JPEG, or WebP · 5 MB maximum each</span>
+              <span>PNG, JPEG, or WebP · 10 MB maximum each</span>
               <div className="import-upload-actions">
                 <label className="button button-primary">
                   {onboarding ? 'Choose Screenshot' : images.length > 0 ? 'Add screenshots' : 'Choose screenshots'}

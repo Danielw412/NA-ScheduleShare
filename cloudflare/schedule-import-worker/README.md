@@ -70,7 +70,7 @@ After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` to the reposito
 - Screenshots are held only in request memory and sent as schema-required data URIs through the Workers AI binding; neither the Worker nor KV stores image bytes.
 - No catalogue names or IDs are sent to the model. Moondream returns only visible transcription fields, then the Worker fuzzy-matches that text against active Supabase catalogue rows and keeps ambiguous names unresolved.
 - KV stores a per-user fixed-window request counter only.
-- Requests accept one to three PNG, JPEG, or WebP images, each no larger than 5 MB.
+- Requests accept one to three PNG, JPEG, or WebP images, each no larger than 10 MB.
 - Model output is untrusted input and must pass an exact runtime schema before it is used.
 - The Worker returns proposals only. The frontend rechecks duplicates and saves through the existing authorized class/enrollment functions after explicit confirmation.
 - If the period column is missing, the Worker returns HTTP 422 and the frontend keeps the selected previews available for replacement.

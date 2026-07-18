@@ -1,5 +1,5 @@
 export const MOONDREAM_MODEL = '@cf/moondream/moondream3.1-9B-A2B'
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_IMAGES = 3
 const DEFAULT_RATE_LIMIT = 6
 const DEFAULT_RATE_WINDOW_SECONDS = 60 * 60
@@ -241,7 +241,7 @@ async function readImages(request: Request): Promise<File[]> {
     }
     if (image.size <= 0) throw new HttpError(400, 'empty_file', 'One of the screenshots is empty.')
     if (image.size > MAX_IMAGE_BYTES) {
-      throw new HttpError(413, 'image_too_large', 'Each screenshot must be 5 MB or smaller.')
+      throw new HttpError(413, 'image_too_large', 'Each screenshot must be 10 MB or smaller.')
     }
   }
   return images
