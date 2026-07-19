@@ -17,9 +17,9 @@ const authenticatedNavigation = [
 ]
 
 const guestNavigation = [
-  { to: '/', label: 'Home' },
-  { to: '/schedule', label: 'Schedule' },
-  { to: '/classes', label: 'View Classes' },
+  { to: '/', label: 'Home', mobileBottomDuplicate: false },
+  { to: '/schedule', label: 'Schedule', mobileBottomDuplicate: true },
+  { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
 ]
 
 const mobileBottomNavigation = [
@@ -36,7 +36,7 @@ export function AppShell() {
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
   return (
-    <div className={user ? 'app-shell has-mobile-bottom-nav' : 'app-shell'}>
+    <div className="app-shell has-mobile-bottom-nav">
       <header className="site-header">
         <NavLink to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
         <button className="mobile-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
@@ -69,12 +69,17 @@ export function AppShell() {
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>
-      {user ? <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {mobileBottomNavigation.map(({ to, label, Icon }) => <NavLink key={to} to={to}>
-          <Icon size={22} strokeWidth={2} aria-hidden="true" />
-          <span>{label}</span>
-        </NavLink>)}
-      </nav> : null}
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {mobileBottomNavigation.map(({ to, label, Icon }) => !user && (to === '/classmates' || to === '/students')
+          ? <button key={to} type="button" onClick={() => openAccountPrompt(to)}>
+            <Icon size={22} strokeWidth={2} aria-hidden="true" />
+            <span>{label}</span>
+          </button>
+          : <NavLink key={to} to={to}>
+            <Icon size={22} strokeWidth={2} aria-hidden="true" />
+            <span>{label}</span>
+          </NavLink>)}
+      </nav>
     </div>
   )
 }

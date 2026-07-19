@@ -8,10 +8,12 @@ import { AppShell } from './AppShell'
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   signOut: vi.fn(async () => undefined),
+  openAccountPrompt: vi.fn(),
+  openSignInPrompt: vi.fn(),
 }))
 
 vi.mock('../../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
-vi.mock('../auth/GuestAccountPrompt', () => ({ useGuestAccountPrompt: () => ({ openAccountPrompt: vi.fn(), openSignInPrompt: vi.fn() }) }))
+vi.mock('../auth/GuestAccountPrompt', () => ({ useGuestAccountPrompt: () => ({ openAccountPrompt: mocks.openAccountPrompt, openSignInPrompt: mocks.openSignInPrompt }) }))
 vi.mock('../ui/BrandLogo', () => ({ BrandLogo: () => <span>NA ScheduleShare</span> }))
 vi.mock('../ui/ProfileAvatar', () => ({ ProfileAvatar: () => <span>Avatar</span> }))
 
@@ -51,9 +53,17 @@ describe('AppShell mobile navigation', () => {
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('does not render the authenticated bottom navigation for guests', () => {
+  it('shows guest-safe destinations and prompts for an account on protected destinations', async () => {
+    const user = userEvent.setup()
     mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, signOut: mocks.signOut })
-    renderShell('/')
-    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).not.toBeInTheDocument()
+    renderShell('/classes')
+    const navigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
+
+    expect(within(navigation).getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/schedule')
+    expect(within(navigation).getByRole('link', { name: 'Classes' })).toHaveClass('active')
+    await user.click(within(navigation).getByRole('button', { name: 'Classmates' }))
+    await user.click(within(navigation).getByRole('button', { name: 'Students' }))
+    expect(mocks.openAccountPrompt).toHaveBeenNthCalledWith(1, '/classmates')
+    expect(mocks.openAccountPrompt).toHaveBeenNthCalledWith(2, '/students')
   })
 })
