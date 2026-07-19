@@ -136,8 +136,9 @@ export function ProfilePage() {
       <button className="button button-secondary danger-text" disabled={auth.isDemo} type="button" onClick={() => { setDeleteConfirmation(''); setDeleteError(null); setDeleteOpen(true) }}><Trash2 size={17} aria-hidden="true" /> Delete my account</button>
     </section>
 
-    {deleteOpen ? <div className="dialog-backdrop" role="presentation">
+    {deleteOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) setDeleteOpen(false) }}>
       <section className="class-dialog delete-account-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-dialog-title">
+        <div className="sheet-handle" aria-hidden="true" />
         <header><div><h2 id="delete-account-dialog-title">Permanently delete your account?</h2><p>This cannot be undone.</p></div><button className="icon-button" type="button" aria-label="Close account deletion confirmation" disabled={deleting} onClick={() => setDeleteOpen(false)}><X aria-hidden="true" /></button></header>
         <div className="notice-box error"><AlertTriangle aria-hidden="true" /><span>Your authentication account, profile, schedule enrollments, and profile picture will be removed.</span></div>
         <label className="delete-confirmation-field"><span>Type <strong>DELETE</strong> to confirm</span><input aria-label="Type DELETE to confirm" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>

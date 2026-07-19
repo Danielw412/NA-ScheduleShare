@@ -48,7 +48,7 @@ describe('AppShell mobile navigation', () => {
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' })
     expect(within(primaryNavigation).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
-    expect(within(primaryNavigation).getByRole('link', { name: 'Report an issue' })).toBeInTheDocument()
+    expect(within(primaryNavigation).queryByRole('link', { name: 'Report an issue' })).not.toBeInTheDocument()
     await user.click(within(primaryNavigation).getByRole('button', { name: 'Sign out' }))
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
   })
