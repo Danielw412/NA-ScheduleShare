@@ -1,7 +1,9 @@
 import { handleRequest, type Env } from './index'
 import { handleShareRequest } from './share'
 
-const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
+const PRODUCTION_ORIGIN = 'https://schedule.naclubs.net'
+const LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'
+const PRODUCTION_ORIGINS = new Set([PRODUCTION_ORIGIN, LEGACY_PRODUCTION_ORIGIN])
 const LOCAL_ORIGINS = new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -23,7 +25,25 @@ function normalizedEnv(env: Env): Env {
 }
 
 function isAllowedOrigin(origin: string): boolean {
-  return origin === PRODUCTION_ORIGIN || LOCAL_ORIGINS.has(origin)
+  return PRODUCTION_ORIGINS.has(origin) || LOCAL_ORIGINS.has(origin)
+}
+
+function requestForLegacyHandler(request: Request, origin: string): Request {
+  if (origin !== PRODUCTION_ORIGIN) return request
+  const headers = new Headers(request.headers)
+  headers.set('Origin', LEGACY_PRODUCTION_ORIGIN)
+  return new Request(request, { headers })
+}
+
+function responseForOrigin(response: Response, origin: string): Response {
+  const headers = new Headers(response.headers)
+  headers.set('Access-Control-Allow-Origin', origin)
+  headers.set('Vary', 'Origin')
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }
 
 function jsonResponse(origin: string, status: number, body: unknown): Response {
@@ -115,16 +135,18 @@ export default {
     const shareResponse = await handleShareRequest(request, cleanEnv)
     if (shareResponse) return shareResponse
 
-    if (
-      request.method !== 'POST'
-      || url.pathname !== '/api/schedule-import'
-      || !isAllowedOrigin(origin)
-    ) {
-      return handleRequest(request, cleanEnv)
+    const isImportRequest = url.pathname === '/api/schedule-import'
+      && (request.method === 'POST' || request.method === 'OPTIONS')
+      && isAllowedOrigin(origin)
+
+    if (!isImportRequest) return handleRequest(request, cleanEnv)
+
+    if (request.method === 'POST') {
+      const authError = await preflightAuthentication(request, cleanEnv, origin)
+      if (authError) return authError
     }
 
-    const authError = await preflightAuthentication(request, cleanEnv, origin)
-    if (authError) return authError
-    return handleRequest(request, cleanEnv)
+    const response = await handleRequest(requestForLegacyHandler(request, origin), cleanEnv)
+    return responseForOrigin(response, origin)
   },
 }
