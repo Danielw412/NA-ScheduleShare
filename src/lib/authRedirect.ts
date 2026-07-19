@@ -1,6 +1,9 @@
 export function authRedirectUrl(
-  origin = window.location.origin,
+  currentUrl = window.location.href,
   baseUrl = import.meta.env.BASE_URL,
 ): string {
-  return new URL(baseUrl, origin).toString()
+  const redirectUrl = new URL(baseUrl, currentUrl)
+  redirectUrl.hash = ''
+  redirectUrl.search = ''
+  return redirectUrl.toString()
 }

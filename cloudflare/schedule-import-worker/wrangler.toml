@@ -1,6 +1,9 @@
 name = "na-scheduleshare-import"
 main = "src/entry.ts"
 compatibility_date = "2026-07-16"
+routes = [
+  { pattern = "schedule-api.naclubs.net", custom_domain = true }
+]
 
 [ai]
 binding = "AI"
@@ -13,7 +16,7 @@ preview_id = "50dc62af983a4f69a91a89aed2a56a4e"
 [vars]
 RATE_LIMIT_MAX = "6"
 RATE_LIMIT_WINDOW_SECONDS = "3600"
-SITE_URL = "https://danielw412.github.io/NA-ScheduleShare/"
+SITE_URL = "https://schedule.naclubs.net/"
 
 [secrets]
 required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"]

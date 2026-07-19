@@ -3,6 +3,8 @@ name: Test and deploy GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,8 +24,8 @@ jobs:
     env:
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_SCHEDULE_IMPORT_API_URL: ${{ secrets.VITE_SCHEDULE_IMPORT_API_URL }}
-      VITE_SCHEDULE_SHARE_BASE_URL: ${{ secrets.VITE_SCHEDULE_SHARE_BASE_URL }}
+      VITE_SCHEDULE_IMPORT_API_URL: https://schedule-api.naclubs.net/api/schedule-import
+      VITE_SCHEDULE_SHARE_BASE_URL: https://schedule-api.naclubs.net
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -46,13 +48,17 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm test:function
+      - run: pnpm test:worker
       - run: pnpm build
       - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
