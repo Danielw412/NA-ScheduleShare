@@ -56,7 +56,7 @@ Do not manually create a conflicting DNS record for `schedule-api`; Wrangler/Clo
 
 ## 5. Merge and deploy the frontend
 
-Merge the custom-domain pull request into `main`. The normal GitHub Pages workflow will build the site for `/` and will use:
+Merge the custom-domain pull request into `main`. The normal GitHub Pages workflow uses relative asset paths so the legacy project URL can keep working during the cutover, and it uses:
 
 - `VITE_SCHEDULE_IMPORT_API_URL=https://schedule-api.naclubs.net/api/schedule-import`
 - `VITE_SCHEDULE_SHARE_BASE_URL=https://schedule-api.naclubs.net`
