@@ -1,4 +1,4 @@
-import { LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { BookOpen, CalendarDays, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
@@ -8,18 +8,25 @@ import { BrandLogo } from '../ui/BrandLogo'
 import { ProfileAvatar } from '../ui/ProfileAvatar'
 
 const authenticatedNavigation = [
-  { to: '/', label: 'Home' },
-  { to: '/schedule', label: 'My Schedule' },
-  { to: '/classes', label: 'View Classes' },
-  { to: '/students', label: 'Students' },
-  { to: '/classmates', label: 'Classmates' },
-  { to: '/profile', label: 'Profile' },
+  { to: '/', label: 'Home', mobileBottomDuplicate: false },
+  { to: '/schedule', label: 'My Schedule', mobileBottomDuplicate: true },
+  { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
+  { to: '/students', label: 'Students', mobileBottomDuplicate: true },
+  { to: '/classmates', label: 'Classmates', mobileBottomDuplicate: true },
+  { to: '/profile', label: 'Profile', mobileBottomDuplicate: false },
 ]
 
 const guestNavigation = [
   { to: '/', label: 'Home' },
   { to: '/schedule', label: 'Schedule' },
   { to: '/classes', label: 'View Classes' },
+]
+
+const mobileBottomNavigation = [
+  { to: '/schedule', label: 'Schedule', Icon: CalendarDays },
+  { to: '/classes', label: 'Classes', Icon: BookOpen },
+  { to: '/classmates', label: 'Classmates', Icon: Users },
+  { to: '/students', label: 'Students', Icon: UserRound },
 ]
 
 export function AppShell() {
@@ -29,7 +36,7 @@ export function AppShell() {
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
   return (
-    <div className="app-shell">
+    <div className={user ? 'app-shell has-mobile-bottom-nav' : 'app-shell'}>
       <header className="site-header">
         <NavLink to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
         <button className="mobile-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
@@ -37,10 +44,12 @@ export function AppShell() {
         </button>
         <nav className={menuOpen ? 'primary-nav is-open' : 'primary-nav'} aria-label="Primary navigation">
           {primaryNavigation.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
+            <NavLink className={'mobileBottomDuplicate' in item && item.mobileBottomDuplicate ? 'mobile-bottom-duplicate' : undefined} key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
           ))}
           {!user ? <><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openSignInPrompt('/schedule') }}>Sign in</button><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openAccountPrompt('/schedule') }}>Create account</button></> : null}
+          {user ? <NavLink className="mobile-menu-only" to="/report" onClick={() => setMenuOpen(false)}>Report an issue</NavLink> : null}
           {isAdmin ? <NavLink to="/admin" onClick={() => setMenuOpen(false)}><ShieldCheck size={16} aria-hidden="true" /> Admin</NavLink> : null}
+          {user ? <button className="mobile-menu-only mobile-menu-sign-out" type="button" onClick={() => { setMenuOpen(false); void signOut() }}><LogOut size={17} aria-hidden="true" /> Sign out</button> : null}
         </nav>
         {user ? <div className="profile-menu">
           <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
@@ -60,6 +69,12 @@ export function AppShell() {
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>
+      {user ? <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {mobileBottomNavigation.map(({ to, label, Icon }) => <NavLink key={to} to={to}>
+          <Icon size={22} strokeWidth={2} aria-hidden="true" />
+          <span>{label}</span>
+        </NavLink>)}
+      </nav> : null}
     </div>
   )
 }

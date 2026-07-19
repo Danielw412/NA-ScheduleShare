@@ -1,4 +1,4 @@
-import { CalendarDays, Flag, LockKeyhole, Search, Users, X } from 'lucide-react'
+import { CalendarDays, ChevronRight, Flag, LockKeyhole, Search, SlidersHorizontal, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
@@ -27,6 +27,7 @@ function GuestClassesPage() {
   const [query, setQuery] = useState('')
   const [dayType, setDayType] = useState<DayType | ''>('')
   const [period, setPeriod] = useState<number | ''>('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const { error, loading, results } = useClassSearch({
     query,
     dayType: dayType || undefined,
@@ -38,11 +39,7 @@ function GuestClassesPage() {
   return (
     <div className="classes-page guest-classes-page">
       <header className="page-heading"><div><h1>View Classes</h1><p>Search actual classes by course, teacher, day, or period. Create an account to see who is enrolled.</p></div></header>
-      <div className="search-toolbar class-page-search-toolbar">
-        <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
-        <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
-      </div>
+      <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="class-browser">
         <section className="class-list-panel organized-class-list">
@@ -81,10 +78,47 @@ function classResultFromEnrollment(enrollment: ScheduleEnrollment): ClassSearchR
   return { ...enrollment.class, score: 1000 }
 }
 
+function classTermLabel(term: ClassSearchResult['default_academic_term']): string {
+  if (term === 'semester_1') return 'Semester 1'
+  if (term === 'semester_2') return 'Semester 2'
+  return 'Full Year'
+}
+
+interface ClassFilterControlsProps {
+  query: string
+  dayType: DayType | ''
+  period: number | ''
+  filtersOpen: boolean
+  setQuery: (value: string) => void
+  setDayType: (value: DayType | '') => void
+  setPeriod: (value: number | '') => void
+  setFiltersOpen: (value: boolean) => void
+}
+
+function ClassFilterControls({ query, dayType, period, filtersOpen, setQuery, setDayType, setPeriod, setFiltersOpen }: ClassFilterControlsProps) {
+  const activeFilterCount = Number(Boolean(dayType)) + Number(Boolean(period))
+  return <>
+    <div className="search-toolbar class-page-search-toolbar">
+      <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <button aria-controls="class-mobile-filter-panel" aria-expanded={filtersOpen} className="mobile-filter-toggle" type="button" onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={18} aria-hidden="true" /> Filters{activeFilterCount > 0 ? <span>{activeFilterCount}</span> : null}</button>
+      <div className={filtersOpen ? 'mobile-filter-panel is-open' : 'mobile-filter-panel'} id="class-mobile-filter-panel">
+        <label><span>Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
+        <label><span>Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
+      </div>
+    </div>
+    {activeFilterCount > 0 ? <div className="mobile-active-filters" aria-label="Active class filters">
+      {dayType ? <button type="button" onClick={() => setDayType('')}>{dayType} Day <X size={14} aria-hidden="true" /></button> : null}
+      {period ? <button type="button" onClick={() => setPeriod('')}>Period {period} <X size={14} aria-hidden="true" /></button> : null}
+      <button className="clear-filter-button" type="button" onClick={() => { setDayType(''); setPeriod('') }}>Clear filters</button>
+    </div> : null}
+  </>
+}
+
 function ClassListRow({ result, active }: { result: ClassSearchResult; active: boolean }) {
   return <Link className={active ? 'class-list-row is-active' : 'class-list-row'} to={`/classes/${result.id}`}>
-    <div><strong>{result.course_name}</strong><span>{result.teacher_last_name}</span></div>
-    <div>{compactMeetingSlotLabels(result.meeting_slots).map((label) => <small key={label}>{label}</small>)}</div>
+    <div className="class-list-copy"><strong>{result.course_name}</strong><span>{result.teacher_last_name}</span></div>
+    <div className="class-list-meta"><span>{compactMeetingSlotLabels(result.meeting_slots).join(' · ')}</span><small>{classTermLabel(result.default_academic_term)}</small></div>
+    <ChevronRight className="class-list-chevron" size={19} aria-hidden="true" />
   </Link>
 }
 
@@ -95,6 +129,7 @@ function AuthenticatedClassesPage() {
   const [query, setQuery] = useState('')
   const [dayType, setDayType] = useState<DayType | ''>('')
   const [period, setPeriod] = useState<number | ''>('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [members, setMembers] = useState<ClassMemberResult[]>([])
   const [memberError, setMemberError] = useState<string | null>(null)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
@@ -136,12 +171,9 @@ function AuthenticatedClassesPage() {
 
   return (
     <div className="classes-page">
-      <header className="page-heading"><div><h1>View Classes</h1><p>Your active classes appear first. Search all remaining discoverable classes below.</p></div><Link className="button button-secondary" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
-      <div className="search-toolbar class-page-search-toolbar">
-        <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-        <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
-        <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
-      </div>
+      <header className="page-heading"><div><h1>View Classes</h1><p>Your active classes appear first. Search all remaining discoverable classes below.</p></div><Link className="button button-secondary desktop-report-action" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
+      <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
+      <Link className="mobile-report-action" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={15} aria-hidden="true" /> {selected ? 'Report this class' : 'Report class info'}</Link>
       {searchError ? <p className="form-error" role="alert">{searchError}</p> : null}
       {memberError ? <p className="form-error" role="alert">{memberError}</p> : null}
       <div className="class-browser">

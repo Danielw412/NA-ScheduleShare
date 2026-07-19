@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClassesPage } from './ClassesPage'
@@ -75,5 +76,24 @@ describe('ClassesPage organization', () => {
     expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
     expect(screen.getByText(/Create an account and add your schedule to see who is in this class/)).toBeInTheDocument()
     expect(mocks.getClassMembers).not.toHaveBeenCalled()
+  })
+
+  it('opens the compact filters, shows removable chips, and clears them', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
+
+    const filterToggle = screen.getByRole('button', { name: 'Filters' })
+    await user.click(filterToggle)
+    expect(filterToggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.selectOptions(screen.getByLabelText('Day'), 'A')
+    await user.selectOptions(screen.getByLabelText('Period'), '2')
+    expect(screen.getByRole('button', { name: /A Day/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Period 2/ })).toBeInTheDocument()
+    expect(mocks.useClassSearch).toHaveBeenLastCalledWith(expect.objectContaining({ dayType: 'A', period: 2 }), expect.any(Object))
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.queryByLabelText('Active class filters')).not.toBeInTheDocument()
+    expect(mocks.useClassSearch).toHaveBeenLastCalledWith(expect.objectContaining({ dayType: undefined, period: undefined }), expect.any(Object))
   })
 })

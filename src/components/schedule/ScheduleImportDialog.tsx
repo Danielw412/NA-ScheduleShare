@@ -412,8 +412,8 @@ export function ScheduleImportDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <h2 id="schedule-import-title">{onboarding ? 'Add your schedule in about a minute' : 'Import screenshots'}</h2>
-            <p>{onboarding ? 'Upload screenshots, and ScheduleShare will identify your classes.' : 'Create your schedule using a screenshot · Powered by Google Gemini'}</p>
+            <h2 id="schedule-import-title">Import your schedule</h2>
+            <p>Choose a screenshot and ScheduleShare will identify your classes.</p>
           </div>
           <button className="icon-button" type="button" aria-label="Close import dialog" onClick={closeDialog} disabled={phase === 'saving'}><X aria-hidden="true" /></button>
         </header>
@@ -421,7 +421,7 @@ export function ScheduleImportDialog({
         {phase === 'upload' || phase === 'processing' ? (
           <div className="import-upload-step">
             {onboarding ? <div className="import-onboarding-flow" aria-label="Schedule import steps"><span>Screenshot</span><strong>→</strong><span>Review classes</span><strong>→</strong><span>Find classmates</span></div> : null}
-            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><strong>One PowerSchool screenshot is usually all you need.</strong><span>Crop out your name and student ID. Add up to three images when the full schedule does not fit in one screenshot.</span></p></div>
+            <div className="import-privacy-note"><Sparkles aria-hidden="true" /><p><span>Crop out your name and student ID. You can add up to three screenshots if needed.</span></p></div>
             {isAdmin ? <section className="import-developer-controls">
               <label className="checkbox-row"><input type="checkbox" checked={developerMode} onChange={(event) => { setDeveloperMode(event.target.checked); setDeveloperData(null) }} /><span><strong>AI developer mode</strong><small>Current admin session only. Bypasses only ScheduleShare's import rate limit and stores temporary diagnostics.</small></span></label>
               {developerMode ? <div className="two-field-row">
@@ -438,11 +438,12 @@ export function ScheduleImportDialog({
             </section> : null}
             <div className={images.length > 0 ? 'import-drop-zone has-images' : 'import-drop-zone'} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
               <Upload aria-hidden="true" />
-              <strong>{onboarding ? 'Drop or paste your schedule here' : 'Drop, paste, or choose schedule screenshots'}</strong>
+              <strong className="desktop-import-instructions">Drop, paste, or choose schedule screenshots</strong>
+              <strong className="mobile-import-instructions">Add a clear screenshot of your schedule</strong>
               <span>PNG, JPEG, or WebP · 10 MB maximum each</span>
               <div className="import-upload-actions">
                 <label className="button button-primary">
-                  {onboarding ? 'Choose Screenshot' : images.length > 0 ? 'Add screenshots' : 'Choose screenshots'}
+                  {images.length > 0 ? 'Add screenshot' : 'Choose screenshot'}
                   <input
                     accept="image/png,image/jpeg,image/webp"
                     aria-label="Choose schedule screenshots"
@@ -453,9 +454,9 @@ export function ScheduleImportDialog({
                   />
                 </label>
               </div>
-              <small><ClipboardPaste size={15} aria-hidden="true" /> Select or drop up to three together, or press Ctrl+V / Cmd+V to paste.</small>
+              <small className="desktop-import-instructions"><ClipboardPaste size={15} aria-hidden="true" /> Select or drop up to three together, or press Ctrl+V / Cmd+V to paste.</small>
             </div>
-            <p className="import-image-count" aria-live="polite"><strong>{images.length} of {MAX_SCHEDULE_IMAGES}</strong> screenshots added</p>
+            {images.length > 0 ? <p className="import-image-count" aria-live="polite"><strong>{images.length} of {MAX_SCHEDULE_IMAGES}</strong> {images.length === 1 ? 'screenshot' : 'screenshots'} added</p> : null}
             {images.length > 0 ? <div className="import-image-grid">
               {images.map((image, index) => <article className="import-image-slot" key={image.previewUrl}>
                 <img src={image.previewUrl} alt={`Schedule screenshot ${index + 1} preview`} />
@@ -469,9 +470,9 @@ export function ScheduleImportDialog({
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes and combining results for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
-            <button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
-              {phase === 'processing' ? 'Analyzing screenshots…' : 'Analyze screenshots'}
-            </button>
+            <div className="import-upload-action-bar"><button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
+              {phase === 'processing' ? `Analyzing ${images.length <= 1 ? 'screenshot' : 'screenshots'}…` : `Analyze ${images.length <= 1 ? 'screenshot' : 'screenshots'}`}
+            </button></div>
             {onboarding && phase !== 'processing' ? <div className="import-onboarding-actions">
               <button className="button button-secondary" type="button" onClick={() => { closeDialog(); onManualEntry?.() }}><FileImage size={17} aria-hidden="true" /> Enter Schedule Manually</button>
               <button className="text-button" type="button" onClick={closeDialog}>I’ll do this later</button>

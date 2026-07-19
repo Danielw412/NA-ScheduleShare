@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StudentsPage } from './StudentsPage'
@@ -30,6 +31,31 @@ describe('StudentsPage privacy display', () => {
     expect(await screen.findByText('Jordan')).toBeInTheDocument()
     expect(screen.getByText('Private')).toBeInTheDocument()
     expect(screen.getByText('Unavailable')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'View schedule' })).toHaveAttribute('href', '/students/public-student')
+    expect(screen.getByText('Alex Morgan').closest('a')).toHaveAttribute('href', '/students/public-student')
+    expect(screen.queryByText('View schedule')).not.toBeInTheDocument()
+  })
+
+  it('keeps search visible while secondary filters collapse and clear as chips', async () => {
+    const user = userEvent.setup()
+    mocks.searchStudentDirectory.mockResolvedValue([])
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    expect(screen.getByPlaceholderText('Student name')).toBeInTheDocument()
+    const filterToggle = screen.getByRole('button', { name: 'Filters' })
+    await user.click(filterToggle)
+    expect(filterToggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.selectOptions(screen.getByLabelText('Grade'), '11')
+    await user.type(screen.getByLabelText('Course'), 'Chemistry')
+    await user.type(screen.getByLabelText('Teacher Last Name'), 'Green')
+    expect(screen.getByLabelText('Active student filters')).toHaveTextContent('Grade 11')
+    expect(screen.getByLabelText('Active student filters')).toHaveTextContent('Chemistry')
+    expect(screen.getByLabelText('Active student filters')).toHaveTextContent('Green')
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.queryByLabelText('Active student filters')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Grade')).toHaveValue('')
+    expect(screen.getByLabelText('Course')).toHaveValue('')
+    expect(screen.getByLabelText('Teacher Last Name')).toHaveValue('')
   })
 })

@@ -48,6 +48,8 @@ describe('HomePage hero', () => {
     mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })
     renderPage()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
+    expect(screen.getByRole('heading', { name: 'Start your schedule' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
   })
 
   it('renders only the real statistic returned by the database', async () => {
