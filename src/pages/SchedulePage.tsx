@@ -10,7 +10,7 @@ import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
-import { createScheduleShareUrl, scheduleShareDescription, scheduleShareTitle } from '../lib/scheduleShare'
+import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
 import { removeEnrollment, updateEnrollmentTerm } from '../lib/supabase/data'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
@@ -106,7 +106,6 @@ export function SchedulePage() {
         try {
           await navigator.share({
             title: scheduleShareTitle,
-            text: scheduleShareDescription,
             url,
           })
           setMessage('Schedule shared.')
@@ -163,7 +162,7 @@ export function SchedulePage() {
       <header className="page-heading schedule-heading">
         <div><h1>My Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
         <div className="schedule-heading-actions">
-          <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import screenshots</button>
+          <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
           <button className="button button-secondary" type="button" disabled={!hasSchedule} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> Share schedule</button>
         </div>
       </header>

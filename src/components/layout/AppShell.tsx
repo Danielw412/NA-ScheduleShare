@@ -65,7 +65,6 @@ export function AppShell() {
         <p className="footer-security"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Security:</strong> Supabase row-level security enforces schedule privacy in the database, authenticated requests are permission-checked, and sensitive credentials stay server-side.</span></p>
         <nav aria-label="Footer navigation">
           {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
-          {user ? <NavLink to="/report">Report an issue</NavLink> : null}
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>

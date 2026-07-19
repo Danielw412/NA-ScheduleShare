@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { AuthChangeEvent } from '@supabase/supabase-js'
 import { demoProfile } from '../../lib/demo-data'
 import type { AccountState, Grade, PrivacySetting, Profile } from '../../lib/domain'
+import { authRedirectUrl } from '../../lib/authRedirect'
 import { demoModeEnabled, isSupabaseConfigured, supabase } from '../../lib/supabase/client'
 
 interface CurrentUser {
@@ -142,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) throw new Error('Supabase is not configured.')
-    const redirectTo = `${window.location.origin}${window.location.pathname}`
+    const redirectTo = authRedirectUrl()
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })
     if (error) throw error
   }, [])
@@ -155,7 +156,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithPassword = useCallback(async (email: string, password: string) => {
     if (!supabase) throw new Error('Supabase is not configured.')
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: authRedirectUrl() },
+    })
     if (error) throw error
   }, [])
 

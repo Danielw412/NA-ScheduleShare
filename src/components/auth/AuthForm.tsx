@@ -27,7 +27,7 @@ export function AuthForm({ initialMode = 'sign-in', next = '/schedule' }: AuthFo
       if (mode === 'sign-in') await auth.signInWithPassword(email, password)
       else {
         await auth.signUpWithPassword(email, password)
-        setMessage('Check your email to confirm your account, then return here to sign in.')
+        setMessage('Check your email and select Confirm my account. The link will bring you back here and sign you in securely.')
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Authentication failed.')

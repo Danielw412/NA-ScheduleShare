@@ -18,7 +18,6 @@ vi.mock('../lib/supabase/data', () => ({ removeEnrollment: mocks.removeEnrollmen
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
   scheduleShareTitle: 'My A/B-Day Schedule | NA ScheduleShare',
-  scheduleShareDescription: 'View my schedule on NA ScheduleShare',
 }))
 vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ onRemove }: { onRemove: (enrollment: unknown) => void }) => <div data-testid="schedule-grid"><button type="button" onClick={() => onRemove({ id: 'enrollment-test', class: { course_name: 'Test Biology' } })}>Remove test class</button></div> }))
 vi.mock('../components/schedule/TermSelector', () => ({ TermSelector: () => <div data-testid="term-selector" /> }))
@@ -113,7 +112,7 @@ describe('SchedulePage onboarding', () => {
     expect(schedule.reload).toHaveBeenCalled()
   })
 
-  it('opens the native share sheet with the dedicated URL, title, and description', async () => {
+  it('opens the native share sheet with only the dedicated URL and title', async () => {
     const nativeShare = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone' })
     Object.defineProperty(navigator, 'share', { configurable: true, value: nativeShare })
@@ -127,7 +126,6 @@ describe('SchedulePage onboarding', () => {
 
     await waitFor(() => expect(nativeShare).toHaveBeenCalledWith({
       title: 'My A/B-Day Schedule | NA ScheduleShare',
-      text: 'View my schedule on NA ScheduleShare',
       url: 'https://share.example/share/99300000-0000-4000-8000-000000000001',
     }))
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()

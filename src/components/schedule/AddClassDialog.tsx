@@ -50,6 +50,9 @@ const demoCourseNames: CourseNameSearchResult[] = [
 
 export function AddClassDialog({ open, dayType, period, replacing, onClose, onChanged, onDemoAdd }: AddClassDialogProps) {
   const { isDemo } = useAuth()
+  const shouldAutoFocus = typeof window === 'undefined'
+    || typeof window.matchMedia !== 'function'
+    || !window.matchMedia('(pointer: coarse), (max-width: 720px)').matches
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<ClassSearchResult | null>(null)
   const [term, setTerm] = useState<AcademicTerm>('full_year')
@@ -197,19 +200,19 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div><h2 id="add-class-title">{replacing ? 'Replace class' : mode === 'create' ? 'Create a class' : 'Add a class'}</h2><p>{context}</p></div>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X aria-hidden="true" /></button>
+          <button className="icon-button" type="button" aria-label="Close" autoFocus={!shouldAutoFocus} onClick={onClose}><X aria-hidden="true" /></button>
         </header>
         {mode === 'search' ? (
           <>
             <div className="dialog-search-row">
-              <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search class or teacher</span><input autoFocus placeholder="Search class or teacher" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+              <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search class or teacher</span><input autoFocus={shouldAutoFocus} placeholder="Search class or teacher" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
               <button className="button button-secondary" type="button"><Filter size={18} aria-hidden="true" /> Filters</button>
             </div>
             <div className="search-results" aria-live="polite">
               {loading ? <p className="muted">Searching…</p> : searchError ? null : results.length === 0 ? <p className="empty-inline">No classes match this cell and search.</p> : results.map((result) => (
                 <label className={selected?.id === result.id ? 'class-result is-selected' : 'class-result'} key={result.id}>
                   <input type="radio" name="class-result" checked={selected?.id === result.id} onChange={() => { setSelected(result); setTerm(result.default_academic_term) }} />
-                  <span><strong>{result.course_name}</strong><small>{result.teacher_last_name}</small><em>{formatMeetingSlotSummary(result.meeting_slots)} <i /> {result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</em></span>
+                  <span><strong>{result.course_name}</strong><small>{result.teacher_last_name}</small><em><span>{formatMeetingSlotSummary(result.meeting_slots)}</span><i /><span>{result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</span></em></span>
                 </label>
               ))}
             </div>
@@ -223,7 +226,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
             <div className="course-name-picker">
               <label>Course name
                 <input
-                  autoFocus
+                  autoFocus={shouldAutoFocus}
                   required={!selectedCourseName}
                   maxLength={120}
                   placeholder="Search the approved course catalog"

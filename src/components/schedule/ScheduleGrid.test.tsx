@@ -1,5 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import styles from '../../styles.css?raw'
 import type { ScheduleEnrollment } from '../../lib/domain'
 import { ScheduleGrid } from './ScheduleGrid'
@@ -32,6 +33,11 @@ const callbacks = {
   onReplace: vi.fn(),
   onTermChange: vi.fn(),
 }
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe('ScheduleGrid borders', () => {
   it('renders an explicit boundary structure for every period and both day columns', () => {
@@ -124,5 +130,20 @@ describe('ScheduleGrid borders', () => {
     expect(container.querySelector('[data-day="A"][data-period="3"]')).toHaveClass('is-multi-period')
     expect(container.querySelector('[data-day="A"][data-period="5"]')).not.toHaveClass('is-multi-period')
     expect(container.querySelector('[data-day="B"][data-period="5"]')).not.toHaveClass('is-multi-period')
+  })
+
+  it('keeps only one action menu open and closes it when clicking elsewhere', async () => {
+    const user = userEvent.setup()
+    render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="full_year" {...callbacks} />)
+    const triggers = screen.getAllByRole('button', { name: 'Actions for AP Physics 1&2' })
+
+    await user.click(triggers[0])
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await user.click(triggers[1])
+    expect(screen.getAllByRole('menu')).toHaveLength(1)
+
+    await user.click(screen.getByRole('grid'))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })

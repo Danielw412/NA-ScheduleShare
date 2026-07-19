@@ -140,7 +140,7 @@ export function ProfilePage() {
       <section className="class-dialog delete-account-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-dialog-title">
         <header><div><h2 id="delete-account-dialog-title">Permanently delete your account?</h2><p>This cannot be undone.</p></div><button className="icon-button" type="button" aria-label="Close account deletion confirmation" disabled={deleting} onClick={() => setDeleteOpen(false)}><X aria-hidden="true" /></button></header>
         <div className="notice-box error"><AlertTriangle aria-hidden="true" /><span>Your authentication account, profile, schedule enrollments, and profile picture will be removed.</span></div>
-        <label>Type <strong>DELETE</strong> to confirm<input aria-label="Type DELETE to confirm" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>
+        <label className="delete-confirmation-field"><span>Type <strong>DELETE</strong> to confirm</span><input aria-label="Type DELETE to confirm" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>
         {deleteError ? <p className="form-error" role="alert">{deleteError}</p> : null}
         <div className="form-actions"><button className="button button-secondary" type="button" disabled={deleting} onClick={() => setDeleteOpen(false)}>Cancel</button><button className="button button-danger" type="button" disabled={deleteConfirmation !== 'DELETE' || deleting} onClick={() => void confirmDeletion()}>{deleting ? 'Deleting…' : 'Delete account permanently'}</button></div>
       </section>
