@@ -22,8 +22,8 @@ jobs:
     env:
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_SCHEDULE_IMPORT_API_URL: ${{ secrets.VITE_SCHEDULE_IMPORT_API_URL }}
-      VITE_SCHEDULE_SHARE_BASE_URL: ${{ secrets.VITE_SCHEDULE_SHARE_BASE_URL }}
+      VITE_SCHEDULE_IMPORT_API_URL: https://schedule-api.naclubs.net/api/schedule-import
+      VITE_SCHEDULE_SHARE_BASE_URL: https://schedule-api.naclubs.net
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
