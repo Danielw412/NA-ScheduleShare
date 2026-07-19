@@ -45,7 +45,7 @@ export function AuthForm({ initialMode = 'sign-in', next = '/schedule' }: AuthFo
   return (
     <div className="auth-form-wrap">
       <h2>{mode === 'sign-in' ? 'Welcome back' : 'Create your account'}</h2>
-      <p>{mode === 'sign-in' ? 'Sign in to continue to your schedule.' : 'Anyone with the school link can join.'}</p>
+      <p>{mode === 'sign-in' ? 'Sign in to continue to your schedule.' : "Don't worry, we won't spam you with emails!"}</p>
       {auth.configurationMissing ? (
         <div className="notice-box error"><AlertCircle aria-hidden="true" /><span>Supabase is not configured. Copy <code>.env.example</code> to <code>.env.local</code> and add the project URL and publishable key.</span></div>
       ) : null}
@@ -60,7 +60,7 @@ export function AuthForm({ initialMode = 'sign-in', next = '/schedule' }: AuthFo
         </span>
         Continue with Google
       </button>
-      <p className="google-note"><strong>Use a personal Google account.</strong> School-managed accounts may block sign-in.</p>
+      <p className="google-note"><strong>Use a personal Google account.</strong> All data is stored securely on servers.</p>
       <div className="form-divider"><span>or use email</span></div>
       <form onSubmit={(event) => void handleEmail(event)}>
         <label>Email<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
