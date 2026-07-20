@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import styles from '../../styles.css?raw'
 import type { ScheduleEnrollment } from '../../lib/domain'
+import { getCssDeclarations } from '../../test/css'
 import { ScheduleGrid } from './ScheduleGrid'
 
 const doublePeriod: ScheduleEnrollment = {
@@ -56,10 +57,19 @@ describe('ScheduleGrid borders', () => {
     expect(periodEight?.querySelector('[data-day="A"]')).toHaveAttribute('data-continuation', 'true')
     expect(periodSeven?.querySelector('[data-day="B"]')).toHaveClass('empty-cell')
 
-    expect(styles).toContain('row-gap: 0')
-    expect(styles).toContain('.schedule-row > .period-label, .schedule-row > .schedule-cell { border-top: 1px solid var(--border-strong); }')
-    expect(styles).toContain('.filled-cell.is-multi-period { box-shadow: inset 5px 0 0 var(--focus); background: #f7faff; }')
-    expect(styles).toContain('.filled-cell.is-continuation { border-top: 2px dashed #8dbbf0; }')
+    expect(getCssDeclarations(styles, '.schedule-grid')).toMatchObject({
+      'row-gap': '0',
+    })
+    expect(getCssDeclarations(styles, '.schedule-row > .period-label, .schedule-row > .schedule-cell')).toMatchObject({
+      'border-top': '1px solid var(--border-strong)',
+    })
+    expect(getCssDeclarations(styles, '.filled-cell.is-multi-period')).toMatchObject({
+      'box-shadow': 'inset 5px 0 0 var(--focus)',
+      background: '#f7faff',
+    })
+    expect(getCssDeclarations(styles, '.filled-cell.is-continuation')).toMatchObject({
+      'border-top': '2px dashed #8dbbf0',
+    })
 
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
