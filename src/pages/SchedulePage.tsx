@@ -182,7 +182,7 @@ export function SchedulePage() {
     return (
       <div className="schedule-page guest-schedule-page">
         <header className="page-heading schedule-heading">
-          <div><h1>Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
+          <div><h1>Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
           <div className="schedule-heading-actions">
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
@@ -215,7 +215,7 @@ export function SchedulePage() {
       </section> : null}
       {hasSchedule && !shareCtaDismissed ? <section className="schedule-share-cta">
         <Share2 size={34} aria-hidden="true" />
-        <div><h2>Share your Schedule with friends</h2><p>Send a schedule link that works even when your profile privacy is set to Private.</p></div>
+        <div><h2>Share your Schedule with friends</h2><p>Send a link that shows your full schedule</p></div>
         <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
       </section> : null}
       <TermSelector value={selectedTerm} onChange={setSelectedTerm} />

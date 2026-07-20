@@ -120,7 +120,7 @@ function AuthenticatedStudentDirectory() {
 
   return (
     <div className="students-page">
-      <header className="page-heading"><div><h1>Student Schedules</h1><p>See both directions of access and share with specific students without changing your privacy setting.</p></div></header>
+      <header className="page-heading"><div><h1>Student Schedules</h1><p>Allow and request access to everyone's schedules</p></div></header>
       <section className="directory-filters">
         <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Student name</span><input placeholder="Student name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <button aria-controls="student-mobile-filter-panel" aria-expanded={filtersOpen} className="mobile-filter-toggle" type="button" onClick={() => setFiltersOpen((open) => !open)}><SlidersHorizontal size={18} aria-hidden="true" /> Filters{activeFilterCount > 0 ? <span>{activeFilterCount}</span> : null}</button>
