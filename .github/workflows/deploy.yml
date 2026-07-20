@@ -25,6 +25,7 @@ jobs:
       VITE_SUPABASE_PUBLISHABLE_KEY: test-publishable-key
       VITE_SCHEDULE_IMPORT_API_URL: https://schedule-api.naclubs.net/api/schedule-import
       VITE_SCHEDULE_SHARE_BASE_URL: https://schedule-api.naclubs.net
+      VITE_GOOGLE_CLIENT_ID: test-client-id.apps.googleusercontent.com
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -53,6 +54,7 @@ jobs:
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SCHEDULE_IMPORT_API_URL: https://schedule-api.naclubs.net/api/schedule-import
       VITE_SCHEDULE_SHARE_BASE_URL: https://schedule-api.naclubs.net
+      VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -70,6 +72,7 @@ jobs:
           test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" || { echo "VITE_SUPABASE_PUBLISHABLE_KEY is not configured" >&2; exit 1; }
           test -n "$VITE_SCHEDULE_IMPORT_API_URL" || { echo "VITE_SCHEDULE_IMPORT_API_URL is not configured" >&2; exit 1; }
           test -n "$VITE_SCHEDULE_SHARE_BASE_URL" || { echo "VITE_SCHEDULE_SHARE_BASE_URL is not configured" >&2; exit 1; }
+          test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "VITE_GOOGLE_CLIENT_ID is not configured" >&2; exit 1; }
       - run: pnpm typecheck
       - run: pnpm worker:typecheck
       - run: pnpm lint
