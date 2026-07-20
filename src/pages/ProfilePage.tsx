@@ -120,9 +120,9 @@ export function ProfilePage() {
       <section className="profile-card" aria-labelledby="profile-privacy-heading">
         <div className="profile-section-heading"><ShieldCheck aria-hidden="true" /><div><h2 id="profile-privacy-heading">Schedule privacy</h2><p>Takes effect as soon as you save</p></div></div>
         <div className="privacy-options large">
-          <label><input type="radio" name="privacy" checked={privacy === 'school'} onChange={() => setPrivacy('school')} /><span><strong>Anyone</strong><small>Any signed-in, non-suspended student can see you in class rosters and view your schedule.</small></span></label>
-          <label><input type="radio" name="privacy" checked={privacy === 'classmates'} onChange={() => setPrivacy('classmates')} /><span><strong>Classmates</strong><small>Students who share any active class with you can see you in rosters and view your schedule.</small></span></label>
-          <label><input type="radio" name="privacy" checked={privacy === 'private'} onChange={() => setPrivacy('private')} /><span><strong>Private</strong><small>Other students cannot see you in class rosters or open your schedule.</small></span></label>
+          <label><input type="radio" name="privacy" checked={privacy === 'school'} onChange={() => setPrivacy('school')} /><span><strong>Anyone</strong><small>Anyone can see your schedule.</small></span></label>
+          <label><input type="radio" name="privacy" checked={privacy === 'classmates'} onChange={() => setPrivacy('classmates')} /><span><strong>Classmates</strong><small>Students who share a class with you can see your full schedule.</small></span></label>
+          <label><input type="radio" name="privacy" checked={privacy === 'private'} onChange={() => setPrivacy('private')} /><span><strong>Private</strong><small>Only approved students can see your full schedule. People can see if they share a class with you.</small></span></label>
         </div>
       </section>
 

@@ -50,9 +50,9 @@ export function OnboardingPage() {
         <fieldset>
           <legend>Who can find you and view your schedule?</legend>
           <div className="privacy-options">
-            <label><input type="radio" name="privacy" checked={privacy === 'private'} onChange={() => setPrivacy('private')} /><span><strong>Private</strong><small>Hidden from other students' rosters and schedule views.</small></span></label>
-            <label><input type="radio" name="privacy" checked={privacy === 'classmates'} onChange={() => setPrivacy('classmates')} /><span><strong>Classmates</strong><small>Anyone sharing a class sees you in all your rosters and can view your schedule.</small></span></label>
-            <label><input type="radio" name="privacy" checked={privacy === 'school'} onChange={() => setPrivacy('school')} /><span><strong>Anyone</strong><small>Any active signed-in student can find you and view your schedule.</small></span></label>
+            <label><input type="radio" name="privacy" checked={privacy === 'private'} onChange={() => setPrivacy('private')} /><span><strong>Private</strong><small>Only approved people can see your full schedule. People can see that they share a class with you</small></span></label>
+            <label><input type="radio" name="privacy" checked={privacy === 'classmates'} onChange={() => setPrivacy('classmates')} /><span><strong>Classmates</strong><small>Anyone sharing a class with you can view your schedule.</small></span></label>
+            <label><input type="radio" name="privacy" checked={privacy === 'school'} onChange={() => setPrivacy('school')} /><span><strong>Anyone</strong><small>Anyone can view your schedule.</small></span></label>
           </div>
         </fieldset>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
