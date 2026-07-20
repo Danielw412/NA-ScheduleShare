@@ -182,7 +182,7 @@ export function SchedulePage() {
     return (
       <div className="schedule-page guest-schedule-page">
         <header className="page-heading schedule-heading">
-          <div><h1>Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
+          <div><h1>Schedule</h1><p>Upload your schedule and find the people in your classes.</p></div>
           <div className="schedule-heading-actions">
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>

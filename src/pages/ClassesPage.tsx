@@ -38,7 +38,7 @@ function GuestClassesPage() {
 
   return (
     <div className="classes-page guest-classes-page">
-      <header className="page-heading"><div><h1>View Classes</h1><p>Search actual classes by course, teacher, day, or period. Create an account to see who is enrolled.</p></div></header>
+      <header className="page-heading"><div><h1>View Classes</h1><p>Create an account to see who is in each class.</p></div></header>
       <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="class-browser">
