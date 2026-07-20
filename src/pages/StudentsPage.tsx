@@ -5,13 +5,32 @@ import { DiscoveryGate } from '../components/auth/DiscoveryGate'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import type { StudentDirectoryResult } from '../lib/domain'
-import { searchStudentDirectory } from '../lib/supabase/data'
+import {
+  allowScheduleAccess,
+  cancelScheduleAccessRequest,
+  removeScheduleAccess,
+  requestScheduleAccess,
+  scheduleAccessChangedEvent,
+  searchStudentDirectory,
+} from '../lib/supabase/data'
 
 const demoStudents: StudentDirectoryResult[] = [
-  { student_id: '40000000-0000-4000-8000-000000000001', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'school', shared_class_count: 3, can_view_schedule: true },
-  { student_id: '40000000-0000-4000-8000-000000000002', full_name: 'Sam Rivera', grade: 10, privacy_setting: 'classmates', shared_class_count: 1, can_view_schedule: true },
-  { student_id: '40000000-0000-4000-8000-000000000003', full_name: 'Casey Park', grade: 12, privacy_setting: 'school', shared_class_count: 0, can_view_schedule: true },
+  { student_id: '40000000-0000-4000-8000-000000000001', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'school', shared_class_count: 3, can_view_schedule: true, they_can_view_yours: 'shared_class', you_can_view_theirs: 'everyone_allowed', outgoing_request_pending: false },
+  { student_id: '40000000-0000-4000-8000-000000000002', full_name: 'Sam Rivera', grade: 10, privacy_setting: 'classmates', shared_class_count: 1, can_view_schedule: true, they_can_view_yours: 'approved_by_you', you_can_view_theirs: 'shared_class', outgoing_request_pending: false },
+  { student_id: '40000000-0000-4000-8000-000000000003', full_name: 'Casey', grade: 12, privacy_setting: 'private', shared_class_count: 0, can_view_schedule: false, they_can_view_yours: 'no_access', you_can_view_theirs: 'private', outgoing_request_pending: false },
 ]
+
+const accessLabels: Record<StudentDirectoryResult['they_can_view_yours'] | StudentDirectoryResult['you_can_view_theirs'], string> = {
+  shared_class: 'Shared class',
+  everyone_allowed: 'Everyone allowed',
+  approved_by_you: 'Approved by you',
+  approved_by_them: 'Approved by them',
+  no_access: 'No access',
+  private: 'Private',
+  admin: 'Admin access',
+}
+
+type StudentAction = 'allow' | 'remove' | 'request' | 'cancel'
 
 export function StudentsPage() {
   return <DiscoveryGate><AuthenticatedStudentDirectory /></DiscoveryGate>
@@ -27,19 +46,35 @@ function AuthenticatedStudentDirectory() {
   const [students, setStudents] = useState<StudentDirectoryResult[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [acting, setActing] = useState<{ studentId: string; action: StudentAction } | null>(null)
+  const [refreshVersion, setRefreshVersion] = useState(0)
   const activeFilterCount = Number(Boolean(grade)) + Number(Boolean(courseName.trim())) + Number(Boolean(teacherLastName.trim()))
 
   useEffect(() => {
+    const refreshAccess = () => setRefreshVersion((current) => current + 1)
+    window.addEventListener(scheduleAccessChangedEvent, refreshAccess)
+    return () => window.removeEventListener(scheduleAccessChangedEvent, refreshAccess)
+  }, [])
+
+  useEffect(() => {
+    let active = true
     const timer = window.setTimeout(() => {
       setLoading(true)
       setError(null)
       const request = isDemo
         ? Promise.resolve(demoStudents.filter((student) => (!query || student.full_name.toLowerCase().includes(query.toLowerCase())) && (!grade || student.grade === grade)))
         : searchStudentDirectory({ query, grade: grade || undefined, courseName, teacherLastName })
-      void request.then(setStudents).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Directory search failed.')).finally(() => setLoading(false))
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [courseName, grade, isDemo, query, teacherLastName])
+      void request
+        .then((results) => { if (active) setStudents(results) })
+        .catch((caught: unknown) => { if (active) setError(caught instanceof Error ? caught.message : 'Directory search failed.') })
+        .finally(() => { if (active) setLoading(false) })
+    }, refreshVersion > 0 ? 0 : 250)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [courseName, grade, isDemo, query, refreshVersion, teacherLastName])
 
   function clearFilters() {
     setGrade('')
@@ -47,9 +82,45 @@ function AuthenticatedStudentDirectory() {
     setTeacherLastName('')
   }
 
+  function applyOptimisticAction(studentId: string, action: StudentAction) {
+    setStudents((current) => current.map((student) => {
+      if (student.student_id !== studentId) return student
+      if (action === 'allow') return { ...student, they_can_view_yours: 'approved_by_you' }
+      if (action === 'remove') return { ...student, they_can_view_yours: 'no_access' }
+      if (action === 'request') return { ...student, outgoing_request_pending: true }
+      return { ...student, outgoing_request_pending: false }
+    }))
+  }
+
+  async function performAction(student: StudentDirectoryResult, action: StudentAction) {
+    setActing({ studentId: student.student_id, action })
+    setError(null)
+    setSuccess(null)
+    try {
+      if (!isDemo) {
+        if (action === 'allow') await allowScheduleAccess(student.student_id)
+        if (action === 'remove') await removeScheduleAccess(student.student_id)
+        if (action === 'request') await requestScheduleAccess(student.student_id)
+        if (action === 'cancel') await cancelScheduleAccessRequest(student.student_id)
+      }
+      applyOptimisticAction(student.student_id, action)
+      setSuccess(action === 'allow'
+        ? `${student.full_name} can now view your schedule.`
+        : action === 'remove'
+          ? `Schedule access removed for ${student.full_name}.`
+          : action === 'request'
+            ? `Access requested from ${student.full_name}.`
+            : `Access request canceled.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Schedule access could not be updated.')
+    } finally {
+      setActing(null)
+    }
+  }
+
   return (
     <div className="students-page">
-      <header className="page-heading"><div><h1>Student Schedules</h1><p>Only students whose privacy setting permits discovery appear here.</p></div></header>
+      <header className="page-heading"><div><h1>Student Schedules</h1><p>See both directions of access and share with specific students without changing your privacy setting.</p></div></header>
       <section className="directory-filters">
         <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Student name</span><input placeholder="Student name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <button aria-controls="student-mobile-filter-panel" aria-expanded={filtersOpen} className="mobile-filter-toggle" type="button" onClick={() => setFiltersOpen((open) => !open)}><SlidersHorizontal size={18} aria-hidden="true" /> Filters{activeFilterCount > 0 ? <span>{activeFilterCount}</span> : null}</button>
@@ -65,16 +136,31 @@ function AuthenticatedStudentDirectory() {
         {teacherLastName.trim() ? <button type="button" onClick={() => setTeacherLastName('')}>{teacherLastName.trim()} <X size={14} aria-hidden="true" /></button> : null}
         <button className="clear-filter-button" type="button" onClick={clearFilters}>Clear filters</button>
       </div> : null}
-      {error ? <p className="form-error">{error}</p> : null}
+      {success ? <div className="toast-message" role="status"><span>{success}</span><button type="button" aria-label="Dismiss message" onClick={() => setSuccess(null)}>×</button></div> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="student-results" aria-label="Student schedules">
         {loading ? <p className="muted">Loading schedules…</p> : students.map((student) => {
-          const privacyLabel = student.privacy_setting === 'school' ? 'Anyone' : student.privacy_setting === 'classmates' ? 'Classmates' : 'Private'
-          const cardContent = <><ProfileAvatar userId={student.student_id} fullName={student.full_name} /><span className="student-result-copy"><strong>{student.full_name}</strong><span><span>Grade {student.grade}</span><span>{student.shared_class_count} shared {student.shared_class_count === 1 ? 'class' : 'classes'}</span><span className="privacy-value">{privacyLabel}</span></span></span>{student.can_view_schedule ? <ChevronRight size={20} aria-hidden="true" /> : <span className="student-result-unavailable">Unavailable</span>}</>
-          return student.can_view_schedule
-            ? <Link className="student-result-card" key={student.student_id} style={{ viewTransitionName: `student-${student.student_id}` }} viewTransition to={`/students/${student.student_id}`} state={{ reportedUser: { student_id: student.student_id, full_name: student.full_name, grade: student.grade } }}>{cardContent}</Link>
-            : <div aria-disabled="true" className="student-result-card is-disabled" key={student.student_id} style={{ viewTransitionName: `student-${student.student_id}` }}>{cardContent}</div>
+          const isActing = acting?.studentId === student.student_id
+          const actionLabel = acting?.action === 'allow' ? 'Allowing…' : acting?.action === 'remove' ? 'Removing…' : acting?.action === 'request' ? 'Requesting…' : 'Canceling…'
+          const profile = <><ProfileAvatar userId={student.student_id} fullName={student.full_name} /><span className="student-access-name"><strong>{student.full_name}</strong><small>Grade {student.grade}{student.shared_class_count > 0 ? ` · ${student.shared_class_count} shared ${student.shared_class_count === 1 ? 'class' : 'classes'}` : ''}</small></span></>
+          return <article className="student-access-card" key={student.student_id} style={{ viewTransitionName: `student-${student.student_id}` }}>
+            {student.can_view_schedule
+              ? <Link className="student-access-profile" viewTransition to={`/students/${student.student_id}`} state={{ reportedUser: { student_id: student.student_id, full_name: student.full_name, grade: student.grade } }}>{profile}</Link>
+              : <div className="student-access-profile">{profile}</div>}
+            <div className="student-access-statuses">
+              <span><small>They can view yours</small><strong data-access={student.they_can_view_yours}>{accessLabels[student.they_can_view_yours]}</strong></span>
+              <span><small>You can view theirs</small><strong data-access={student.you_can_view_theirs}>{accessLabels[student.you_can_view_theirs]}</strong></span>
+            </div>
+            <div className="student-access-actions">
+              {student.they_can_view_yours === 'no_access' ? <button className="button button-secondary" type="button" disabled={acting !== null} onClick={() => void performAction(student, 'allow')}>{isActing ? actionLabel : 'Allow access'}</button> : null}
+              {student.they_can_view_yours === 'approved_by_you' ? <button className="button button-secondary" type="button" disabled={acting !== null} onClick={() => void performAction(student, 'remove')}>{isActing ? actionLabel : 'Remove access'}</button> : null}
+              {student.you_can_view_theirs === 'private' && !student.outgoing_request_pending ? <button className="button button-primary" type="button" disabled={acting !== null} onClick={() => void performAction(student, 'request')}>{isActing ? actionLabel : 'Request access'}</button> : null}
+              {student.you_can_view_theirs === 'private' && student.outgoing_request_pending ? <><span className="access-requested">Access requested</span><button className="access-cancel-button" type="button" disabled={acting !== null} onClick={() => void performAction(student, 'cancel')}>{isActing ? actionLabel : 'Cancel request'}</button></> : null}
+              {student.can_view_schedule ? <Link className="student-view-schedule" viewTransition to={`/students/${student.student_id}`} state={{ reportedUser: { student_id: student.student_id, full_name: student.full_name, grade: student.grade } }}>View schedule <ChevronRight size={17} aria-hidden="true" /></Link> : null}
+            </div>
+          </article>
         })}
-        {!loading && students.length === 0 ? <p className="empty-inline">No viewable schedules match those filters.</p> : null}
+        {!loading && students.length === 0 ? <p className="empty-inline">No students match those filters.</p> : null}
       </div>
     </div>
   )

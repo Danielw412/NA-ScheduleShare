@@ -6,6 +6,7 @@ import { useAuth } from '../../features/auth/AuthProvider'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
 import { BrandLogo } from '../ui/BrandLogo'
 import { ProfileAvatar } from '../ui/ProfileAvatar'
+import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
 
 const authenticatedNavigation = [
   { to: '/', label: 'Home', mobileBottomDuplicate: false },
@@ -39,9 +40,6 @@ export function AppShell() {
     <div className="app-shell has-mobile-bottom-nav">
       <header className="site-header">
         <NavLink to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
-        <button className="mobile-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
-          {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-        </button>
         <nav className={menuOpen ? 'primary-nav is-open' : 'primary-nav'} aria-label="Primary navigation">
           {primaryNavigation.map((item) => (
             <NavLink className={'mobileBottomDuplicate' in item && item.mobileBottomDuplicate ? 'mobile-bottom-duplicate' : undefined} key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
@@ -50,13 +48,19 @@ export function AppShell() {
           {isAdmin ? <NavLink to="/admin" onClick={() => setMenuOpen(false)}><ShieldCheck size={16} aria-hidden="true" /> Admin</NavLink> : null}
           {user ? <button className="mobile-menu-only mobile-menu-sign-out" type="button" onClick={() => { setMenuOpen(false); void signOut() }}><LogOut size={17} aria-hidden="true" /> Sign out</button> : null}
         </nav>
-        {user ? <div className="profile-menu">
-          <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
-          <div>
-            <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
-            <button className="profile-sign-out" type="button" onClick={() => void signOut()}><LogOut size={13} aria-hidden="true" /> Sign out</button>
-          </div>
-        </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
+        <div className="site-header-actions">
+          {user ? <ScheduleAccessNotifications userId={user.id} /> : null}
+          <button className="mobile-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          </button>
+          {user ? <div className="profile-menu">
+            <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
+            <div>
+              <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
+              <button className="profile-sign-out" type="button" onClick={() => void signOut()}><LogOut size={13} aria-hidden="true" /> Sign out</button>
+            </div>
+          </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
+        </div>
       </header>
       <main className="page-container"><div className="page-transition" key={location.pathname}><Outlet /></div></main>
       <footer className="site-footer">

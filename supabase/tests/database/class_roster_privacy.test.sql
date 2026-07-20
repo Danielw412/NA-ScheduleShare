@@ -130,8 +130,8 @@ select is(
 );
 select is(
   (select count(*) from public.get_class_members('93200000-0000-4000-8000-000000000001')),
-  2::bigint,
-  'a shared-class roster includes the viewer and Classmates student but hides Private'
+  3::bigint,
+  'a shared-class roster identifies the viewer, Classmates student, and Private classmate'
 );
 select is(
   (select count(*) from public.get_class_members('93200000-0000-4000-8000-000000000003')),
@@ -165,8 +165,8 @@ select is(
 );
 select is(
   (select count(*) from public.get_classmates() where student_id = '93000000-0000-4000-8000-000000000005'),
-  0::bigint,
-  'the Classmates endpoint does not leak a shared Private student'
+  1::bigint,
+  'the Classmates endpoint identifies a shared Private student without exposing their schedule'
 );
 select is(
   (select count(*) from public.search_student_directory('', null::smallint, null::text, null::text) where student_id = '93000000-0000-4000-8000-000000000003'),

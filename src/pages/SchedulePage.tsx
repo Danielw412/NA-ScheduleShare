@@ -1,4 +1,4 @@
-import { CheckCircle2, ImagePlus, Plus, Share2, Users } from 'lucide-react'
+import { CheckCircle2, ImagePlus, Plus, Share2, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
@@ -35,6 +35,26 @@ function hasHandledOnboarding(userId: string): boolean {
   }
 }
 
+function shareCtaKey(userId: string): string {
+  return `scheduleshare:share-cta-dismissed:${userId}`
+}
+
+function hasDismissedShareCta(userId: string): boolean {
+  try {
+    return window.localStorage.getItem(shareCtaKey(userId)) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function rememberShareCtaDismissal(userId: string): void {
+  try {
+    window.localStorage.setItem(shareCtaKey(userId), 'true')
+  } catch {
+    // The reminder can reappear if optional local storage is unavailable.
+  }
+}
+
 function isMobileShareDevice(): boolean {
   const navigatorWithUserAgentData = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
   if (typeof navigatorWithUserAgentData.userAgentData?.mobile === 'boolean') return navigatorWithUserAgentData.userAgentData.mobile
@@ -53,7 +73,13 @@ export function SchedulePage() {
   const [importOnboarding, setImportOnboarding] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [showSavedCheck, setShowSavedCheck] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareCtaDismissed, setShareCtaDismissed] = useState(() => user ? hasDismissedShareCta(user.id) : true)
   const onboardingChecked = useRef(false)
+
+  useEffect(() => {
+    setShareCtaDismissed(user ? hasDismissedShareCta(user.id) : true)
+  }, [user])
 
   useEffect(() => {
     if (!user || schedule.loading) return
@@ -99,7 +125,8 @@ export function SchedulePage() {
     setShowSavedCheck(false)
   }
 
-  async function shareSchedule() {
+  async function shareSchedule(): Promise<boolean> {
+    setSharing(true)
     try {
       const url = await createScheduleShareUrl()
       if (isMobileShareDevice() && typeof navigator.share === 'function') {
@@ -110,8 +137,8 @@ export function SchedulePage() {
           })
           setMessage('Schedule shared.')
         } catch (caught) {
-          if (caught instanceof DOMException && caught.name === 'AbortError') return
-          if (caught instanceof Error && caught.name === 'AbortError') return
+          if (caught instanceof DOMException && caught.name === 'AbortError') return false
+          if (caught instanceof Error && caught.name === 'AbortError') return false
           throw caught
         }
       } else {
@@ -119,10 +146,23 @@ export function SchedulePage() {
         setMessage('Schedule link copied.')
       }
       setShowSavedCheck(false)
+      if (user) {
+        rememberShareCtaDismissal(user.id)
+        setShareCtaDismissed(true)
+      }
+      return true
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'The schedule link could not be shared.')
       setShowSavedCheck(false)
+      return false
+    } finally {
+      setSharing(false)
     }
+  }
+
+  function dismissShareCta() {
+    if (user) rememberShareCtaDismissal(user.id)
+    setShareCtaDismissed(true)
   }
 
   function openImport(onboarding = false) {
@@ -163,7 +203,7 @@ export function SchedulePage() {
         <div><h1>My Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
         <div className="schedule-heading-actions">
           <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
-          <button className="button button-secondary" type="button" disabled={!hasSchedule} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> Share schedule</button>
+          <button className="button button-secondary" type="button" disabled={!hasSchedule || sharing} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> {sharing ? 'Sharing…' : 'Share schedule'}</button>
         </div>
       </header>
       {message ? <div className={showSavedCheck ? 'toast-message schedule-save-success' : 'toast-message'} role="status">{showSavedCheck ? <CheckCircle2 className="success-checkmark" aria-hidden="true" /> : null}<span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
@@ -172,6 +212,11 @@ export function SchedulePage() {
         <ImagePlus size={34} aria-hidden="true" />
         <div><h2>Add your schedule in about a minute</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p><div className="import-onboarding-flow"><span>Screenshot</span><strong>→</strong><span>Review classes</span><strong>→</strong><span>Find classmates</span></div></div>
         <div><button className="button button-primary" type="button" disabled={isDemo} onClick={() => openImport(false)}>Choose Screenshot</button><button className="button button-secondary" type="button" onClick={() => setActiveCell({ dayType: 'A', period: 1 })}>Enter Schedule Manually</button></div>
+      </section> : null}
+      {hasSchedule && !shareCtaDismissed ? <section className="schedule-share-cta">
+        <Share2 size={34} aria-hidden="true" />
+        <div><h2>Share your Schedule with friends</h2><p>Send a schedule link that works even when your profile privacy is set to Private.</p></div>
+        <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
       </section> : null}
       <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
       <div className="schedule-layout">
