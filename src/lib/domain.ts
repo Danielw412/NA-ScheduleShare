@@ -72,6 +72,25 @@ export interface StudentDirectoryResult {
   privacy_setting: PrivacySetting
   shared_class_count: number
   can_view_schedule: boolean
+  they_can_view_yours: 'shared_class' | 'everyone_allowed' | 'approved_by_you' | 'no_access' | 'admin'
+  you_can_view_theirs: 'shared_class' | 'everyone_allowed' | 'approved_by_them' | 'private' | 'admin'
+  outgoing_request_pending: boolean
+}
+
+export interface ScheduleAccessNotification {
+  request_id: string
+  kind: 'incoming_request' | 'request_update'
+  status: 'pending' | 'approved' | 'declined'
+  student_id: string
+  full_name: string
+  created_at: string
+  updated_at: string
+  read: boolean
+}
+
+export interface ScheduleAccessNotifications {
+  count: number
+  notifications: ScheduleAccessNotification[]
 }
 
 export interface ReportableUser {

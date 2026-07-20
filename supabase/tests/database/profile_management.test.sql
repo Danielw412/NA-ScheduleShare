@@ -29,6 +29,10 @@ values ('98000000-0000-4000-8000-000000000001', 'other', 'Account deletion anony
 insert into storage.objects (bucket_id, name)
 values ('profile-pictures', '98000000-0000-4000-8000-000000000002/avatar');
 
+-- Current local Storage images require this transaction-scoped flag for direct
+-- SQL cleanup, allowing the assertions below to continue exercising DELETE RLS.
+select set_config('storage.allow_delete_query', 'true', true);
+
 select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;

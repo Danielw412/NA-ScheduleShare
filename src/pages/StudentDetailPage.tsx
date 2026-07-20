@@ -40,11 +40,11 @@ export function StudentDetailPage() {
     void searchReportableUsers('', studentId).then((results) => setStudent(results[0] ?? null)).catch(() => undefined)
   }, [isDemo, navigationUser?.full_name, navigationUser?.grade, studentId, user])
   if (!user) return <><section className="empty-state"><LockKeyhole size={38} /><h1>Schedule locked</h1><p>Real schedule data is never exposed to logged-out visitors.</p></section><GuestSchedulePrompt open onClose={() => void navigate('/students', { replace: true })} /></>
-  if (denied) return <section className="empty-state"><LockKeyhole size={38} /><h1>This schedule isn’t available</h1><p>The student’s current privacy setting does not allow you to view it.</p><Link to="/students">Back to students</Link></section>
+  if (denied) return <section className="empty-state"><LockKeyhole size={38} /><h1>This schedule isn’t available</h1><p>You do not currently have access to this student’s schedule.</p><Link to="/students">Back to students</Link></section>
   return (
     <div className="student-detail-page">
       <Link className="back-link" to="/students"><ArrowLeft size={17} /> Student schedules</Link>
-      <header className="page-heading"><div className="student-profile-heading" style={student ? { viewTransitionName: `student-${student.student_id}` } : undefined}>{student ? <ProfileAvatar userId={student.student_id} fullName={student.full_name} className="profile-avatar-heading" /> : null}<div><h1>{student ? `${student.full_name}’s Schedule` : 'Student Schedule'}</h1><p>Visible because this student’s privacy setting permits it.</p></div></div>{student ? <Link className="button button-secondary" to="/report" state={{ reportedUser: student }}><Flag size={17} /> Report user</Link> : null}</header>
+      <header className="page-heading"><div className="student-profile-heading" style={student ? { viewTransitionName: `student-${student.student_id}` } : undefined}>{student ? <ProfileAvatar userId={student.student_id} fullName={student.full_name} className="profile-avatar-heading" /> : null}<div><h1>{student ? `${student.full_name}’s Schedule` : 'Student Schedule'}</h1><p>You currently have access to view this schedule.</p></div></div>{student ? <Link className="button button-secondary" to="/report" state={{ reportedUser: student }}><Flag size={17} /> Report user</Link> : null}</header>
       <TermSelector value={term} onChange={setTerm} />
       {loading ? <p className="muted">Loading schedule…</p> : <div className="schedule-layout"><ScheduleGrid enrollments={schedule} selectedTerm={term} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} readOnly /></div>}
     </div>

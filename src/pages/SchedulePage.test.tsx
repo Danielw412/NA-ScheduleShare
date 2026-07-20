@@ -88,6 +88,23 @@ describe('SchedulePage onboarding', () => {
     await waitFor(() => expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { name: 'See Who You Share Classes With' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Find Classmates' })).toHaveAttribute('href', '/classmates')
+    expect(screen.getByRole('heading', { name: 'Share your Schedule with friends' })).toBeInTheDocument()
+  })
+
+  it('remembers when the inline sharing reminder is dismissed', async () => {
+    const user = userEvent.setup()
+    mocks.useSchedule.mockReturnValue({
+      ...emptySchedule(),
+      enrollments: [{ id: 'enrollment-1', student_id: 'student-1' }],
+    })
+    const first = renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss sharing reminder' }))
+    expect(screen.queryByRole('heading', { name: 'Share your Schedule with friends' })).not.toBeInTheDocument()
+
+    first.unmount()
+    renderPage()
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Share your Schedule with friends' })).not.toBeInTheDocument())
   })
 
   it('opens the import flow without auto-onboarding from the no-schedule upload URL', async () => {

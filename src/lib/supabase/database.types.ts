@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -337,6 +357,96 @@ export type Database = {
           },
         ]
       }
+      schedule_access_grants: {
+        Row: {
+          granted_at: string
+          granted_via: string
+          owner_id: string
+          revoked_at: string | null
+          updated_at: string
+          viewer_id: string
+        }
+        Insert: {
+          granted_at?: string
+          granted_via?: string
+          owner_id: string
+          revoked_at?: string | null
+          updated_at?: string
+          viewer_id: string
+        }
+        Update: {
+          granted_at?: string
+          granted_via?: string
+          owner_id?: string
+          revoked_at?: string | null
+          updated_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_access_grants_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_access_grants_viewer_id_fkey"
+            columns: ["viewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_access_requests: {
+        Row: {
+          created_at: string
+          id: string
+          owner_id: string
+          requester_id: string
+          requester_read_at: string | null
+          responded_at: string | null
+          status: Database["public"]["Enums"]["schedule_access_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          owner_id: string
+          requester_id: string
+          requester_read_at?: string | null
+          responded_at?: string | null
+          status?: Database["public"]["Enums"]["schedule_access_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          owner_id?: string
+          requester_id?: string
+          requester_read_at?: string | null
+          responded_at?: string | null
+          status?: Database["public"]["Enums"]["schedule_access_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_access_requests_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_access_requests_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_change_history: {
         Row: {
           action: Database["public"]["Enums"]["schedule_action"]
@@ -630,6 +740,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_update_schedule_import_progress_duration: {
+        Args: { p_progress_bar_duration_ms: number }
+        Returns: undefined
+      }
       admin_update_schedule_import_settings: {
         Args: {
           p_model_id: string
@@ -646,6 +760,14 @@ export type Database = {
           p_reason: string
           p_user_id: string
         }
+        Returns: undefined
+      }
+      allow_schedule_access: {
+        Args: { p_viewer_id: string }
+        Returns: undefined
+      }
+      cancel_schedule_access_request: {
+        Args: { p_owner_id: string }
         Returns: undefined
       }
       create_class_and_enroll: {
@@ -717,6 +839,16 @@ export type Database = {
       }
       get_or_create_schedule_share: { Args: never; Returns: string }
       get_public_schedule_share: { Args: { p_token: string }; Returns: Json }
+      get_schedule_access_notifications: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      get_schedule_import_ui_settings: {
+        Args: never
+        Returns: {
+          progress_bar_duration_ms: number
+        }[]
+      }
       get_visible_schedule: {
         Args: { p_student_id: string }
         Returns: {
@@ -731,6 +863,24 @@ export type Database = {
           teacher_last_name: string
         }[]
       }
+      guest_search_classes: {
+        Args: {
+          p_day_type?: Database["public"]["Enums"]["day_type"]
+          p_limit?: number
+          p_period_number?: number
+          p_query?: string
+        }
+        Returns: {
+          class_id: string
+          course_name: string
+          course_name_id: string
+          default_academic_term: Database["public"]["Enums"]["academic_term"]
+          is_double_period: boolean
+          meeting_slots: Json
+          score: number
+          teacher_last_name: string
+        }[]
+      }
       guest_search_students: {
         Args: { p_first_name: string; p_limit?: number }
         Returns: {
@@ -740,6 +890,10 @@ export type Database = {
         }[]
       }
       is_current_user_admin: { Args: never; Returns: boolean }
+      mark_schedule_access_notifications_read: {
+        Args: never
+        Returns: undefined
+      }
       record_schedule_import_diagnostic: {
         Args: {
           p_image_metadata: Json
@@ -760,6 +914,10 @@ export type Database = {
         Args: { p_enrollment_id: string }
         Returns: undefined
       }
+      remove_schedule_access: {
+        Args: { p_viewer_id: string }
+        Returns: undefined
+      }
       replace_enrollment: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -775,6 +933,11 @@ export type Database = {
           added_count: number
           removed_count: number
         }[]
+      }
+      request_schedule_access: { Args: { p_owner_id: string }; Returns: string }
+      respond_schedule_access_request: {
+        Args: { p_allow: boolean; p_request_id: string }
+        Returns: undefined
       }
       schedule_import_prepare: {
         Args: {
@@ -825,6 +988,25 @@ export type Database = {
           student_id: string
         }[]
       }
+      search_student_access_directory: {
+        Args: {
+          p_course_name?: string
+          p_grade?: number
+          p_query?: string
+          p_teacher_last_name?: string
+        }
+        Returns: {
+          can_view_schedule: boolean
+          full_name: string
+          grade: number
+          outgoing_request_pending: boolean
+          privacy_setting: Database["public"]["Enums"]["privacy_setting"]
+          shared_class_count: number
+          student_id: string
+          they_can_view_yours: string
+          you_can_view_theirs: string
+        }[]
+      }
       search_student_directory: {
         Args: {
           p_course_name?: string
@@ -862,6 +1044,11 @@ export type Database = {
         | "duplicate_class"
         | "other"
       report_status: "open" | "in_review" | "resolved" | "dismissed"
+      schedule_access_request_status:
+        | "pending"
+        | "approved"
+        | "declined"
+        | "canceled"
       schedule_action:
         | "class_added"
         | "class_removed"
@@ -994,6 +1181,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       academic_term: ["full_year", "semester_1", "semester_2"],
@@ -1009,6 +1199,12 @@ export const Constants = {
         "other",
       ],
       report_status: ["open", "in_review", "resolved", "dismissed"],
+      schedule_access_request_status: [
+        "pending",
+        "approved",
+        "declined",
+        "canceled",
+      ],
       schedule_action: [
         "class_added",
         "class_removed",

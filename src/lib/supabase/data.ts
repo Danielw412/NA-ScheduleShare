@@ -15,6 +15,8 @@ import type {
   HomepageStatisticSettings,
   MeetingSlot,
   ReportableUser,
+  ScheduleAccessNotification,
+  ScheduleAccessNotifications,
   ScheduleEnrollment,
   ScheduleImportDiagnosticLog,
   ScheduleImportModelRecord,
@@ -192,15 +194,105 @@ export async function updateEnrollmentTerm(enrollmentId: string, term: AcademicT
 }
 
 export async function searchStudentDirectory(filters: { query?: string; grade?: number; courseName?: string; teacherLastName?: string }): Promise<StudentDirectoryResult[]> {
-  const client = requireClient()
-  const { data, error } = await client.rpc('search_student_directory', {
+  const data = await callUntypedRpc('search_student_access_directory', {
     p_query: filters.query || undefined,
     p_grade: filters.grade || undefined,
     p_course_name: filters.courseName || undefined,
     p_teacher_last_name: filters.teacherLastName || undefined,
   })
-  if (error) throw error
-  return data as unknown as StudentDirectoryResult[]
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    student_id: String(row.student_id),
+    full_name: String(row.full_name),
+    grade: Number(row.grade) as StudentDirectoryResult['grade'],
+    privacy_setting: String(row.privacy_setting) as StudentDirectoryResult['privacy_setting'],
+    shared_class_count: Number(row.shared_class_count),
+    can_view_schedule: Boolean(row.can_view_schedule),
+    they_can_view_yours: String(row.they_can_view_yours) as StudentDirectoryResult['they_can_view_yours'],
+    you_can_view_theirs: String(row.you_can_view_theirs) as StudentDirectoryResult['you_can_view_theirs'],
+    outgoing_request_pending: Boolean(row.outgoing_request_pending),
+  }))
+}
+
+export const scheduleAccessChangedEvent = 'scheduleshare:schedule-access-changed'
+
+export function announceScheduleAccessChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(scheduleAccessChangedEvent))
+}
+
+function scheduleAccessActionError(caught: unknown, fallback: string): Error {
+  const message = caught && typeof caught === 'object' && 'message' in caught ? String(caught.message) : ''
+  if (message.includes('schedule_access_already_available')) return new Error('You already have access to this schedule.')
+  if (message.includes('schedule_access_request_not_pending')) return new Error('That access request is no longer pending.')
+  if (message.includes('schedule_access_target_unavailable')) return new Error('That student is no longer available.')
+  if (message.includes('invalid_schedule_access_target')) return new Error('Choose another student.')
+  return new Error(fallback)
+}
+
+async function runScheduleAccessAction(functionName: string, args: Record<string, unknown>, fallback: string): Promise<unknown> {
+  try {
+    const result = await callUntypedRpc(functionName, args)
+    announceScheduleAccessChanged()
+    return result
+  } catch (caught) {
+    throw scheduleAccessActionError(caught, fallback)
+  }
+}
+
+export async function allowScheduleAccess(viewerId: string): Promise<void> {
+  await runScheduleAccessAction('allow_schedule_access', { p_viewer_id: viewerId }, 'Access could not be allowed. Please try again.')
+}
+
+export async function removeScheduleAccess(viewerId: string): Promise<void> {
+  await runScheduleAccessAction('remove_schedule_access', { p_viewer_id: viewerId }, 'Access could not be removed. Please try again.')
+}
+
+export async function requestScheduleAccess(ownerId: string): Promise<void> {
+  await runScheduleAccessAction('request_schedule_access', { p_owner_id: ownerId }, 'The access request could not be sent. Please try again.')
+}
+
+export async function cancelScheduleAccessRequest(ownerId: string): Promise<void> {
+  await runScheduleAccessAction('cancel_schedule_access_request', { p_owner_id: ownerId }, 'The access request could not be canceled. Please try again.')
+}
+
+export async function respondScheduleAccessRequest(requestId: string, allow: boolean): Promise<void> {
+  await runScheduleAccessAction('respond_schedule_access_request', { p_request_id: requestId, p_allow: allow }, `The request could not be ${allow ? 'approved' : 'declined'}. Please try again.`)
+}
+
+function parseScheduleAccessNotification(value: unknown): ScheduleAccessNotification | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  if (row.kind !== 'incoming_request' && row.kind !== 'request_update') return null
+  if (row.status !== 'pending' && row.status !== 'approved' && row.status !== 'declined') return null
+  if (typeof row.request_id !== 'string' || typeof row.student_id !== 'string' || typeof row.full_name !== 'string') return null
+  return {
+    request_id: row.request_id,
+    kind: row.kind,
+    status: row.status,
+    student_id: row.student_id,
+    full_name: row.full_name,
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+    read: Boolean(row.read),
+  }
+}
+
+export async function getScheduleAccessNotifications(): Promise<ScheduleAccessNotifications> {
+  const data = await callUntypedRpc('get_schedule_access_notifications', { p_limit: 30 })
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}
+  return {
+    count: Math.max(0, Number(row.count) || 0),
+    notifications: Array.isArray(row.notifications)
+      ? row.notifications.map(parseScheduleAccessNotification).filter((item): item is ScheduleAccessNotification => item !== null)
+      : [],
+  }
+}
+
+export async function markScheduleAccessNotificationsRead(): Promise<void> {
+  try {
+    await callUntypedRpc('mark_schedule_access_notifications_read')
+  } catch {
+    // Reading a notification remains useful even if its optional read receipt fails.
+  }
 }
 
 export async function getVisibleSchedule(studentId: string): Promise<ScheduleEnrollment[]> {
