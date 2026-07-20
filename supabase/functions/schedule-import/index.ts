@@ -13,6 +13,8 @@ import {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')?.trim().replace(/\/$/, '') ?? ''
 const SUPABASE_PUBLISHABLE_KEY = readPublishableKey()
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')?.trim() ?? ''
+const CUSTOM_DOMAIN_ORIGIN = 'https://schedule.naclubs.net'
+const LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'
 
 function readPublishableKey(): string {
   const namedKeys = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')
@@ -149,8 +151,34 @@ function dependencies(): ScheduleImportDependencies {
   }
 }
 
+function requestForGeminiHandler(request: Request): { request: Request; responseOrigin: string | null } {
+  const origin = request.headers.get('Origin')?.trim()
+  if (origin !== CUSTOM_DOMAIN_ORIGIN) return { request, responseOrigin: null }
+
+  const headers = new Headers(request.headers)
+  headers.set('Origin', LEGACY_PRODUCTION_ORIGIN)
+  return {
+    request: new Request(request, { headers }),
+    responseOrigin: CUSTOM_DOMAIN_ORIGIN,
+  }
+}
+
+function responseForBrowserOrigin(response: Response, origin: string | null): Response {
+  if (!origin) return response
+  const headers = new Headers(response.headers)
+  headers.set('Access-Control-Allow-Origin', origin)
+  headers.set('Vary', 'Origin')
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
 export default {
-  fetch(request: Request): Promise<Response> {
-    return handleScheduleImportRequest(request, dependencies())
+  async fetch(request: Request): Promise<Response> {
+    const bridged = requestForGeminiHandler(request)
+    const response = await handleScheduleImportRequest(bridged.request, dependencies())
+    return responseForBrowserOrigin(response, bridged.responseOrigin)
   },
 }
