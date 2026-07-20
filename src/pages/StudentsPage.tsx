@@ -148,8 +148,8 @@ function AuthenticatedStudentDirectory() {
               ? <Link className="student-access-profile" viewTransition to={`/students/${student.student_id}`} state={{ reportedUser: { student_id: student.student_id, full_name: student.full_name, grade: student.grade } }}>{profile}</Link>
               : <div className="student-access-profile">{profile}</div>}
             <div className="student-access-statuses">
-              <span><small>They can view yours</small><strong data-access={student.they_can_view_yours}>{accessLabels[student.they_can_view_yours]}</strong></span>
-              <span><small>You can view theirs</small><strong data-access={student.you_can_view_theirs}>{accessLabels[student.you_can_view_theirs]}</strong></span>
+              <span><small>Access to your schedule</small><strong data-access={student.they_can_view_yours}>{accessLabels[student.they_can_view_yours]}</strong></span>
+              <span><small>Access to their schedule</small><strong data-access={student.you_can_view_theirs}>{accessLabels[student.you_can_view_theirs]}</strong></span>
             </div>
             <div className="student-access-actions">
               {student.they_can_view_yours === 'no_access' ? <button className="button button-secondary" type="button" disabled={acting !== null} onClick={() => void performAction(student, 'allow')}>{isActing ? actionLabel : 'Allow access'}</button> : null}

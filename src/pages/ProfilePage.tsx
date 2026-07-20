@@ -132,7 +132,7 @@ export function ProfilePage() {
     </form>
 
     <section className="profile-card danger-zone" aria-labelledby="delete-account-heading">
-      <div><h2 id="delete-account-heading">Delete account</h2><p>Permanently removes your sign-in, profile, enrollments, and stored profile picture. Shared class definitions remain for other students.</p></div>
+      <div><h2 id="delete-account-heading">Delete account</h2><p>Permanently deletes your email, profile, schedule, and your appearance to other students. This is not reversible.</p></div>
       <button className="button button-secondary danger-text" disabled={auth.isDemo} type="button" onClick={() => { setDeleteConfirmation(''); setDeleteError(null); setDeleteOpen(true) }}><Trash2 size={17} aria-hidden="true" /> Delete my account</button>
     </section>
 

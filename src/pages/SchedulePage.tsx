@@ -200,7 +200,7 @@ export function SchedulePage() {
   return (
     <div className="schedule-page">
       <header className="page-heading schedule-heading">
-        <div><h1>My Schedule</h1><p>Build your A/B-day schedule and find the people in your classes.</p></div>
+        <div><h1>My Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
         <div className="schedule-heading-actions">
           <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
           <button className="button button-secondary" type="button" disabled={!hasSchedule || sharing} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> {sharing ? 'Sharing…' : 'Share schedule'}</button>

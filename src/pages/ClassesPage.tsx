@@ -59,7 +59,7 @@ function GuestClassesPage() {
             <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
             <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{formatMeetingSlotSummary(selected.meeting_slots)}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
             <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Create an account and add your schedule to see who is in this class. Student privacy settings still apply.</p><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create Account</button></section>
-          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Open a result to see its real meeting slots. Rosters remain private until you create an account.</p></div>}
+          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Create an account, then click a class to see who’s in it.</p></div>}
         </section>
       </div>
     </div>
@@ -103,8 +103,8 @@ function ClassFilterControls({ query, dayType, period, filtersOpen, setQuery, se
       <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
       <button aria-controls="class-mobile-filter-panel" aria-expanded={filtersOpen} className="mobile-filter-toggle" type="button" onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={18} aria-hidden="true" /> Filters{activeFilterCount > 0 ? <span>{activeFilterCount}</span> : null}</button>
       <div className={filtersOpen ? 'mobile-filter-panel is-open' : 'mobile-filter-panel'} id="class-mobile-filter-panel">
-        <label><span>Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
-        <label><span>Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
+        <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
+        <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
       </div>
     </div>
     {activeFilterCount > 0 ? <div className="mobile-active-filters" aria-label="Active class filters">
@@ -172,15 +172,15 @@ function AuthenticatedClassesPage() {
 
   return (
     <div className="classes-page">
-      <header className="page-heading"><div><h1>View Classes</h1><p>Your active classes appear first. Search all remaining discoverable classes below.</p></div><Link className="button button-secondary desktop-report-action" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
+      <header className="page-heading"><div><h1>View Classes</h1><p>See who's in your classes and browse other classes</p></div><Link className="button button-secondary desktop-report-action" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
       <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
       <Link className="mobile-report-action" to="/report" state={selected ? { reportedClass: selected } : undefined}><Flag size={15} aria-hidden="true" /> {selected ? 'Report this class' : 'Report class info'}</Link>
       {searchError ? <p className="form-error" role="alert">{searchError}</p> : null}
       {memberError ? <p className="form-error" role="alert">{memberError}</p> : null}
       <div className="class-browser">
         <section className="class-list-panel organized-class-list">
-          {hasSchedule ? <section className="your-classes-section" aria-labelledby="your-classes-heading"><div><h2 id="your-classes-heading">Your Classes</h2><span>{ownClasses.length} active</span></div><p>Classes currently on your saved schedule.</p><div className="class-list">{filteredOwnClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{filteredOwnClasses.length === 0 ? <p className="empty-inline">None of your classes match these filters.</p> : null}</div></section> : <section className="your-classes-empty"><ImagePrompt /></section>}
-          <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Discoverable sections</span></div><div className="class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : otherClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{!loading && !searchError && otherClasses.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
+          {hasSchedule ? <section className="your-classes-section" aria-labelledby="your-classes-heading"><div><h2 id="your-classes-heading">Your Classes</h2><span>{ownClasses.length} classes</span></div><div className="class-list">{filteredOwnClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{filteredOwnClasses.length === 0 ? <p className="empty-inline">None of your classes match these filters.</p> : null}</div></section> : <section className="your-classes-empty"><ImagePrompt /></section>}
+          <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Classes that aren't on your schedule</span></div><div className="class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : otherClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{!loading && !searchError && otherClasses.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
         </section>
         {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
         <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>
@@ -191,7 +191,7 @@ function AuthenticatedClassesPage() {
             <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{formatMeetingSlotSummary(selected.meeting_slots)}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
             {ownClassIds.has(selected.id) ? <Link className="manage-class-link" to="/schedule">Manage this class on your schedule</Link> : null}
             {hasSchedule ? <><div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{members.length}</span></div><div className="member-list">{members.map((member) => <div key={member.student_id} style={{ viewTransitionName: `student-${member.student_id}` }}><ProfileAvatar userId={member.student_id} fullName={member.full_name} /><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link viewTransition to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Schedule hidden</span>}</div>)}</div>{members.length === 0 ? <p className="empty-inline">No students in this class are visible under their privacy settings.</p> : null}</> : <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Upload your schedule to see which classmates share your courses.</p><Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link></section>}
-          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Open a result to see its meeting slots and, when authorized, visible classmates.</p></div>}
+          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Click on a class to see who's in it. Students with schedules set to private or classmates will not be shown. </p></div>}
         </section>
       </div>
     </div>

@@ -43,7 +43,6 @@ export function HomePage() {
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
-          <p>It's like Saturn, but better!</p>
           <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
           <div className="hero-actions">
             {user ? <Link className="button button-primary" to="/schedule">Upload My Schedule <ArrowRight size={18} /></Link> : <button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Upload My Schedule <ArrowRight size={18} /></button>}
