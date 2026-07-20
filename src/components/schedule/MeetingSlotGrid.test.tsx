@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import styles from '../../styles.css?raw'
 import type { MeetingSlot } from '../../lib/domain'
+import { getCssDeclarations } from '../../test/css'
 import { MeetingSlotGrid } from './MeetingSlotGrid'
 
 afterEach(cleanup)
@@ -63,7 +64,13 @@ describe('MeetingSlotGrid', () => {
     render(<EditableGrid initialSlots={[]} />)
     expect(screen.getAllByRole('columnheader')).toHaveLength(10)
     expect(screen.getAllByRole('rowheader')).toHaveLength(2)
-    expect(styles).toContain('.meeting-slot-grid-scroll { min-width: 0; overflow-x: auto;')
-    expect(styles).toContain('.meeting-slot-grid { width: 100%; min-width: 520px;')
+    expect(getCssDeclarations(styles, '.meeting-slot-grid-scroll')).toMatchObject({
+      'min-width': '0',
+      'overflow-x': 'auto',
+    })
+    expect(getCssDeclarations(styles, '.meeting-slot-grid')).toMatchObject({
+      width: '100%',
+      'min-width': '520px',
+    })
   })
 })
