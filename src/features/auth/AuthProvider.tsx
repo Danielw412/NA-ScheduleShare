@@ -29,7 +29,7 @@ interface AuthContextValue {
   isAdmin: boolean
   isDemo: boolean
   configurationMissing: boolean
-  signInWithGoogle: (idToken: string, nonce: string) => Promise<void>
+  signInWithGoogle: () => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signUpWithPassword: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -91,10 +91,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const accountRow = Array.isArray(accountData) ? accountData[0] : accountData
     const nextAccount: AccountState = accountRow
       ? {
-        suspended: Boolean((accountRow as Record<string, unknown>).suspended),
-        suspension_reason: ((accountRow as Record<string, unknown>).suspension_reason as string | null) ?? null,
-        deleted: Boolean((accountRow as Record<string, unknown>).deleted),
-      }
+          suspended: Boolean((accountRow as Record<string, unknown>).suspended),
+          suspension_reason: ((accountRow as Record<string, unknown>).suspension_reason as string | null) ?? null,
+          deleted: Boolean((accountRow as Record<string, unknown>).deleted),
+        }
       : activeAccount
     setAccountState(nextAccount)
     if (nextAccount.suspended || nextAccount.deleted) {
@@ -141,15 +141,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [hydrateUser, isDemo])
 
-  const signInWithGoogle = useCallback(async (idToken: string, nonce: string) => {
+  const signInWithGoogle = useCallback(async () => {
     if (!supabase) throw new Error('Supabase is not configured.')
-
-    const { error } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token: idToken,
-      nonce,
-    })
-
+    const redirectTo = authRedirectUrl()
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })
     if (error) throw error
   }, [])
 
