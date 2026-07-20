@@ -2,54 +2,12 @@ name: Test and deploy schedule import Worker
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/deploy-worker.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-gemini-origin-hotfix:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Allow the ScheduleShare custom domain
-        shell: python
-        run: |
-          from pathlib import Path
-
-          path = Path('supabase/functions/schedule-import/core.ts')
-          text = path.read_text(encoding='utf-8')
-
-          old_constants = "const PRODUCTION_ORIGIN = 'https://danielw412.github.io'\nconst LOCAL_ORIGINS = new Set(["
-          new_constants = "const PRODUCTION_ORIGIN = 'https://schedule.naclubs.net'\nconst LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'\nconst PRODUCTION_ORIGINS = new Set([PRODUCTION_ORIGIN, LEGACY_PRODUCTION_ORIGIN])\nconst LOCAL_ORIGINS = new Set(["
-          if old_constants not in text:
-              raise SystemExit('Expected production-origin declaration was not found.')
-          text = text.replace(old_constants, new_constants, 1)
-
-          old_check = "  if (origin === PRODUCTION_ORIGIN || LOCAL_ORIGINS.has(origin)) return origin"
-          new_check = "  if (PRODUCTION_ORIGINS.has(origin) || LOCAL_ORIGINS.has(origin)) return origin"
-          if old_check not in text:
-              raise SystemExit('Expected allowed-origin check was not found.')
-          text = text.replace(old_check, new_check, 1)
-
-          path.write_text(text, encoding='utf-8')
-      - name: Commit hotfix
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add supabase/functions/schedule-import/core.ts
-          git commit -m "Fix Gemini import CORS for schedule.naclubs.net"
-          git push origin HEAD:main
-
   deploy:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
