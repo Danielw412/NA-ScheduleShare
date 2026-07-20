@@ -2,7 +2,9 @@ export const DEFAULT_GEMINI_TIMEOUT_MS = 45_000
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_IMAGES = 3
 
-const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
+const PRODUCTION_ORIGIN = 'https://schedule.naclubs.net'
+const LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'
+const PRODUCTION_ORIGINS = new Set([PRODUCTION_ORIGIN, LEGACY_PRODUCTION_ORIGIN])
 const LOCAL_ORIGINS = new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -996,7 +998,7 @@ async function persistDiagnosticSafely(
 function allowedOrigin(request: Request): string {
   const origin = request.headers.get('Origin')?.trim()
   if (!origin) return PRODUCTION_ORIGIN
-  if (origin === PRODUCTION_ORIGIN || LOCAL_ORIGINS.has(origin)) return origin
+  if (PRODUCTION_ORIGINS.has(origin) || LOCAL_ORIGINS.has(origin)) return origin
   throw new HttpError(403, 'origin_not_allowed', 'This origin is not allowed to use schedule importing.')
 }
 
