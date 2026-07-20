@@ -56,10 +56,10 @@ describe('ScheduleGrid borders', () => {
     expect(periodEight?.querySelector('[data-day="A"]')).toHaveAttribute('data-continuation', 'true')
     expect(periodSeven?.querySelector('[data-day="B"]')).toHaveClass('empty-cell')
 
-    expect(styles).toContain('row-gap: 0')
-    expect(styles).toContain('.schedule-row > .period-label, .schedule-row > .schedule-cell { border-top: 1px solid var(--border-strong); }')
-    expect(styles).toContain('.filled-cell.is-multi-period { box-shadow: inset 5px 0 0 var(--focus); background: #f7faff; }')
-    expect(styles).toContain('.filled-cell.is-continuation { border-top: 2px dashed #8dbbf0; }')
+    expect(styles).toMatch(/row-gap\s*:\s*0\s*;/)
+    expect(styles).toMatch(/\.schedule-row\s*>\s*\.period-label\s*,\s*\.schedule-row\s*>\s*\.schedule-cell\s*\{[^}]*border-top\s*:\s*1px\s+solid\s+var\(--border-strong\)\s*;/)
+    expect(styles).toMatch(/\.filled-cell\.is-multi-period\s*\{[^}]*box-shadow\s*:\s*inset\s+5px\s+0\s+0\s+var\(--focus\)\s*;[^}]*background\s*:\s*#f7faff\s*;/)
+    expect(styles).toMatch(/\.filled-cell\.is-continuation\s*\{[^}]*border-top\s*:\s*2px\s+dashed\s+#8dbbf0\s*;/)
 
     rerender(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
     expect(screen.getAllByRole('row')).toHaveLength(9)
