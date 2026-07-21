@@ -175,6 +175,15 @@ export async function removeEnrollment(enrollmentId: string): Promise<void> {
   if (error) throw error
 }
 
+export async function clearSchedule(): Promise<number> {
+  const client = requireClient()
+  const { data, error } = await client.rpc('clear_my_schedule')
+  if (error) throw error
+  const removed = Number(data)
+  if (!Number.isSafeInteger(removed) || removed < 0) throw new Error('The server returned an invalid cleared class count.')
+  return removed
+}
+
 export async function replaceEnrollment(enrollmentId: string, nextClassId: string, term: AcademicTerm, allowConflict = false): Promise<string> {
   const client = requireClient()
   const { data, error } = await client.rpc('replace_enrollment', {

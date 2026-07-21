@@ -1,4 +1,4 @@
-import { CheckCircle2, ImagePlus, Plus, Share2, Users, X } from 'lucide-react'
+import { CheckCircle2, ImagePlus, Plus, Share2, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
@@ -22,7 +22,7 @@ import {
   type ScheduleImportResult,
 } from '../lib/scheduleImport'
 import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
-import { removeEnrollment, searchGuestCourseNames, updateEnrollmentTerm } from '../lib/supabase/data'
+import { clearSchedule, removeEnrollment, searchGuestCourseNames, updateEnrollmentTerm } from '../lib/supabase/data'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
@@ -83,14 +83,15 @@ export function SchedulePage() {
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
-  const [importInitialResult, setImportInitialResult] = useState<ScheduleImportResult | null>(null)
   const [guestImportResult, setGuestImportResult] = useState<ScheduleImportResult | null>(null)
+  const [clearScheduleOpen, setClearScheduleOpen] = useState(false)
+  const [clearingSchedule, setClearingSchedule] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [showSavedCheck, setShowSavedCheck] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareCtaDismissed, setShareCtaDismissed] = useState(() => user ? hasDismissedShareCta(user.id) : true)
   const onboardingChecked = useRef(false)
-  const guestResumeStarted = useRef(false)
+  const guestTransferStarted = useRef(false)
   const guestPreviewEnrollments = useMemo(
     () => guestImportResult ? scheduleImportPreviewEnrollments(guestImportResult) : [],
     [guestImportResult],
@@ -101,7 +102,6 @@ export function SchedulePage() {
   }, [user])
 
   useEffect(() => {
-    if (searchParams.get('import') === 'resume') return
     if (!user || schedule.loading) return
     if (schedule.enrollments.length > 0) {
       onboardingChecked.current = true
@@ -115,6 +115,10 @@ export function SchedulePage() {
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('import')
       setSearchParams(nextParams, { replace: true })
+      return
+    }
+    if (loadGuestScheduleImportDraft()) {
+      onboardingChecked.current = true
       return
     }
     if (onboardingChecked.current) return
@@ -144,45 +148,34 @@ export function SchedulePage() {
     if (!user
       || !profile?.grade
       || !profile.onboarding_completed
-      || searchParams.get('import') !== 'resume'
-      || guestResumeStarted.current) return
-    guestResumeStarted.current = true
-    const grade = profile.grade
-    let active = true
+      || schedule.loading
+      || schedule.enrollments.length > 0
+      || guestTransferStarted.current) return
     const draft = loadGuestScheduleImportDraft()
-    const finishResume = () => {
+    if (!draft) return
+    guestTransferStarted.current = true
+    const grade = profile.grade
+    const removeLegacyResumeMarker = () => {
+      if (searchParams.get('import') !== 'resume') return
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('import')
       setSearchParams(nextParams, { replace: true })
     }
-    if (!draft) {
-      finishResume()
-      return
-    }
-    let normalizedResult: ScheduleImportResult | null = null
     void (async () => {
-      normalizedResult = await normalizeImportedResultForGrade(draft, grade)
+      const normalizedResult = await normalizeImportedResultForGrade(draft, grade)
       const saved = await confirmScheduleImport(editableRowsFromImportResult(normalizedResult))
       await reloadSchedule()
-      if (!active) return
       clearGuestScheduleImportDraft()
       setGuestImportResult(null)
       rememberOnboarding(user.id, 'completed')
       setShowSavedCheck(true)
       setMessage(`Imported schedule saved automatically: ${saved.added} ${saved.added === 1 ? 'class' : 'classes'} added.`)
-      finishResume()
+      removeLegacyResumeMarker()
     })().catch((caught: unknown) => {
-      if (!active) return
-      if (normalizedResult) {
-        setImportInitialResult(normalizedResult)
-        setImportOnboarding(false)
-        setImportOpen(true)
-      }
-      setMessage(caught instanceof Error ? `Your imported schedule was restored, but could not be saved automatically: ${caught.message}` : 'Your imported schedule was restored, but could not be saved automatically.')
-      finishResume()
+      setMessage(caught instanceof Error ? `Your imported schedule is still available, but could not be saved automatically: ${caught.message}` : 'Your imported schedule is still available, but could not be saved automatically.')
+      removeLegacyResumeMarker()
     })
-    return () => { active = false }
-  }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, searchParams, setSearchParams, user])
+  }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
     if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
@@ -202,6 +195,27 @@ export function SchedulePage() {
     }
     setMessage('Academic term updated.')
     setShowSavedCheck(false)
+  }
+
+  async function clearAllClasses() {
+    if (clearingSchedule) return
+    setClearingSchedule(true)
+    try {
+      const removed = isDemo
+        ? schedule.enrollments.reduce((count, enrollment) => {
+          schedule.removeDemoEnrollment(enrollment.id)
+          return count + 1
+        }, 0)
+        : await clearSchedule()
+      if (!isDemo) await schedule.reload()
+      setClearScheduleOpen(false)
+      setShowSavedCheck(false)
+      setMessage(`Schedule cleared: ${removed} ${removed === 1 ? 'class was' : 'classes were'} removed.`)
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'Your schedule could not be cleared.')
+    } finally {
+      setClearingSchedule(false)
+    }
   }
 
   async function shareSchedule(): Promise<boolean> {
@@ -253,7 +267,6 @@ export function SchedulePage() {
     if (user && importOnboarding && schedule.enrollments.length === 0 && !hasHandledOnboarding(user.id)) rememberOnboarding(user.id, 'dismissed')
     setImportOpen(false)
     setImportOnboarding(false)
-    setImportInitialResult(null)
   }
 
   if (schedule.loading) return <LoadingScreen label="Loading your schedule…" />
@@ -279,7 +292,7 @@ export function SchedulePage() {
           <div><h2>See who shares classes with you</h2><p><strong>{sharedStudentCount}</strong> {sharedStudentCount === 1 ? 'student shares' : 'students share'} at least one class with you. Create an account to save this schedule and see who.</p></div>
           <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" onClick={() => {
             if (guestImportResult) saveGuestScheduleImportDraft(guestImportResult)
-            openAccountPrompt('/schedule?import=resume')
+            openAccountPrompt('/schedule')
           }}>Create account</button></div>
         </section>}
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
@@ -290,7 +303,6 @@ export function SchedulePage() {
           open
           isGuest
           currentEnrollments={[]}
-          initialResult={importInitialResult}
           searchCourses={searchGuestCourseNames}
           loadClassOptions={findGuestClassesForCourse}
           onClose={closeImport}
@@ -312,6 +324,7 @@ export function SchedulePage() {
         <div className="schedule-heading-actions">
           <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
           <button className="button button-secondary" type="button" disabled={!hasSchedule || sharing} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> {sharing ? 'Sharing…' : 'Share schedule'}</button>
+          <button className="button button-secondary danger-text" type="button" disabled={!hasSchedule || clearingSchedule} onClick={() => setClearScheduleOpen(true)}><Trash2 size={18} aria-hidden="true" /> Clear schedule</button>
         </div>
       </header>
       {message ? <div className={showSavedCheck ? 'toast-message schedule-save-success' : 'toast-message'} role="status">{showSavedCheck ? <CheckCircle2 className="success-checkmark" aria-hidden="true" /> : null}<span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
@@ -351,7 +364,6 @@ export function SchedulePage() {
         open
         onboarding={importOnboarding}
         isAdmin={isAdmin}
-        initialResult={importInitialResult}
         currentEnrollments={schedule.enrollments}
         onClose={closeImport}
         onManualEntry={() => setActiveCell({ dayType: 'A', period: 1 })}
@@ -363,6 +375,12 @@ export function SchedulePage() {
           setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
         }}
       /> : null}
+      {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !clearingSchedule) setClearScheduleOpen(false) }}>
+        <section className="class-dialog clear-schedule-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description">
+          <header><div><h2 id="clear-schedule-dialog-title">Clear your schedule?</h2><p id="clear-schedule-dialog-description">Are you sure? This will remove all {schedule.enrollments.length} {schedule.enrollments.length === 1 ? 'class' : 'classes'} from your schedule. The shared classes themselves will not be deleted.</p></div><button className="icon-button" type="button" aria-label="Close clear schedule confirmation" disabled={clearingSchedule} onClick={() => setClearScheduleOpen(false)}><X aria-hidden="true" /></button></header>
+          <div className="form-actions"><button className="button button-secondary" type="button" disabled={clearingSchedule} onClick={() => setClearScheduleOpen(false)}>Cancel</button><button className="button button-danger" type="button" disabled={clearingSchedule} onClick={() => void clearAllClasses()}>{clearingSchedule ? 'Clearing…' : 'Yes, clear schedule'}</button></div>
+        </section>
+      </div> : null}
     </div>
   )
 }

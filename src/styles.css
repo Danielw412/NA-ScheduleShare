@@ -1223,6 +1223,16 @@ legend {
   gap: 18px;
 }
 
+.clear-schedule-dialog {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 18px;
+}
+
+.clear-schedule-dialog>header {
+  margin-bottom: 0;
+}
+
 .delete-account-dialog>header {
   margin-bottom: 0;
 }
@@ -5630,7 +5640,8 @@ a.student-access-profile:hover strong {
     height: 92px;
   }
 
-  .delete-account-dialog .form-actions {
+  .delete-account-dialog .form-actions,
+  .clear-schedule-dialog .form-actions {
     position: sticky;
     bottom: calc(-14px - env(safe-area-inset-bottom));
     grid-template-columns: minmax(90px, .75fr) minmax(0, 1.6fr);

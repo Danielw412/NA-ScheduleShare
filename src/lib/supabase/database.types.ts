@@ -914,6 +914,7 @@ export type Database = {
         Args: { p_enrollment_id: string }
         Returns: undefined
       }
+      clear_my_schedule: { Args: never; Returns: number }
       remove_schedule_access: {
         Args: { p_viewer_id: string }
         Returns: undefined

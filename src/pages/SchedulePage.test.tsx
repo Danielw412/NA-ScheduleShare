@@ -9,6 +9,7 @@ import { SchedulePage } from './SchedulePage'
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   useSchedule: vi.fn(),
+  clearSchedule: vi.fn(),
   removeEnrollment: vi.fn(),
   createScheduleShareUrl: vi.fn(),
   confirmScheduleImport: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
 vi.mock('../lib/supabase/data', () => ({
+  clearSchedule: mocks.clearSchedule,
   removeEnrollment: mocks.removeEnrollment,
   searchClasses: vi.fn(),
   searchCourseNames: vi.fn(),
@@ -99,6 +101,7 @@ beforeEach(() => {
   mocks.useSchedule.mockReturnValue(emptySchedule())
   mocks.createScheduleShareUrl.mockResolvedValue('https://share.example/share/99300000-0000-4000-8000-000000000001')
   mocks.confirmScheduleImport.mockResolvedValue({ added: 1, removed: 0 })
+  mocks.clearSchedule.mockResolvedValue(1)
   mocks.normalizeImportedResultForGrade.mockImplementation(async (result) => result)
   sessionStorage.clear()
 })
@@ -211,9 +214,10 @@ describe('SchedulePage onboarding', () => {
       isDemo: false,
     })
     mocks.useSchedule.mockReturnValue(schedule)
-    renderPage('/schedule?import=resume')
+    renderPage('/schedule')
 
     await waitFor(() => expect(mocks.confirmScheduleImport).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument()
     expect(mocks.normalizeImportedResultForGrade).toHaveBeenCalledWith(expect.objectContaining({ shared_student_count: 4 }), 10)
     expect(schedule.reload).toHaveBeenCalled()
     expect(await screen.findByRole('status')).toHaveTextContent('Imported schedule saved automatically: 1 class added')
@@ -234,6 +238,31 @@ describe('SchedulePage onboarding', () => {
     await waitFor(() => expect(mocks.removeEnrollment).toHaveBeenCalledWith('enrollment-test'))
     expect(confirm).not.toHaveBeenCalled()
     expect(schedule.reload).toHaveBeenCalled()
+  })
+
+  it('requires confirmation before clearing every class', async () => {
+    const user = userEvent.setup()
+    const schedule = {
+      ...emptySchedule(),
+      enrollments: [{ id: 'enrollment-test', student_id: 'student-1', class: { course_name: 'Test Biology' } }],
+    }
+    mocks.useSchedule.mockReturnValue(schedule)
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Clear schedule' }))
+    const confirmation = screen.getByRole('dialog', { name: 'Clear your schedule?' })
+    expect(confirmation).toHaveTextContent('Are you sure?')
+    expect(mocks.clearSchedule).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog', { name: 'Clear your schedule?' })).not.toBeInTheDocument()
+    expect(mocks.clearSchedule).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Clear schedule' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, clear schedule' }))
+    await waitFor(() => expect(mocks.clearSchedule).toHaveBeenCalledTimes(1))
+    expect(schedule.reload).toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveTextContent('Schedule cleared: 1 class was removed')
   })
 
   it('opens the native share sheet with only the dedicated URL and title', async () => {
