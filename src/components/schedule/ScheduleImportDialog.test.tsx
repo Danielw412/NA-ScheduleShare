@@ -217,6 +217,28 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
+  it('shows guests an aggregate match count and requests signup instead of saving', async () => {
+    const user = userEvent.setup()
+    const onRequireAccount = vi.fn()
+    const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
+    renderDialog({
+      isGuest: true,
+      initialResult: { ...importResult(), shared_student_count: 4, estimated_grade: 10 },
+      onRequireAccount,
+      confirmImport,
+    })
+
+    expect(await screen.findByText('4 students share a class with you')).toBeInTheDocument()
+    expect(screen.getByText('Create an account to save this schedule and see who.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Create account to save & compare' }))
+
+    expect(onRequireAccount).toHaveBeenCalledWith(expect.objectContaining({
+      shared_student_count: 4,
+      rows: expect.arrayContaining([expect.objectContaining({ course: expect.objectContaining({ name: 'AP Statistics' }) })]),
+    }))
+    expect(confirmImport).not.toHaveBeenCalled()
+  })
+
   it('keeps admin developer mode off by default and shows exact diagnostics for an explicit test request', async () => {
     const user = userEvent.setup()
     const importScreenshots = vi.fn(async () => ({

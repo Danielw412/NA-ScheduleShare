@@ -23,9 +23,11 @@ const API_KEY = 'gemini-api-key-sensitive'
 
 const catalog: CourseRecord[] = [
   { id: COURSE_ID, name: 'AP Biology' },
-  { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch' },
-  { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall' },
+  { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch - NASH' },
+  { id: '44444444-4444-4444-9444-444444444444', name: 'Lunch - NAI' },
+  { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall - NASH' },
   { id: '88888888-8888-4888-8888-888888888888', name: 'Gym' },
+  { id: '99999999-9999-4999-8999-999999999999', name: 'English 2' },
 ]
 
 const transcription = {
@@ -53,6 +55,7 @@ function jpeg(name = 'schedule.jpg'): File {
 
 function request(files: File[], options: {
   token?: string
+  apiKey?: string
   origin?: string
   developerMode?: boolean
   model?: string
@@ -65,12 +68,15 @@ function request(files: File[], options: {
   if (options.thinkingLevel) body.set('thinking_level', options.thinkingLevel)
   const headers = new Headers({ Origin: options.origin ?? ORIGIN })
   if (options.token !== '') headers.set('Authorization', `Bearer ${options.token ?? TOKEN}`)
+  if (options.apiKey) headers.set('apikey', options.apiKey)
   return new Request('https://project.supabase.co/functions/v1/schedule-import', { method: 'POST', headers, body })
 }
 
 function config(overrides: Partial<ImportConfiguration> = {}): ImportConfiguration {
   return {
     user_id: USER_ID,
+    grade: 11,
+    is_guest: false,
     is_admin: false,
     bypassed_rate_limit: false,
     model_id: 'gemini-3.5-flash-lite',
@@ -86,14 +92,17 @@ function dependencies(options: {
   config?: ImportConfiguration
   fetch?: typeof fetch
   prepare?: ScheduleImportDependencies['prepareImport']
+  requester?: { userId: string | null; guestKey: string | null }
+  matchCount?: number
   diagnostic?: (payload: DiagnosticPayload) => void
 } = {}): ScheduleImportDependencies {
   return {
     geminiApiKey: API_KEY,
-    verifyUser: vi.fn(async () => ({ id: USER_ID })),
+    resolveRequester: vi.fn(async () => options.requester ?? ({ userId: USER_ID, guestKey: null })),
     prepareImport: options.prepare ?? vi.fn(async () => options.config ?? config()),
     loadCatalog: vi.fn(async () => catalog),
     loadClasses: vi.fn(async () => options.classes ?? []),
+    countGuestMatches: vi.fn(async () => options.matchCount ?? 0),
     recordDiagnostic: vi.fn(async (_token, payload) => {
       options.diagnostic?.(payload)
       return LOG_ID
@@ -288,6 +297,63 @@ describe('normalization and backend catalogue matching', () => {
     ])
   })
 
+  it('uses the authenticated grade for campus and splits full-year lunch into both semesters', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      config: config({ grade: 10 }),
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'Lunch', teacher: 'Staff, Unassigned', term: 'FY', slots: ['P04(A-B)'] }],
+      },
+    }))
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({ course: expect.objectContaining({ name: 'Lunch - NAI' }), term: 'semester_1', teacher_last_name: 'N/A' }),
+      expect.objectContaining({ course: expect.objectContaining({ name: 'Lunch - NAI' }), term: 'semester_2', teacher_last_name: 'N/A' }),
+    ])
+  })
+
+  it('keeps campus names hidden for guests and returns only one aggregate match count', async () => {
+    const lunchCourseId = '44444444-4444-4444-9444-444444444444'
+    const semesterOneClassId = '77777777-7777-4777-8777-777777777771'
+    const semesterTwoClassId = '77777777-7777-4777-8777-777777777772'
+    const guestDependencies = dependencies({
+      requester: { userId: null, guestKey: 'a'.repeat(64) },
+      config: config({ user_id: null, grade: null, is_guest: true }),
+      matchCount: 7,
+      classes: [
+        { id: semesterOneClassId, course_name_id: lunchCourseId, teacher_last_name: 'N/A', default_academic_term: 'semester_1', meeting_slots: [{ day_type: 'A', period_number: 4 }, { day_type: 'B', period_number: 4 }] },
+        { id: semesterTwoClassId, course_name_id: lunchCourseId, teacher_last_name: 'N/A', default_academic_term: 'semester_2', meeting_slots: [{ day_type: 'A', period_number: 4 }, { day_type: 'B', period_number: 4 }] },
+      ],
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [
+          { course: 'English 2', teacher: 'Jones', term: 'FY', slots: ['A1', 'B1'] },
+          { course: 'Lunch', teacher: 'Staff, Unassigned', term: 'FY', slots: ['A4', 'B4'] },
+        ],
+      },
+    })
+    const response = await handleScheduleImportRequest(request([png()]), guestDependencies)
+    const body = await responseBody(response)
+    expect(body).toMatchObject({ estimated_grade: 10, shared_student_count: 7 })
+    expect((body.rows as Array<{ course: { name: string } }>).filter((row) => row.course.name === 'Lunch')).toHaveLength(2)
+    expect(guestDependencies.countGuestMatches).toHaveBeenCalledWith([semesterOneClassId, semesterTwoClassId])
+  })
+
+  it('infers grade 12 from AP English Literature for guest campus matching', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      requester: { userId: null, guestKey: 'c'.repeat(64) },
+      config: config({ user_id: null, grade: null, is_guest: true }),
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'AP English Literature', teacher: 'Morrison', term: 'FY', slots: ['A2', 'B2'] }],
+      },
+    }))
+    expect(await responseBody(response)).toMatchObject({ estimated_grade: 12 })
+  })
+
   it('infers complementary semesters for distinct courses in the same complete meeting slot', async () => {
     const response = await handleScheduleImportRequest(request([png()]), dependencies({
       output: {
@@ -412,13 +478,18 @@ describe('normalization and backend catalogue matching', () => {
 })
 
 describe('authentication, CORS, files, and rate limiting', () => {
-  it('requires and server-validates a Supabase access token', async () => {
+  it('accepts the publishable key for guests and server-validates signed-in access tokens', async () => {
     const missing = await handleScheduleImportRequest(request([png()], { token: '' }), dependencies())
     expect(missing.status).toBe(401)
     expect(await responseBody(missing)).toMatchObject({ error: 'authentication_required' })
 
+    const guestDeps = dependencies()
+    const guest = await handleScheduleImportRequest(request([png()], { token: '', apiKey: 'publishable-key' }), guestDeps)
+    expect(guest.status).toBe(200)
+    expect(guestDeps.resolveRequester).toHaveBeenCalledWith('publishable-key', expect.any(Request))
+
     const deps = dependencies()
-    deps.verifyUser = vi.fn(async () => { throw new Error('expired') })
+    deps.resolveRequester = vi.fn(async () => { throw new Error('expired') })
     const expired = await handleScheduleImportRequest(request([png()]), deps)
     expect(expired.status).toBe(401)
     expect(await responseBody(expired)).toMatchObject({ error: 'session_expired' })

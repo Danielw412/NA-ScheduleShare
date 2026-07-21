@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronRight, Flag, LockKeyhole, Search, SlidersHorizontal, Users, X } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronRight, Flag, LockKeyhole, Search, SlidersHorizontal, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
@@ -46,7 +46,7 @@ function GuestClassesPage() {
           <section className="other-classes-section" aria-labelledby="guest-classes-heading">
             <div><h2 id="guest-classes-heading">Classes</h2><span>Current class catalog</span></div>
             <div className="class-list" aria-live="polite">
-              {loading ? <p className="muted">Searching…</p> : results.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}
+              {loading ? <p className="muted">Searching…</p> : <GroupedClassList activeClassId={classId} results={results} />}
               {!loading && !error && results.length === 0 ? <p className="empty-inline">No matching classes.</p> : null}
             </div>
           </section>
@@ -115,12 +115,53 @@ function ClassFilterControls({ query, dayType, period, filtersOpen, setQuery, se
   </>
 }
 
-function ClassListRow({ result, active }: { result: ClassSearchResult; active: boolean }) {
+function ClassListRow({ result, active, grouped = false }: { result: ClassSearchResult; active: boolean; grouped?: boolean }) {
   return <Link className={active ? 'class-list-row is-active' : 'class-list-row'} to={`/classes/${result.id}`}>
-    <div className="class-list-copy"><strong>{result.course_name}</strong><span>{result.teacher_last_name}</span></div>
+    <div className="class-list-copy"><strong>{grouped ? result.teacher_last_name : result.course_name}</strong><span>{grouped ? 'Teacher' : result.teacher_last_name}</span></div>
     <div className="class-list-meta"><span>{compactMeetingSlotLabels(result.meeting_slots).join(' · ')}</span><small>{classTermLabel(result.default_academic_term)}</small></div>
     <ChevronRight className="class-list-chevron" size={19} aria-hidden="true" />
   </Link>
+}
+
+function GroupedClassList({ results, activeClassId }: { results: ClassSearchResult[]; activeClassId?: string }) {
+  const groups = useMemo(() => {
+    const byName = new Map<string, { name: string; sections: ClassSearchResult[] }>()
+    results.forEach((result) => {
+      const key = result.course_name.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+      const group = byName.get(key)
+      if (group) group.sections.push(result)
+      else byName.set(key, { name: result.course_name, sections: [result] })
+    })
+    return [...byName.entries()].map(([key, group]) => ({ key, ...group }))
+  }, [results])
+  const activeGroup = groups.find((group) => group.sections.some((section) => section.id === activeClassId))?.key
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  return <>
+    {groups.map((group) => {
+      const isExpanded = expanded.has(group.key) || activeGroup === group.key
+      const sectionLabel = `${group.sections.length} ${group.sections.length === 1 ? 'section' : 'sections'}`
+      return <section className="course-class-group" key={group.key}>
+        <button
+          aria-expanded={isExpanded}
+          className="course-class-group-toggle"
+          type="button"
+          onClick={() => setExpanded((current) => {
+            const next = new Set(current)
+            if (next.has(group.key)) next.delete(group.key)
+            else next.add(group.key)
+            return next
+          })}
+        >
+          <span><strong>{group.name}</strong><small>{sectionLabel}</small></span>
+          <ChevronDown className={isExpanded ? 'is-expanded' : ''} size={20} aria-hidden="true" />
+        </button>
+        {isExpanded ? <div className="course-class-group-sections">
+          {group.sections.map((result) => <ClassListRow active={activeClassId === result.id} grouped key={result.id} result={result} />)}
+        </div> : null}
+      </section>
+    })}
+  </>
 }
 
 function AuthenticatedClassesPage() {
@@ -180,7 +221,7 @@ function AuthenticatedClassesPage() {
       <div className="class-browser">
         <section className="class-list-panel organized-class-list">
           {hasSchedule ? <section className="your-classes-section" aria-labelledby="your-classes-heading"><div><h2 id="your-classes-heading">Your Classes</h2><span>{ownClasses.length} classes</span></div><p></p><div className="class-list">{filteredOwnClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{filteredOwnClasses.length === 0 ? <p className="empty-inline">None of your classes match these filters.</p> : null}</div></section> : <section className="your-classes-empty"><ImagePrompt /></section>}
-          <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Classes that aren't on your schedule</span></div><div className="class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : otherClasses.map((result) => <ClassListRow active={classId === result.id} key={result.id} result={result} />)}{!loading && !searchError && otherClasses.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
+          <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Classes that aren't on your schedule</span></div><div className="class-list grouped-class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : <GroupedClassList activeClassId={classId} results={otherClasses} />}{!loading && !searchError && otherClasses.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
         </section>
         {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
         <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>

@@ -14,6 +14,7 @@ import {
   prepareScheduleImage,
   reconcileExactClassSelection,
   ScheduleImportRequestError,
+  specialCourseKind,
   submitScheduleScreenshots,
   teacherForImportedCourse,
   type EditableScheduleImportRow,
@@ -35,9 +36,12 @@ export interface ScheduleImportDialogProps {
   open: boolean
   onboarding?: boolean
   isAdmin?: boolean
+  isGuest?: boolean
+  initialResult?: ScheduleImportResult | null
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
   onImported: (result: { added: number; removed: number }) => Promise<void>
+  onRequireAccount?: (result: ScheduleImportResult) => void
   importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
@@ -178,9 +182,12 @@ export function ScheduleImportDialog({
   open,
   onboarding = false,
   isAdmin = false,
+  isGuest = false,
+  initialResult = null,
   currentEnrollments,
   onClose,
   onImported,
+  onRequireAccount,
   importScreenshots = submitScheduleScreenshots,
   searchCourses,
   loadClassOptions = findClassesForCourse,
@@ -202,6 +209,7 @@ export function ScheduleImportDialog({
   const [developerData, setDeveloperData] = useState<ScheduleImportDeveloperDiagnostics | null>(null)
   const [developerModelError, setDeveloperModelError] = useState<string | null>(null)
   const [progressDurationMs, setProgressDurationMs] = useState(6500)
+  const [resultSummary, setResultSummary] = useState<Omit<ScheduleImportResult, 'rows'>>({ warnings: [], image_count: 0 })
   const imagesRef = useRef(images)
   imagesRef.current = images
 
@@ -219,6 +227,28 @@ export function ScheduleImportDialog({
     }).catch(() => undefined)
     return () => { active = false }
   }, [loadUiSettings, open])
+
+  useEffect(() => {
+    if (!open || !initialResult || rows.length > 0) return
+    const editable = initialResult.rows.map((row) => ({
+      ...row,
+      term: normalizeReviewTerm(row.term),
+      selected_existing_class_id: row.existing_class_id,
+      include: true,
+    })).map(reconcileExactClassSelection)
+    setRows(editable)
+    setResultSummary({
+      warnings: initialResult.warnings,
+      image_count: initialResult.image_count,
+      estimated_grade: initialResult.estimated_grade,
+      shared_student_count: initialResult.shared_student_count,
+      developer: initialResult.developer,
+    })
+    setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
+    setMessage(initialResult.warnings.join(' '))
+    setDeveloperData(initialResult.developer ?? null)
+    setPhase('review')
+  }, [initialResult, open, rows.length])
 
   const addFiles = useCallback(async (incoming: File[], preferredIndex?: number) => {
     setError(null)
@@ -321,6 +351,7 @@ export function ScheduleImportDialog({
     setDeveloperThinkingLevel('low')
     setDeveloperData(null)
     setDeveloperModelError(null)
+    setResultSummary({ warnings: [], image_count: 0 })
     onClose()
   }
 
@@ -349,10 +380,18 @@ export function ScheduleImportDialog({
         include: true,
       })).map(reconcileExactClassSelection)
       setRows(editable)
+      setResultSummary({
+        warnings: result.warnings,
+        image_count: result.image_count,
+        estimated_grade: result.estimated_grade,
+        shared_student_count: result.shared_student_count,
+        developer: result.developer,
+      })
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
       setMessage(result.warnings.join(' '))
       setDeveloperData(result.developer ?? null)
-      const canAutoReplace = !developerMode
+      const canAutoReplace = !isGuest
+        && !developerMode
         && editable.length > 0
         && editable.every((row) => row.confidence > 0.8 && !importRowError(row))
         && editable.every((row) => !row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag)))
@@ -380,6 +419,10 @@ export function ScheduleImportDialog({
 
   async function saveRows() {
     if (!canConfirm) return
+    if (isGuest) {
+      onRequireAccount?.({ ...resultSummary, rows })
+      return
+    }
     setPhase('saving')
     setError(null)
     try {
@@ -481,13 +524,16 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>Review every class</h3><p>Course names are restricted to the existing catalogue. Only conflicts within this imported schedule block replacement.</p></div>
+              <div><h3>{isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isGuest ? 'Check the classes we found. Create an account only when you are ready to save and compare.' : 'Course names are restricted to the existing catalogue. Only conflicts within this imported schedule block replacement.'}</p></div>
               <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div>
+            {isGuest ? <section className="guest-import-match-card" aria-live="polite">
+              <Sparkles aria-hidden="true" />
+              <div><strong>{resultSummary.shared_student_count ?? 0} {(resultSummary.shared_student_count ?? 0) === 1 ? 'student shares' : 'students share'} a class with you</strong><span>Create an account to save this schedule and see who.</span></div>
+            </section> : <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div>}
             <div className="import-review-controls" aria-label="Review row display controls">
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse reviewed</button>
@@ -546,12 +592,12 @@ export function ScheduleImportDialog({
                         })
                       }} />
                       <label>Teacher last name
-                        <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={row.course?.name === 'Lunch' || row.course?.name === 'Study Hall'} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
+                        <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={Boolean(specialCourseKind(row.course?.name))} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
                       </label>
                       <label>Academic term
                         <select value={row.term} onChange={(event) => updateRow(index, { term: event.target.value as EditableScheduleImportRow['term'] })}>
                           <option value="unknown">Choose term</option>
-                          <option value="full_year">Full Year</option>
+                          <option value="full_year">{specialCourseKind(row.course?.name) === 'Lunch' ? 'Full Year (saved as both semesters)' : 'Full Year'}</option>
                           <option value="semester_1">Semester 1</option>
                           <option value="semester_2">Semester 2</option>
                         </select>
@@ -588,8 +634,8 @@ export function ScheduleImportDialog({
               })}
             </div>
             <div className="import-confirm-bar">
-              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. This will replace your current schedule.</p>
-              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
+              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. {isGuest ? 'Your preview stays in this browser while you create an account.' : 'This will replace your current schedule.'}</p>
+              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{isGuest ? 'Create account to save & compare' : phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
             </div>
           </div>
         )}

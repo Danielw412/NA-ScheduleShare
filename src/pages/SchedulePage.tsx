@@ -10,8 +10,16 @@ import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
+import {
+  clearGuestScheduleImportDraft,
+  findGuestClassesForCourse,
+  loadGuestScheduleImportDraft,
+  normalizeImportedResultForGrade,
+  saveGuestScheduleImportDraft,
+  type ScheduleImportResult,
+} from '../lib/scheduleImport'
 import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
-import { removeEnrollment, updateEnrollmentTerm } from '../lib/supabase/data'
+import { removeEnrollment, searchGuestCourseNames, updateEnrollmentTerm } from '../lib/supabase/data'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
@@ -63,7 +71,7 @@ function isMobileShareDevice(): boolean {
 }
 
 export function SchedulePage() {
-  const { user, isAdmin, isDemo } = useAuth()
+  const { user, profile, isAdmin, isDemo } = useAuth()
   const { openAccountPrompt } = useGuestAccountPrompt()
   const schedule = useSchedule()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -71,6 +79,7 @@ export function SchedulePage() {
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
+  const [importInitialResult, setImportInitialResult] = useState<ScheduleImportResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [showSavedCheck, setShowSavedCheck] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -82,6 +91,7 @@ export function SchedulePage() {
   }, [user])
 
   useEffect(() => {
+    if (searchParams.get('import') === 'resume') return
     if (!user || schedule.loading) return
     if (schedule.enrollments.length > 0) {
       onboardingChecked.current = true
@@ -104,6 +114,34 @@ export function SchedulePage() {
       setImportOpen(true)
     }
   }, [schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, user])
+
+  useEffect(() => {
+    if (user || searchParams.get('import') !== '1') return
+    setImportOnboarding(false)
+    setImportOpen(true)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('import')
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams, user])
+
+  useEffect(() => {
+    if (!user || !profile?.grade || searchParams.get('import') !== 'resume') return
+    let active = true
+    const draft = loadGuestScheduleImportDraft()
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('import')
+    setSearchParams(nextParams, { replace: true })
+    if (!draft) return
+    void normalizeImportedResultForGrade(draft, profile.grade).then((result) => {
+      if (!active) return
+      setImportInitialResult(result)
+      setImportOnboarding(false)
+      setImportOpen(true)
+    }).catch((caught: unknown) => {
+      if (active) setMessage(caught instanceof Error ? caught.message : 'Your imported schedule preview could not be restored.')
+    })
+    return () => { active = false }
+  }, [profile?.grade, searchParams, setSearchParams, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
     if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
@@ -174,6 +212,7 @@ export function SchedulePage() {
     if (user && importOnboarding && schedule.enrollments.length === 0 && !hasHandledOnboarding(user.id)) rememberOnboarding(user.id, 'dismissed')
     setImportOpen(false)
     setImportOnboarding(false)
+    setImportInitialResult(null)
   }
 
   if (schedule.loading) return <LoadingScreen label="Loading your schedule…" />
@@ -184,7 +223,7 @@ export function SchedulePage() {
         <header className="page-heading schedule-heading">
           <div><h1>Schedule</h1><p>Upload your schedule and find the people in your classes.</p></div>
           <div className="schedule-heading-actions">
-            <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
+            <button className="button button-import" type="button" onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Try schedule importer</button>
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
           </div>
         </header>
@@ -192,6 +231,25 @@ export function SchedulePage() {
         <div className="schedule-layout">
           <ScheduleGrid enrollments={[]} selectedTerm={selectedTerm} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
         </div>
+        <section className="schedule-import-empty-card guest-import-try-card">
+          <ImagePlus size={34} aria-hidden="true" />
+          <div><h2>Try the importer before signing up</h2><p>Upload screenshots, review the schedule we find, and see how many students share a class with you. Create an account only when you save.</p></div>
+          <button className="button button-primary" type="button" onClick={() => openImport(false)}>Choose Screenshot</button>
+        </section>
+        {importOpen ? <ScheduleImportDialog
+          open
+          isGuest
+          currentEnrollments={[]}
+          initialResult={importInitialResult}
+          searchCourses={searchGuestCourseNames}
+          loadClassOptions={findGuestClassesForCourse}
+          onClose={closeImport}
+          onImported={async () => undefined}
+          onRequireAccount={(result) => {
+            saveGuestScheduleImportDraft(result)
+            openAccountPrompt('/schedule?import=resume')
+          }}
+        /> : null}
       </div>
     )
   }
@@ -243,11 +301,13 @@ export function SchedulePage() {
         open
         onboarding={importOnboarding}
         isAdmin={isAdmin}
+        initialResult={importInitialResult}
         currentEnrollments={schedule.enrollments}
         onClose={closeImport}
         onManualEntry={() => setActiveCell({ dayType: 'A', period: 1 })}
         onImported={async ({ added, removed }) => {
           await schedule.reload()
+          clearGuestScheduleImportDraft()
           rememberOnboarding(user.id, 'completed')
           setShowSavedCheck(true)
           setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)

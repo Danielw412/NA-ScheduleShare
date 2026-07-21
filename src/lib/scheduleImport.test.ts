@@ -4,6 +4,8 @@ import type { EditableScheduleImportRow, ImportClassOption } from './scheduleImp
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   searchClasses: vi.fn(),
+  searchCourseNames: vi.fn(),
+  searchGuestClasses: vi.fn(),
 }))
 
 vi.mock('./supabase/client', () => ({
@@ -11,13 +13,18 @@ vi.mock('./supabase/client', () => ({
 }))
 vi.mock('./supabase/data', () => ({
   searchClasses: mocks.searchClasses,
+  searchCourseNames: mocks.searchCourseNames,
+  searchGuestClasses: mocks.searchGuestClasses,
 }))
 
 import {
   confirmScheduleImport,
+  campusCourseName,
   importClassOptionLabel,
   normalizeReviewTerm,
   reconcileExactClassSelection,
+  specialCourseKind,
+  teacherForImportedCourse,
   validateScheduleImageCount,
 } from './scheduleImport'
 
@@ -111,14 +118,26 @@ describe('schedule import replacement', () => {
     await expect(confirmScheduleImport([row])).rejects.toThrow('reported 0 of 1 reviewed classes')
   })
 
-  it('sends Lunch and Study Hall with teacher N/A', async () => {
+  it('sends full-year Lunch as both semesters with teacher N/A', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ added_count: 2, removed_count: 2 }], error: null })
     await confirmScheduleImport([{
       ...row,
-      course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch', confidence: 1 },
+      course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch - NASH', confidence: 1 },
       teacher_last_name: 'Staff',
     }])
     expect(mocks.rpc).toHaveBeenCalledWith('replace_schedule_from_import', {
-      p_rows: [expect.objectContaining({ teacher_last_name: 'N/A' })],
+      p_rows: [
+        expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'semester_1' }),
+        expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'semester_2' }),
+      ],
     })
+  })
+
+  it('recognizes campus-specific special courses and maps grades to the correct building', () => {
+    expect(specialCourseKind('Lunch - NAI')).toBe('Lunch')
+    expect(specialCourseKind('Study Hall - NASH')).toBe('Study Hall')
+    expect(teacherForImportedCourse('Staff', 'Lunch - NASH')).toBe('N/A')
+    expect(campusCourseName('Lunch', 9)).toBe('Lunch - NAI')
+    expect(campusCourseName('Study Hall', 12)).toBe('Study Hall - NASH')
   })
 })

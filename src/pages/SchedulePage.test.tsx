@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
-vi.mock('../lib/supabase/data', () => ({ removeEnrollment: mocks.removeEnrollment, updateEnrollmentTerm: vi.fn() }))
+vi.mock('../lib/supabase/data', () => ({ removeEnrollment: mocks.removeEnrollment, searchGuestCourseNames: vi.fn(), updateEnrollmentTerm: vi.fn() }))
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
   scheduleShareTitle: 'My A/B-Day Schedule | NA ScheduleShare',
@@ -23,8 +23,8 @@ vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ onRemov
 vi.mock('../components/schedule/TermSelector', () => ({ TermSelector: () => <div data-testid="term-selector" /> }))
 vi.mock('../components/schedule/AddClassDialog', () => ({ AddClassDialog: () => <div data-testid="manual-dialog" /> }))
 vi.mock('../components/schedule/ScheduleImportDialog', () => ({
-  ScheduleImportDialog: ({ onboarding, onClose }: { onboarding?: boolean; onClose: () => void }) => (
-    <div data-testid="import-dialog" data-onboarding={String(Boolean(onboarding))}>
+  ScheduleImportDialog: ({ onboarding, isGuest, onClose }: { onboarding?: boolean; isGuest?: boolean; onClose: () => void }) => (
+    <div data-testid="import-dialog" data-onboarding={String(Boolean(onboarding))} data-guest={String(Boolean(isGuest))}>
       <span>{onboarding ? 'Automatic onboarding' : 'Manual import'}</span>
       <button type="button" onClick={onClose}>Dismiss import</button>
     </div>
@@ -111,6 +111,15 @@ describe('SchedulePage onboarding', () => {
     renderPage('/schedule?import=1')
     expect(await screen.findByText('Manual import')).toBeInTheDocument()
     expect(screen.getByTestId('import-dialog')).toHaveAttribute('data-onboarding', 'false')
+  })
+
+  it('lets a logged-out visitor open the importer before creating an account', async () => {
+    mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, isDemo: false })
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try schedule importer' }))
+    expect(screen.getByTestId('import-dialog')).toHaveAttribute('data-guest', 'true')
+    expect(screen.getByRole('heading', { name: 'Try the importer before signing up' })).toBeInTheDocument()
   })
 
   it('removes a class immediately without a confirmation prompt', async () => {

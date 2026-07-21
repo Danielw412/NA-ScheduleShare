@@ -1,6 +1,6 @@
-import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, MeetingSlot } from './domain'
+import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, Grade, MeetingSlot } from './domain'
 import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
-import { searchClasses } from './supabase/data'
+import { searchClasses, searchCourseNames, searchGuestClasses } from './supabase/data'
 import { supabase } from './supabase/client'
 import type { Json } from './supabase/database.types'
 import { normalizeTeacherLastName, teacherLastNameError } from './teacher'
@@ -35,6 +35,8 @@ export interface ScheduleImportResult {
   rows: ScheduleImportRow[]
   warnings: string[]
   image_count: number
+  estimated_grade?: Grade
+  shared_student_count?: number
   developer?: ScheduleImportDeveloperDiagnostics
 }
 
@@ -129,9 +131,7 @@ export async function submitScheduleScreenshots(
   developerOptions: ScheduleImportDeveloperOptions = { enabled: false },
 ): Promise<ScheduleImportResult> {
   validateScheduleImageCount(files.length)
-  if (!supabase) throw new Error('Sign in before importing schedule screenshots.')
-  const { data, error } = await supabase.auth.getSession()
-  if (error || !data.session?.access_token) throw new Error('Your session has expired. Refresh the page and sign in again.')
+  if (!supabase) throw new Error('Schedule importing is not configured.')
   const formData = new FormData()
   files.forEach((file) => formData.append('images', file, file.name))
   formData.set('developer_mode', String(developerOptions.enabled))
@@ -262,7 +262,12 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
   const includedRows = rows.filter((row) => row.include)
   if (includedRows.length === 0) throw new Error('Select at least one class before replacing your schedule.')
 
-  const replacementRows = includedRows.map((row) => {
+  const semesterRows = includedRows.flatMap((row) => {
+    if (specialCourseKind(row.course?.name) !== 'Lunch' || row.term !== 'full_year') return [row]
+    return (['semester_1', 'semester_2'] as const).map((term) => reconcileExactClassSelection({ ...row, term }))
+  })
+
+  const replacementRows = semesterRows.map((row) => {
     const validationError = importRowError(row)
     if (validationError || !row.course || row.term === 'unknown') {
       throw new Error(validationError ?? 'Review every import row before saving.')
@@ -286,14 +291,86 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
   const added = Number((result as ScheduleReplacementResult).added_count)
   const removed = Number((result as ScheduleReplacementResult).removed_count)
   if (!Number.isInteger(added) || !Number.isInteger(removed)) throw new Error('Schedule replacement returned invalid counts.')
-  if (added !== includedRows.length) throw new Error(`Schedule replacement reported ${added} of ${includedRows.length} reviewed classes. Reload the page before trying again.`)
+  if (added !== replacementRows.length) throw new Error(`Schedule replacement reported ${added} of ${replacementRows.length} reviewed classes. Reload the page before trying again.`)
   return { added, removed }
 }
 
 export function teacherForImportedCourse(teacherLastName: string, courseName?: string): string {
-  const normalizedCourse = courseName?.trim().toLocaleLowerCase()
-  if (normalizedCourse === 'lunch' || normalizedCourse === 'study hall') return 'N/A'
+  if (specialCourseKind(courseName)) return 'N/A'
   return normalizeTeacherLastName(teacherLastName)
+}
+
+export async function findGuestClassesForCourse(course: CourseNameSearchResult): Promise<ImportClassOption[]> {
+  const results = await searchGuestClasses({ query: course.course_name, limit: 1000 })
+  return results
+    .filter((result) => result.course_name_id === course.id)
+    .map(classOptionFromSearch)
+}
+
+export function specialCourseKind(courseName?: string): 'Lunch' | 'Study Hall' | null {
+  const normalized = courseName?.trim().toLocaleLowerCase().replace(/\s*-\s*/g, ' ')
+  if (normalized === 'lunch' || normalized === 'lunch nai' || normalized === 'lunch nash') return 'Lunch'
+  if (normalized === 'study hall' || normalized === 'study hall nai' || normalized === 'study hall nash') return 'Study Hall'
+  return null
+}
+
+export function campusCourseName(kind: 'Lunch' | 'Study Hall', grade: Grade): string {
+  return `${kind} - ${grade <= 10 ? 'NAI' : 'NASH'}`
+}
+
+export async function normalizeImportedResultForGrade(result: ScheduleImportResult, grade: Grade): Promise<ScheduleImportResult> {
+  const rows = await Promise.all(result.rows.map(async (row) => {
+    const kind = specialCourseKind(row.course?.name ?? row.source_course_name)
+    if (!kind) return row
+    const targetName = campusCourseName(kind, grade)
+    const courses = await searchCourseNames(targetName)
+    const course = courses.find((candidate) => candidate.course_name.toLocaleLowerCase() === targetName.toLocaleLowerCase())
+    if (!course) throw new Error(`The ${targetName} catalog entry is unavailable.`)
+    const classOptions = await findClassesForCourse(course)
+    const reconciled = reconcileExactClassSelection({
+      ...row,
+      source_course_name: targetName,
+      course: { id: course.id, name: course.course_name, confidence: 1 },
+      teacher_last_name: 'N/A',
+      class_options: classOptions,
+      existing_class_id: null,
+      selected_existing_class_id: null,
+      include: true,
+    })
+    return {
+      ...reconciled,
+      existing_class_id: reconciled.selected_existing_class_id,
+    }
+  }))
+  return { ...result, rows }
+}
+
+const GUEST_IMPORT_DRAFT_KEY = 'scheduleshare:guest-import-draft:v1'
+const GUEST_IMPORT_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+export function saveGuestScheduleImportDraft(result: ScheduleImportResult): void {
+  window.sessionStorage.setItem(GUEST_IMPORT_DRAFT_KEY, JSON.stringify({ saved_at: Date.now(), result }))
+}
+
+export function loadGuestScheduleImportDraft(): ScheduleImportResult | null {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(GUEST_IMPORT_DRAFT_KEY) ?? 'null') as {
+      saved_at?: unknown
+      result?: ScheduleImportResult
+    } | null
+    if (!parsed || typeof parsed.saved_at !== 'number' || Date.now() - parsed.saved_at > GUEST_IMPORT_DRAFT_MAX_AGE_MS) {
+      clearGuestScheduleImportDraft()
+      return null
+    }
+    if (!parsed.result || !Array.isArray(parsed.result.rows) || parsed.result.rows.length < 1 || parsed.result.rows.length > 30) return null
+    return parsed.result
+  } catch {
+    return null
+  }
+}
+
+export function clearGuestScheduleImportDraft(): void {
+  window.sessionStorage.removeItem(GUEST_IMPORT_DRAFT_KEY)
 }
 
 function slotsKey(slots: MeetingSlot[]): string {

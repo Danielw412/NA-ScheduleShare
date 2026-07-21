@@ -19,6 +19,7 @@ const SENSITIVE_KEY_PATTERN = /(?:authorization|token|secret|api.?key|image.?byt
 export type DayType = 'A' | 'B'
 export type ImportTerm = 'full_year' | 'semester_1' | 'semester_2' | 'unknown'
 export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
+export type Grade = 9 | 10 | 11 | 12
 
 export interface MeetingSlot {
   day_type: DayType
@@ -39,7 +40,9 @@ export interface ExistingClassRecord {
 }
 
 export interface ImportConfiguration {
-  user_id: string
+  user_id: string | null
+  grade: Grade | null
+  is_guest: boolean
   is_admin: boolean
   bypassed_rate_limit: boolean
   model_id: string
@@ -95,6 +98,8 @@ export interface ScheduleImportResponse {
   rows: ImportReviewRow[]
   warnings: string[]
   image_count: number
+  estimated_grade?: Grade
+  shared_student_count?: number
   developer?: DeveloperDiagnostics
 }
 
@@ -114,13 +119,15 @@ export interface DiagnosticPayload {
 
 export interface ScheduleImportDependencies {
   geminiApiKey: string
-  verifyUser: (token: string) => Promise<{ id: string }>
+  resolveRequester: (token: string, request: Request) => Promise<{ userId: string | null; guestKey: string | null }>
   prepareImport: (
     token: string,
     input: { developerMode: boolean; modelId: string | null; thinkingLevel: string | null },
+    requester: { userId: string | null; guestKey: string | null },
   ) => Promise<ImportConfiguration>
-  loadCatalog: (token: string) => Promise<CourseRecord[]>
-  loadClasses: (token: string) => Promise<ExistingClassRecord[]>
+  loadCatalog: (token: string, config: ImportConfiguration) => Promise<CourseRecord[]>
+  loadClasses: (token: string, config: ImportConfiguration) => Promise<ExistingClassRecord[]>
+  countGuestMatches: (classIds: string[]) => Promise<number>
   recordDiagnostic: (token: string, payload: DiagnosticPayload) => Promise<string>
   fetch?: typeof fetch
   now?: () => number
@@ -149,6 +156,7 @@ interface NormalizedGeminiRow {
   duplicate: boolean
   term_defaulted: boolean
   term_inferred: boolean
+  lunch_semester_split?: boolean
 }
 
 interface EncodedImage {
@@ -299,7 +307,7 @@ export async function handleScheduleImportRequest(
     }
 
     token = getBearerToken(request)
-    const user = await verifyAuthenticatedUser(token, dependencies)
+    const requester = await resolveImportRequester(token, request, dependencies)
     const upload = await readUpload(request)
     developerRequested = upload.developerMode
     const images = await Promise.all(upload.files.map((file, index) => validateAndEncodeImage(file, index + 1)))
@@ -309,12 +317,12 @@ export async function handleScheduleImportRequest(
       developerMode: upload.developerMode,
       modelId: upload.modelId,
       thinkingLevel: upload.thinkingLevel,
-    })
-    validateImportConfiguration(config, user.id, upload.developerMode)
+    }, requester)
+    validateImportConfiguration(config, requester.userId, upload.developerMode)
 
     const [catalog, classes] = await Promise.all([
-      dependencies.loadCatalog(token),
-      dependencies.loadClasses(token),
+      dependencies.loadCatalog(token, config),
+      dependencies.loadClasses(token, config),
     ])
     validateBackendData(catalog, classes)
 
@@ -323,7 +331,13 @@ export async function handleScheduleImportRequest(
     const parsed = parseGeminiSchedule(rawOutput)
     parsedOutput = parsed
     const normalizedRows = normalizeGeminiRows(parsed)
-    const rows = buildReviewRows(normalizedRows, catalog, classes, dependencies.randomUUID)
+    const estimatedGrade = config.grade ?? inferGradeFromEnglish(normalizedRows)
+    const campusRows = normalizeCampusSpecialCourses(normalizedRows, estimatedGrade)
+    const matchedRows = buildReviewRows(campusRows, catalog, classes, dependencies.randomUUID)
+    const sharedStudentCount = config.is_guest
+      ? await dependencies.countGuestMatches(matchedRows.flatMap((row) => row.existing_class_id ? [row.existing_class_id] : []))
+      : undefined
+    const rows = config.is_guest ? concealGuestCampusNames(matchedRows) : matchedRows
     const elapsedMs = Math.max(0, (dependencies.now ?? Date.now)() - requestStartedAt)
     let developer: DeveloperDiagnostics | undefined
 
@@ -361,6 +375,7 @@ export async function handleScheduleImportRequest(
       rows,
       warnings: [],
       image_count: images.length,
+      ...(config.is_guest ? { estimated_grade: estimatedGrade, shared_student_count: sharedStudentCount ?? 0 } : {}),
       ...(developer ? { developer } : {}),
     } satisfies ScheduleImportResponse)
   } catch (caught) {
@@ -415,21 +430,27 @@ export async function handleScheduleImportRequest(
   }
 }
 
-async function verifyAuthenticatedUser(
+async function resolveImportRequester(
   token: string,
+  request: Request,
   dependencies: ScheduleImportDependencies,
-): Promise<{ id: string }> {
+): Promise<{ userId: string | null; guestKey: string | null }> {
   try {
-    const user = await dependencies.verifyUser(token)
-    if (!user || !UUID_PATTERN.test(user.id)) throw new Error('invalid user result')
-    return user
+    const requester = await dependencies.resolveRequester(token, request)
+    if (requester.userId !== null && !UUID_PATTERN.test(requester.userId)) throw new Error('invalid user result')
+    if (requester.userId === null && !/^[0-9a-f]{64}$/.test(requester.guestKey ?? '')) throw new Error('invalid guest result')
+    return requester
   } catch {
     throw new HttpError(401, 'session_expired', 'Your session has expired. Refresh the page and sign in again.')
   }
 }
 
-function validateImportConfiguration(config: ImportConfiguration, userId: string, developerMode: boolean): void {
-  if (!config || config.user_id !== userId || !UUID_PATTERN.test(config.user_id)) {
+function validateImportConfiguration(config: ImportConfiguration, userId: string | null, developerMode: boolean): void {
+  if (!config
+    || config.user_id !== userId
+    || config.is_guest !== (userId === null)
+    || (config.user_id !== null && !UUID_PATTERN.test(config.user_id))
+    || (config.grade !== null && ![9, 10, 11, 12].includes(config.grade))) {
     throw new HttpError(403, 'authorization_mismatch', 'The import authorization context could not be verified.')
   }
   if (!/^gemini-[a-z0-9.-]+$/.test(config.model_id)
@@ -444,6 +465,9 @@ function validateImportConfiguration(config: ImportConfiguration, userId: string
   }
   if (!developerMode && config.bypassed_rate_limit) {
     throw new HttpError(503, 'rate_limit_context_invalid', 'The schedule import rate-limit context was invalid.')
+  }
+  if (config.is_guest && (developerMode || config.is_admin)) {
+    throw new HttpError(403, 'developer_mode_forbidden', 'Administrator access is required for AI developer mode.')
   }
 }
 
@@ -801,6 +825,52 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
   return [...merged.values()]
 }
 
+export function inferGradeFromEnglish(entries: NormalizedGeminiRow[]): Grade {
+  const names = entries.map((entry) => normalizeCourseName(entry.source_course_name))
+  if (names.some((name) => /\bap(?: english)? literature\b|\bap lit\b/.test(name))) return 12
+
+  const patterns: Array<{ grade: Grade; pattern: RegExp }> = [
+    { grade: 12, pattern: /\b(?:english\s+(?:4|12)|applied\s+ela\s+12)\b/ },
+    { grade: 11, pattern: /\b(?:english\s+(?:3|11)|applied\s+ela\s+11|ap language)\b/ },
+    { grade: 10, pattern: /\b(?:english\s+(?:2|10)|applied\s+ela\s+10)\b/ },
+    { grade: 9, pattern: /\b(?:english\s+(?:1|9)|applied\s+ela\s+9)\b/ },
+  ]
+  return patterns.find(({ pattern }) => names.some((name) => pattern.test(name)))?.grade ?? 11
+}
+
+function specialCourseKind(value: string): 'Lunch' | 'Study Hall' | null {
+  const normalized = normalizeCourseName(value)
+  if (normalized === 'lunch' || normalized === 'lunch nai' || normalized === 'lunch nash') return 'Lunch'
+  if (normalized === 'study hall' || normalized === 'study hall nai' || normalized === 'study hall nash') return 'Study Hall'
+  return null
+}
+
+export function normalizeCampusSpecialCourses(entries: NormalizedGeminiRow[], grade: Grade): NormalizedGeminiRow[] {
+  const campus = grade <= 10 ? 'NAI' : 'NASH'
+  return entries.flatMap((entry) => {
+    const kind = specialCourseKind(entry.source_course_name)
+    if (!kind) return [entry]
+    const campusEntry = { ...entry, source_course_name: `${kind} - ${campus}` }
+    if (kind !== 'Lunch' || entry.term !== 'full_year') return [campusEntry]
+    return [
+      { ...campusEntry, term: 'semester_1', term_defaulted: false, lunch_semester_split: true },
+      { ...campusEntry, term: 'semester_2', term_defaulted: false, lunch_semester_split: true },
+    ]
+  })
+}
+
+function concealGuestCampusNames(rows: ImportReviewRow[]): ImportReviewRow[] {
+  return rows.map((row) => {
+    const kind = specialCourseKind(row.course?.name ?? row.source_course_name)
+    if (!kind) return row
+    return {
+      ...row,
+      source_course_name: kind,
+      course: row.course ? { ...row.course, name: kind } : null,
+    }
+  })
+}
+
 export function findCourseMatch(sourceName: string, catalog: CourseRecord[]): CourseMatch {
   const ranked = catalog
     .map((course) => ({ course, score: courseSimilarity(sourceName, course.name) }))
@@ -852,6 +922,9 @@ function buildReviewRows(
     if (entry.term_inferred) {
       warnings.push('Academic term was inferred from the complementary semester course in the same meeting slot.')
     }
+    if (entry.lunch_semester_split) {
+      warnings.push('Full-year Lunch was separated into semester-based lunch classes in the same period.')
+    }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
       source_course_name: entry.source_course_name,
@@ -870,8 +943,7 @@ function buildReviewRows(
 }
 
 export function parseTeacherLastName(raw: string, courseName = ''): string {
-  const normalizedCourse = normalizeCourseName(courseName)
-  if (normalizedCourse === 'lunch' || normalizedCourse === 'study hall') return 'N/A'
+  if (specialCourseKind(courseName)) return 'N/A'
   let teacher = collapseWhitespace(raw)
     .replace(/^email\s+/i, '')
     .replace(/\s*-\s*rm\s*:\s*.*$/i, '')
@@ -1023,6 +1095,7 @@ function jsonResponse(origin: string, status: number, body: unknown, retryAfter?
 function getBearerToken(request: Request): string {
   const authorization = request.headers.get('Authorization') ?? ''
   const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+    || request.headers.get('apikey')?.trim()
   if (!token) throw new HttpError(401, 'authentication_required', 'Sign in before importing a schedule screenshot.')
   return token
 }

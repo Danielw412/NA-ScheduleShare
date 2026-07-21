@@ -110,7 +110,7 @@ backend = "postgres"
 
 [functions.schedule-import]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/schedule-import/deno.json"
 entrypoint = "./functions/schedule-import/index.ts"
 

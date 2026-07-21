@@ -69,6 +69,30 @@ describe('ClassesPage organization', () => {
     expect(screen.getByRole('link', { name: 'Upload Schedule' })).toHaveAttribute('href', '/schedule?import=1')
   })
 
+  it('groups same-name sections across teachers and reveals their periods on demand', async () => {
+    const user = userEvent.setup()
+    mocks.useClassSearch.mockReturnValue({
+      loading: false,
+      error: null,
+      results: [
+        { ...ownClass, score: 100 },
+        { ...otherClass, id: 'biology-spak', course_name: 'AP Biology', teacher_last_name: 'Spak', meeting_slots: [{ day_type: 'A', period_number: 2 }] },
+        { ...otherClass, id: 'biology-allen', course_name: 'AP Biology', teacher_last_name: 'Allen', meeting_slots: [{ day_type: 'B', period_number: 8 }, { day_type: 'B', period_number: 9 }] },
+      ],
+    })
+    render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
+
+    const group = screen.getByRole('button', { name: /AP Biology\s*2 sections/ })
+    expect(group).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Spak')).not.toBeInTheDocument()
+
+    await user.click(group)
+    expect(group).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Spak')).toBeInTheDocument()
+    expect(screen.getByText('Allen')).toBeInTheDocument()
+    expect(screen.getByText('B P8 · B P9')).toBeInTheDocument()
+  })
+
   it('shows real class search results but keeps rosters locked for logged-out visitors', () => {
     mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
     render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)

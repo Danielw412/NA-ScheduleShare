@@ -2576,6 +2576,35 @@ legend {
   gap: 8px;
 }
 
+.guest-import-match-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid #d3a844;
+  border-radius: var(--radius-md);
+  background: #fff8e6;
+}
+
+.guest-import-match-card>svg {
+  color: var(--brand-gold-dark);
+}
+
+.guest-import-match-card>div {
+  display: grid;
+  gap: 3px;
+}
+
+.guest-import-match-card strong {
+  font-size: 16px;
+}
+
+.guest-import-match-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .import-review-grid {
   display: grid;
   gap: 14px;
@@ -2927,6 +2956,77 @@ legend {
 .class-list {
   max-height: 650px;
   overflow: auto;
+}
+
+.course-class-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.course-class-group:last-child {
+  border-bottom: 0;
+}
+
+.course-class-group-toggle {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 15px;
+  border: 0;
+  background: var(--white);
+  color: var(--ink);
+  text-align: left;
+}
+
+.course-class-group-toggle:hover {
+  background: var(--surface-subtle);
+}
+
+.course-class-group-toggle:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid var(--brand-gold);
+  outline-offset: -3px;
+}
+
+.course-class-group-toggle>span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.course-class-group-toggle strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.course-class-group-toggle small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.course-class-group-toggle>svg {
+  flex: 0 0 auto;
+  color: #777;
+  transition: transform .16s ease;
+}
+
+.course-class-group-toggle>svg.is-expanded {
+  transform: rotate(180deg);
+}
+
+.course-class-group-sections {
+  border-top: 1px solid var(--border);
+  border-left: 4px solid var(--brand-gold);
+  background: #fffdf8;
+}
+
+.course-class-group-sections .class-list-row {
+  min-height: 66px;
+  padding-left: 18px;
 }
 
 .class-list-row {
@@ -4998,6 +5098,11 @@ a.student-access-profile:hover strong {
     flex-direction: column;
   }
 
+  .guest-import-match-card {
+    align-items: start;
+    padding: 12px;
+  }
+
   .import-row-toggle {
     grid-template-columns: 1fr auto;
     align-items: start;
@@ -5280,6 +5385,15 @@ a.student-access-profile:hover strong {
 
   .class-list-row:last-child {
     border-bottom: 0;
+  }
+
+  .course-class-group-toggle {
+    min-height: 60px;
+    padding: 11px 12px;
+  }
+
+  .course-class-group-sections .class-list-row {
+    padding-left: 12px;
   }
 
   .class-list-meta span {

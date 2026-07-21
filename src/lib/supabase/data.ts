@@ -461,6 +461,18 @@ export async function searchGuestClasses(input: ClassSearchInput): Promise<Class
   }))
 }
 
+export async function searchGuestCourseNames(query: string): Promise<CourseNameSearchResult[]> {
+  const data = await callUntypedRpc('guest_search_course_names', {
+    p_query: query,
+    p_limit: 20,
+  })
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.course_name_id),
+    course_name: String(row.course_name),
+    score: Number(row.score),
+  }))
+}
+
 async function callUntypedRpc(functionName: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const client = requireClient()
   const rpc = client.rpc.bind(client) as unknown as (
