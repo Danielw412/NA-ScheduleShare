@@ -21,8 +21,10 @@ import {
   confirmScheduleImport,
   campusCourseName,
   importClassOptionLabel,
+  editableRowsFromImportResult,
   normalizeReviewTerm,
   reconcileExactClassSelection,
+  scheduleImportPreviewEnrollments,
   specialCourseKind,
   teacherForImportedCourse,
   validateScheduleImageCount,
@@ -139,5 +141,26 @@ describe('schedule import replacement', () => {
     expect(teacherForImportedCourse('Staff', 'Lunch - NASH')).toBe('N/A')
     expect(campusCourseName('Lunch', 9)).toBe('Lunch - NAI')
     expect(campusCourseName('Study Hall', 12)).toBe('Study Hall - NASH')
+  })
+
+  it('preserves guest review choices and maps included rows into schedule-grid enrollments', () => {
+    const result = {
+      image_count: 1,
+      warnings: [],
+      shared_student_count: 3,
+      rows: [row, { ...row, id: 'excluded-row', include: false }],
+    }
+
+    expect(editableRowsFromImportResult(result)[1].include).toBe(false)
+    const preview = scheduleImportPreviewEnrollments(result)
+    expect(preview).toHaveLength(1)
+    expect(preview[0]).toMatchObject({
+      academic_term: 'full_year',
+      class: {
+        course_name: 'AP Statistics',
+        teacher_last_name: 'Lester',
+        meeting_slots: row.meeting_slots,
+      },
+    })
   })
 })

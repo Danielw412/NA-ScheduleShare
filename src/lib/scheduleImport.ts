@@ -1,4 +1,4 @@
-import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, Grade, MeetingSlot } from './domain'
+import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, Grade, MeetingSlot, ScheduleEnrollment } from './domain'
 import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
 import { searchClasses, searchCourseNames, searchGuestClasses } from './supabase/data'
 import { supabase } from './supabase/client'
@@ -300,6 +300,44 @@ export function teacherForImportedCourse(teacherLastName: string, courseName?: s
   return normalizeTeacherLastName(teacherLastName)
 }
 
+export function editableRowsFromImportResult(result: ScheduleImportResult): EditableScheduleImportRow[] {
+  return result.rows.map((row) => {
+    const savedReview = row as ScheduleImportRow & Partial<Pick<EditableScheduleImportRow, 'include' | 'selected_existing_class_id'>>
+    return reconcileExactClassSelection({
+      ...row,
+      term: normalizeReviewTerm(row.term),
+      selected_existing_class_id: savedReview.selected_existing_class_id ?? row.existing_class_id,
+      include: savedReview.include ?? true,
+    })
+  })
+}
+
+export function scheduleImportPreviewEnrollments(result: ScheduleImportResult): ScheduleEnrollment[] {
+  const timestamp = new Date().toISOString()
+  return editableRowsFromImportResult(result).flatMap((row) => {
+    if (!row.include || !row.course || row.term === 'unknown') return []
+    const classId = row.selected_existing_class_id ?? `guest-preview-class:${row.id}`
+    return [{
+      id: `guest-preview-enrollment:${row.id}`,
+      class_id: classId,
+      student_id: 'guest-preview',
+      academic_term: row.term,
+      active: true,
+      created_at: timestamp,
+      updated_at: timestamp,
+      class: {
+        id: classId,
+        course_name_id: row.course.id,
+        course_name: row.course.name,
+        teacher_last_name: teacherForImportedCourse(row.teacher_last_name, row.course.name),
+        default_academic_term: row.term,
+        is_double_period: hasMultiplePeriodsOnAnyDay(row.meeting_slots),
+        meeting_slots: sortMeetingSlots(row.meeting_slots),
+      },
+    }]
+  })
+}
+
 export async function findGuestClassesForCourse(course: CourseNameSearchResult): Promise<ImportClassOption[]> {
   const results = await searchGuestClasses({ query: course.course_name, limit: 1000 })
   return results
@@ -335,7 +373,7 @@ export async function normalizeImportedResultForGrade(result: ScheduleImportResu
       class_options: classOptions,
       existing_class_id: null,
       selected_existing_class_id: null,
-      include: true,
+      include: (row as Partial<EditableScheduleImportRow>).include ?? true,
     })
     return {
       ...reconciled,
@@ -349,12 +387,36 @@ const GUEST_IMPORT_DRAFT_KEY = 'scheduleshare:guest-import-draft:v1'
 const GUEST_IMPORT_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 export function saveGuestScheduleImportDraft(result: ScheduleImportResult): void {
-  window.sessionStorage.setItem(GUEST_IMPORT_DRAFT_KEY, JSON.stringify({ saved_at: Date.now(), result }))
+  const value = JSON.stringify({ saved_at: Date.now(), result })
+  try {
+    window.localStorage.setItem(GUEST_IMPORT_DRAFT_KEY, value)
+    window.sessionStorage.removeItem(GUEST_IMPORT_DRAFT_KEY)
+    return
+  } catch {
+    try {
+      window.sessionStorage.setItem(GUEST_IMPORT_DRAFT_KEY, value)
+    } catch {
+      // The in-memory page preview still works when browser storage is unavailable.
+    }
+  }
 }
 
 export function loadGuestScheduleImportDraft(): ScheduleImportResult | null {
+  let stored: string | null = null
   try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(GUEST_IMPORT_DRAFT_KEY) ?? 'null') as {
+    stored = window.localStorage.getItem(GUEST_IMPORT_DRAFT_KEY)
+  } catch {
+    // Fall back to the current tab's storage below.
+  }
+  if (!stored) {
+    try {
+      stored = window.sessionStorage.getItem(GUEST_IMPORT_DRAFT_KEY)
+    } catch {
+      return null
+    }
+  }
+  try {
+    const parsed = JSON.parse(stored ?? 'null') as {
       saved_at?: unknown
       result?: ScheduleImportResult
     } | null
@@ -370,7 +432,16 @@ export function loadGuestScheduleImportDraft(): ScheduleImportResult | null {
 }
 
 export function clearGuestScheduleImportDraft(): void {
-  window.sessionStorage.removeItem(GUEST_IMPORT_DRAFT_KEY)
+  try {
+    window.localStorage.removeItem(GUEST_IMPORT_DRAFT_KEY)
+  } catch {
+    // Continue clearing the tab fallback.
+  }
+  try {
+    window.sessionStorage.removeItem(GUEST_IMPORT_DRAFT_KEY)
+  } catch {
+    // Expiration will make any inaccessible copy unusable after 24 hours.
+  }
 }
 
 function slotsKey(slots: MeetingSlot[]): string {

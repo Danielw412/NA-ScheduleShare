@@ -135,12 +135,17 @@ function GroupedClassList({ results, activeClassId }: { results: ClassSearchResu
     return [...byName.entries()].map(([key, group]) => ({ key, ...group }))
   }, [results])
   const activeGroup = groups.find((group) => group.sections.some((section) => section.id === activeClassId))?.key
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(activeGroup ? [activeGroup] : []))
+
+  useEffect(() => {
+    if (!activeGroup) return
+    setExpanded((current) => current.has(activeGroup) ? current : new Set(current).add(activeGroup))
+  }, [activeGroup])
 
   return <>
     {groups.map((group) => {
-      const isExpanded = expanded.has(group.key) || activeGroup === group.key
-      const sectionLabel = `${group.sections.length} ${group.sections.length === 1 ? 'section' : 'sections'}`
+      const isExpanded = expanded.has(group.key)
+      const sectionLabel = `${group.sections.length} ${group.sections.length === 1 ? 'period' : 'periods'}`
       return <section className="course-class-group" key={group.key}>
         <button
           aria-expanded={isExpanded}

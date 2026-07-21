@@ -1,5 +1,5 @@
 import { CheckCircle2, ImagePlus, Plus, Share2, Users, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
@@ -12,10 +12,13 @@ import { useSchedule } from '../hooks/useSchedule'
 import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
 import {
   clearGuestScheduleImportDraft,
+  confirmScheduleImport,
+  editableRowsFromImportResult,
   findGuestClassesForCourse,
   loadGuestScheduleImportDraft,
   normalizeImportedResultForGrade,
   saveGuestScheduleImportDraft,
+  scheduleImportPreviewEnrollments,
   type ScheduleImportResult,
 } from '../lib/scheduleImport'
 import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
@@ -74,17 +77,24 @@ export function SchedulePage() {
   const { user, profile, isAdmin, isDemo } = useAuth()
   const { openAccountPrompt } = useGuestAccountPrompt()
   const schedule = useSchedule()
+  const reloadSchedule = schedule.reload
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedTerm, setSelectedTerm] = useState<AcademicTerm>('full_year')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
   const [importInitialResult, setImportInitialResult] = useState<ScheduleImportResult | null>(null)
+  const [guestImportResult, setGuestImportResult] = useState<ScheduleImportResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [showSavedCheck, setShowSavedCheck] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareCtaDismissed, setShareCtaDismissed] = useState(() => user ? hasDismissedShareCta(user.id) : true)
   const onboardingChecked = useRef(false)
+  const guestResumeStarted = useRef(false)
+  const guestPreviewEnrollments = useMemo(
+    () => guestImportResult ? scheduleImportPreviewEnrollments(guestImportResult) : [],
+    [guestImportResult],
+  )
 
   useEffect(() => {
     setShareCtaDismissed(user ? hasDismissedShareCta(user.id) : true)
@@ -125,23 +135,54 @@ export function SchedulePage() {
   }, [searchParams, setSearchParams, user])
 
   useEffect(() => {
-    if (!user || !profile?.grade || searchParams.get('import') !== 'resume') return
+    if (user || guestImportResult) return
+    const draft = loadGuestScheduleImportDraft()
+    if (draft) setGuestImportResult(draft)
+  }, [guestImportResult, user])
+
+  useEffect(() => {
+    if (!user
+      || !profile?.grade
+      || !profile.onboarding_completed
+      || searchParams.get('import') !== 'resume'
+      || guestResumeStarted.current) return
+    guestResumeStarted.current = true
+    const grade = profile.grade
     let active = true
     const draft = loadGuestScheduleImportDraft()
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete('import')
-    setSearchParams(nextParams, { replace: true })
-    if (!draft) return
-    void normalizeImportedResultForGrade(draft, profile.grade).then((result) => {
+    const finishResume = () => {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('import')
+      setSearchParams(nextParams, { replace: true })
+    }
+    if (!draft) {
+      finishResume()
+      return
+    }
+    let normalizedResult: ScheduleImportResult | null = null
+    void (async () => {
+      normalizedResult = await normalizeImportedResultForGrade(draft, grade)
+      const saved = await confirmScheduleImport(editableRowsFromImportResult(normalizedResult))
+      await reloadSchedule()
       if (!active) return
-      setImportInitialResult(result)
-      setImportOnboarding(false)
-      setImportOpen(true)
-    }).catch((caught: unknown) => {
-      if (active) setMessage(caught instanceof Error ? caught.message : 'Your imported schedule preview could not be restored.')
+      clearGuestScheduleImportDraft()
+      setGuestImportResult(null)
+      rememberOnboarding(user.id, 'completed')
+      setShowSavedCheck(true)
+      setMessage(`Imported schedule saved automatically: ${saved.added} ${saved.added === 1 ? 'class' : 'classes'} added.`)
+      finishResume()
+    })().catch((caught: unknown) => {
+      if (!active) return
+      if (normalizedResult) {
+        setImportInitialResult(normalizedResult)
+        setImportOnboarding(false)
+        setImportOpen(true)
+      }
+      setMessage(caught instanceof Error ? `Your imported schedule was restored, but could not be saved automatically: ${caught.message}` : 'Your imported schedule was restored, but could not be saved automatically.')
+      finishResume()
     })
     return () => { active = false }
-  }, [profile?.grade, searchParams, setSearchParams, user])
+  }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, searchParams, setSearchParams, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
     if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
@@ -218,24 +259,33 @@ export function SchedulePage() {
   if (schedule.loading) return <LoadingScreen label="Loading your schedule…" />
 
   if (!user) {
+    const sharedStudentCount = guestImportResult?.shared_student_count ?? 0
+    const hasGuestPreview = guestPreviewEnrollments.length > 0
     return (
       <div className="schedule-page guest-schedule-page">
         <header className="page-heading schedule-heading">
-          <div><h1>Schedule</h1><p>Upload your schedule and find the people in your classes.</p></div>
+          <div><h1>My Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
           <div className="schedule-heading-actions">
-            <button className="button button-import" type="button" onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Try schedule importer</button>
+            <button className="button button-import" type="button" onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
           </div>
         </header>
+        {!hasGuestPreview ? <section className="schedule-import-empty-card guest-import-try-card">
+          <ImagePlus size={34} aria-hidden="true" />
+          <div><h2>Import your schedule</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p></div>
+          <button className="button button-primary" type="button" onClick={() => openImport(false)}>Choose Screenshot</button>
+        </section> : <section className="schedule-share-cta guest-schedule-account-cta">
+          <Users size={34} aria-hidden="true" />
+          <div><h2>See who shares classes with you</h2><p><strong>{sharedStudentCount}</strong> {sharedStudentCount === 1 ? 'student shares' : 'students share'} at least one class with you. Create an account to save this schedule and see who.</p></div>
+          <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" onClick={() => {
+            if (guestImportResult) saveGuestScheduleImportDraft(guestImportResult)
+            openAccountPrompt('/schedule?import=resume')
+          }}>Create account</button></div>
+        </section>}
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
         <div className="schedule-layout">
-          <ScheduleGrid enrollments={[]} selectedTerm={selectedTerm} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
+          <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
         </div>
-        <section className="schedule-import-empty-card guest-import-try-card">
-          <ImagePlus size={34} aria-hidden="true" />
-          <div><h2>Try the importer before signing up</h2><p>Upload screenshots, review the schedule we find, and see how many students share a class with you. Create an account only when you save.</p></div>
-          <button className="button button-primary" type="button" onClick={() => openImport(false)}>Choose Screenshot</button>
-        </section>
         {importOpen ? <ScheduleImportDialog
           open
           isGuest
@@ -245,9 +295,9 @@ export function SchedulePage() {
           loadClassOptions={findGuestClassesForCourse}
           onClose={closeImport}
           onImported={async () => undefined}
-          onRequireAccount={(result) => {
+          onGuestPreview={(result) => {
             saveGuestScheduleImportDraft(result)
-            openAccountPrompt('/schedule?import=resume')
+            setGuestImportResult(result)
           }}
         /> : null}
       </div>

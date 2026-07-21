@@ -217,25 +217,26 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
-  it('shows guests an aggregate match count and requests signup instead of saving', async () => {
+  it('returns the reviewed schedule for an on-page guest preview instead of saving', async () => {
     const user = userEvent.setup()
-    const onRequireAccount = vi.fn()
+    const onGuestPreview = vi.fn()
+    const onClose = vi.fn()
     const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
     renderDialog({
       isGuest: true,
       initialResult: { ...importResult(), shared_student_count: 4, estimated_grade: 10 },
-      onRequireAccount,
+      onGuestPreview,
+      onClose,
       confirmImport,
     })
 
-    expect(await screen.findByText('4 students share a class with you')).toBeInTheDocument()
-    expect(screen.getByText('Create an account to save this schedule and see who.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Create account to save & compare' }))
+    await user.click(await screen.findByRole('button', { name: 'Show imported schedule' }))
 
-    expect(onRequireAccount).toHaveBeenCalledWith(expect.objectContaining({
+    expect(onGuestPreview).toHaveBeenCalledWith(expect.objectContaining({
       shared_student_count: 4,
       rows: expect.arrayContaining([expect.objectContaining({ course: expect.objectContaining({ name: 'AP Statistics' }) })]),
     }))
+    expect(onClose).toHaveBeenCalledTimes(1)
     expect(confirmImport).not.toHaveBeenCalled()
   })
 

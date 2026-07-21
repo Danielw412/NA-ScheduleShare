@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -45,6 +45,7 @@ beforeEach(() => {
     enrollments: [{ id: 'enrollment-1', active: true, class: ownClass }],
   })
   mocks.useClassSearch.mockReturnValue({ loading: false, error: null, results: [{ ...ownClass, score: 100 }, otherClass] })
+  mocks.getClassMembers.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -82,7 +83,7 @@ describe('ClassesPage organization', () => {
     })
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
 
-    const group = screen.getByRole('button', { name: /AP Biology\s*2 sections/ })
+    const group = screen.getByRole('button', { name: /AP Biology\s*2 periods/ })
     expect(group).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('Spak')).not.toBeInTheDocument()
 
@@ -91,6 +92,29 @@ describe('ClassesPage organization', () => {
     expect(screen.getByText('Spak')).toBeInTheDocument()
     expect(screen.getByText('Allen')).toBeInTheDocument()
     expect(screen.getByText('B P8 · B P9')).toBeInTheDocument()
+  })
+
+  it('allows the active class group to collapse after a period is selected', async () => {
+    const user = userEvent.setup()
+    mocks.useClassSearch.mockReturnValue({
+      loading: false,
+      error: null,
+      results: [
+        { ...ownClass, score: 100 },
+        { ...otherClass, id: 'biology-spak', course_name: 'AP Biology', teacher_last_name: 'Spak' },
+        { ...otherClass, id: 'biology-allen', course_name: 'AP Biology', teacher_last_name: 'Allen' },
+      ],
+    })
+    render(<MemoryRouter initialEntries={['/classes/biology-spak']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    const group = await screen.findByRole('button', { name: /AP Biology\s*2 periods/ })
+    const groupSection = group.closest('.course-class-group') as HTMLElement
+    expect(group).toHaveAttribute('aria-expanded', 'true')
+    expect(within(groupSection).getByText('Spak')).toBeInTheDocument()
+
+    await user.click(group)
+    expect(group).toHaveAttribute('aria-expanded', 'false')
+    expect(within(groupSection).queryByText('Spak')).not.toBeInTheDocument()
   })
 
   it('shows real class search results but keeps rosters locked for logged-out visitors', () => {

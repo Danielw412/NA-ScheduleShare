@@ -6,6 +6,7 @@ import type { CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleI
 import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
+  editableRowsFromImportResult,
   findClassesForCourse,
   importClassOptionLabel,
   importRowError,
@@ -41,7 +42,7 @@ export interface ScheduleImportDialogProps {
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
   onImported: (result: { added: number; removed: number }) => Promise<void>
-  onRequireAccount?: (result: ScheduleImportResult) => void
+  onGuestPreview?: (result: ScheduleImportResult) => void
   importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
@@ -187,7 +188,7 @@ export function ScheduleImportDialog({
   currentEnrollments,
   onClose,
   onImported,
-  onRequireAccount,
+  onGuestPreview,
   importScreenshots = submitScheduleScreenshots,
   searchCourses,
   loadClassOptions = findClassesForCourse,
@@ -230,12 +231,7 @@ export function ScheduleImportDialog({
 
   useEffect(() => {
     if (!open || !initialResult || rows.length > 0) return
-    const editable = initialResult.rows.map((row) => ({
-      ...row,
-      term: normalizeReviewTerm(row.term),
-      selected_existing_class_id: row.existing_class_id,
-      include: true,
-    })).map(reconcileExactClassSelection)
+    const editable = editableRowsFromImportResult(initialResult)
     setRows(editable)
     setResultSummary({
       warnings: initialResult.warnings,
@@ -420,7 +416,8 @@ export function ScheduleImportDialog({
   async function saveRows() {
     if (!canConfirm) return
     if (isGuest) {
-      onRequireAccount?.({ ...resultSummary, rows })
+      onGuestPreview?.({ ...resultSummary, rows })
+      closeDialog()
       return
     }
     setPhase('saving')
@@ -530,10 +527,7 @@ export function ScheduleImportDialog({
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {isGuest ? <section className="guest-import-match-card" aria-live="polite">
-              <Sparkles aria-hidden="true" />
-              <div><strong>{resultSummary.shared_student_count ?? 0} {(resultSummary.shared_student_count ?? 0) === 1 ? 'student shares' : 'students share'} a class with you</strong><span>Create an account to save this schedule and see who.</span></div>
-            </section> : <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div>}
+            {!isGuest ? <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div> : null}
             <div className="import-review-controls" aria-label="Review row display controls">
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse reviewed</button>
@@ -634,8 +628,8 @@ export function ScheduleImportDialog({
               })}
             </div>
             <div className="import-confirm-bar">
-              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. {isGuest ? 'Your preview stays in this browser while you create an account.' : 'This will replace your current schedule.'}</p>
-              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{isGuest ? 'Create account to save & compare' : phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
+              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. {isGuest ? 'Continue to place them on your schedule.' : 'This will replace your current schedule.'}</p>
+              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{isGuest ? 'Show imported schedule' : phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
             </div>
           </div>
         )}

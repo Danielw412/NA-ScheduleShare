@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as ScheduleImportModule from '../lib/scheduleImport'
 import { SchedulePage } from './SchedulePage'
 
 const mocks = vi.hoisted(() => ({
@@ -10,22 +11,62 @@ const mocks = vi.hoisted(() => ({
   useSchedule: vi.fn(),
   removeEnrollment: vi.fn(),
   createScheduleShareUrl: vi.fn(),
+  confirmScheduleImport: vi.fn(),
+  normalizeImportedResultForGrade: vi.fn(),
 }))
 
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
-vi.mock('../lib/supabase/data', () => ({ removeEnrollment: mocks.removeEnrollment, searchGuestCourseNames: vi.fn(), updateEnrollmentTerm: vi.fn() }))
+vi.mock('../lib/supabase/data', () => ({
+  removeEnrollment: mocks.removeEnrollment,
+  searchClasses: vi.fn(),
+  searchCourseNames: vi.fn(),
+  searchGuestClasses: vi.fn(),
+  searchGuestCourseNames: vi.fn(),
+  updateEnrollmentTerm: vi.fn(),
+}))
+vi.mock('../lib/scheduleImport', async (importOriginal) => {
+  const actual = await importOriginal<typeof ScheduleImportModule>()
+  return {
+    ...actual,
+    confirmScheduleImport: mocks.confirmScheduleImport,
+    normalizeImportedResultForGrade: mocks.normalizeImportedResultForGrade,
+  }
+})
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
   scheduleShareTitle: 'My A/B-Day Schedule | NA ScheduleShare',
 }))
-vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ onRemove }: { onRemove: (enrollment: unknown) => void }) => <div data-testid="schedule-grid"><button type="button" onClick={() => onRemove({ id: 'enrollment-test', class: { course_name: 'Test Biology' } })}>Remove test class</button></div> }))
+vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ enrollments, onRemove }: { enrollments: Array<{ id?: string; class?: { course_name: string } }>; onRemove: (enrollment: unknown) => void }) => <div data-testid="schedule-grid">{enrollments.flatMap((enrollment) => enrollment.class ? [<span key={enrollment.id ?? enrollment.class.course_name}>{enrollment.class.course_name}</span>] : [])}<button type="button" onClick={() => onRemove({ id: 'enrollment-test', class: { course_name: 'Test Biology' } })}>Remove test class</button></div> }))
 vi.mock('../components/schedule/TermSelector', () => ({ TermSelector: () => <div data-testid="term-selector" /> }))
 vi.mock('../components/schedule/AddClassDialog', () => ({ AddClassDialog: () => <div data-testid="manual-dialog" /> }))
 vi.mock('../components/schedule/ScheduleImportDialog', () => ({
-  ScheduleImportDialog: ({ onboarding, isGuest, onClose }: { onboarding?: boolean; isGuest?: boolean; onClose: () => void }) => (
+  ScheduleImportDialog: ({ onboarding, isGuest, onClose, onGuestPreview }: { onboarding?: boolean; isGuest?: boolean; onClose: () => void; onGuestPreview?: (result: unknown) => void }) => (
     <div data-testid="import-dialog" data-onboarding={String(Boolean(onboarding))} data-guest={String(Boolean(isGuest))}>
       <span>{onboarding ? 'Automatic onboarding' : 'Manual import'}</span>
+      {isGuest ? <button type="button" onClick={() => {
+        onGuestPreview?.({
+          image_count: 1,
+          warnings: [],
+          shared_student_count: 4,
+          estimated_grade: 10,
+          rows: [{
+            id: 'guest-row-1',
+            source_course_name: 'AP Statistics',
+            course: { id: 'course-ap-statistics', name: 'AP Statistics', confidence: 1 },
+            teacher_last_name: 'Lester',
+            term: 'full_year',
+            meeting_slots: [{ day_type: 'A', period_number: 1 }, { day_type: 'B', period_number: 1 }],
+            confidence: 1,
+            warnings: [],
+            flags: [],
+            resolution: 'new_class',
+            existing_class_id: null,
+            class_options: [],
+          }],
+        })
+        onClose()
+      }}>Show imported schedule</button> : null}
       <button type="button" onClick={onClose}>Dismiss import</button>
     </div>
   ),
@@ -57,6 +98,9 @@ beforeEach(() => {
   mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isAdmin: false, isDemo: false })
   mocks.useSchedule.mockReturnValue(emptySchedule())
   mocks.createScheduleShareUrl.mockResolvedValue('https://share.example/share/99300000-0000-4000-8000-000000000001')
+  mocks.confirmScheduleImport.mockResolvedValue({ added: 1, removed: 0 })
+  mocks.normalizeImportedResultForGrade.mockImplementation(async (result) => result)
+  sessionStorage.clear()
 })
 
 afterEach(() => {
@@ -117,9 +161,63 @@ describe('SchedulePage onboarding', () => {
     mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, isDemo: false })
     renderPage()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Try schedule importer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import schedule' }))
     expect(screen.getByTestId('import-dialog')).toHaveAttribute('data-guest', 'true')
-    expect(screen.getByRole('heading', { name: 'Try the importer before signing up' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Import your schedule' })).toBeInTheDocument()
+  })
+
+  it('places the reviewed guest import in the schedule grid and shows the account callout', async () => {
+    mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, isDemo: false })
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import schedule' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show imported schedule' }))
+
+    expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('schedule-grid')).toHaveTextContent('AP Statistics')
+    expect(screen.getByRole('heading', { name: 'See who shares classes with you' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'See who shares classes with you' }).closest('section')).toHaveTextContent('4 students share at least one class with you')
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument()
+    expect(localStorage.getItem('scheduleshare:guest-import-draft:v1')).not.toBeNull()
+  })
+
+  it('automatically saves a guest preview after account onboarding completes', async () => {
+    const schedule = emptySchedule()
+    const draft = {
+      image_count: 1,
+      warnings: [],
+      shared_student_count: 4,
+      estimated_grade: 10,
+      rows: [{
+        id: 'guest-row-1',
+        source_course_name: 'AP Statistics',
+        course: { id: 'course-ap-statistics', name: 'AP Statistics', confidence: 1 },
+        teacher_last_name: 'Lester',
+        term: 'full_year' as const,
+        meeting_slots: [{ day_type: 'A' as const, period_number: 1 }, { day_type: 'B' as const, period_number: 1 }],
+        confidence: 1,
+        warnings: [],
+        flags: [],
+        resolution: 'new_class' as const,
+        existing_class_id: null,
+        class_options: [],
+      }],
+    }
+    localStorage.setItem('scheduleshare:guest-import-draft:v1', JSON.stringify({ saved_at: Date.now(), result: draft }))
+    mocks.useAuth.mockReturnValue({
+      user: { id: 'student-1' },
+      profile: { grade: 10, onboarding_completed: true },
+      isAdmin: false,
+      isDemo: false,
+    })
+    mocks.useSchedule.mockReturnValue(schedule)
+    renderPage('/schedule?import=resume')
+
+    await waitFor(() => expect(mocks.confirmScheduleImport).toHaveBeenCalledTimes(1))
+    expect(mocks.normalizeImportedResultForGrade).toHaveBeenCalledWith(expect.objectContaining({ shared_student_count: 4 }), 10)
+    expect(schedule.reload).toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveTextContent('Imported schedule saved automatically: 1 class added')
+    expect(localStorage.getItem('scheduleshare:guest-import-draft:v1')).toBeNull()
   })
 
   it('removes a class immediately without a confirmation prompt', async () => {

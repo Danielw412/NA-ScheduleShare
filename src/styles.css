@@ -2576,35 +2576,6 @@ legend {
   gap: 8px;
 }
 
-.guest-import-match-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 15px 16px;
-  border: 1px solid #d3a844;
-  border-radius: var(--radius-md);
-  background: #fff8e6;
-}
-
-.guest-import-match-card>svg {
-  color: var(--brand-gold-dark);
-}
-
-.guest-import-match-card>div {
-  display: grid;
-  gap: 3px;
-}
-
-.guest-import-match-card strong {
-  font-size: 16px;
-}
-
-.guest-import-match-card span {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .import-review-grid {
   display: grid;
   gap: 14px;
@@ -5096,11 +5067,6 @@ a.student-access-profile:hover strong {
   .import-confirm-bar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .guest-import-match-card {
-    align-items: start;
-    padding: 12px;
   }
 
   .import-row-toggle {
