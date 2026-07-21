@@ -12,7 +12,7 @@ const authenticatedNavigation = [
   { to: '/', label: 'Home', mobileBottomDuplicate: false },
   { to: '/schedule', label: 'My Schedule', mobileBottomDuplicate: true },
   { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
-  { to: '/students', label: 'Students', mobileBottomDuplicate: true },
+  { to: '/students', label: 'All Students', mobileBottomDuplicate: true },
   { to: '/classmates', label: 'Classmates', mobileBottomDuplicate: true },
   { to: '/profile', label: 'Profile', mobileBottomDuplicate: false },
 ]
@@ -27,7 +27,7 @@ const mobileBottomNavigation = [
   { to: '/schedule', label: 'Schedule', Icon: CalendarDays },
   { to: '/classes', label: 'Classes', Icon: BookOpen },
   { to: '/classmates', label: 'Classmates', Icon: Users },
-  { to: '/students', label: 'Students', Icon: UserRound },
+  { to: '/students', label: 'All Students', Icon: UserRound },
 ]
 
 export function AppShell() {

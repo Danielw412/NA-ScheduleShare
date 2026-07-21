@@ -45,7 +45,7 @@ describe('AppShell mobile navigation', () => {
     expect(within(navigation).getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/schedule')
     expect(within(navigation).getByRole('link', { name: 'Classes' })).toHaveClass('active')
     expect(within(navigation).getByRole('link', { name: 'Classmates' })).toHaveAttribute('href', '/classmates')
-    expect(within(navigation).getByRole('link', { name: 'Students' })).toHaveAttribute('href', '/students')
+    expect(within(navigation).getByRole('link', { name: 'All Students' })).toHaveAttribute('href', '/students')
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' })
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('AppShell mobile navigation', () => {
     expect(within(navigation).getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/schedule')
     expect(within(navigation).getByRole('link', { name: 'Classes' })).toHaveClass('active')
     await user.click(within(navigation).getByRole('button', { name: 'Classmates' }))
-    await user.click(within(navigation).getByRole('button', { name: 'Students' }))
+    await user.click(within(navigation).getByRole('button', { name: 'All Students' }))
     expect(mocks.openAccountPrompt).toHaveBeenNthCalledWith(1, '/classmates')
     expect(mocks.openAccountPrompt).toHaveBeenNthCalledWith(2, '/students')
   })
