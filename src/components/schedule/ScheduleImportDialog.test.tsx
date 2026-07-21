@@ -217,6 +217,26 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
+  it('automatically shows a clean guest import without opening review', async () => {
+    const user = userEvent.setup()
+    const onGuestPreview = vi.fn()
+    const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
+    renderDialog({
+      isGuest: true,
+      onGuestPreview,
+      confirmImport,
+    })
+
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
+
+    await waitFor(() => expect(onGuestPreview).toHaveBeenCalledWith(expect.objectContaining({
+      rows: expect.arrayContaining([expect.objectContaining({ course: expect.objectContaining({ name: 'AP Statistics' }) })]),
+    })))
+    expect(screen.queryByText('Your imported schedule')).not.toBeInTheDocument()
+    expect(confirmImport).not.toHaveBeenCalled()
+  })
+
   it('returns the reviewed schedule for an on-page guest preview instead of saving', async () => {
     const user = userEvent.setup()
     const onGuestPreview = vi.fn()

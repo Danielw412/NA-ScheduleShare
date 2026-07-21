@@ -386,14 +386,18 @@ export function ScheduleImportDialog({
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
       setMessage(result.warnings.join(' '))
       setDeveloperData(result.developer ?? null)
-      const canAutoReplace = !isGuest
-        && !developerMode
+      const canAutoApply = !developerMode
         && editable.length > 0
         && editable.every((row) => row.confidence > 0.8 && !importRowError(row))
         && editable.every((row) => !row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag)))
         && duplicateImportIndexes(editable).size === 0
         && conflictingImportIndexes(editable).size === 0
-      if (canAutoReplace) {
+      if (canAutoApply && isGuest) {
+        onGuestPreview?.({ ...result, rows: editable })
+        closeDialog()
+        return
+      }
+      if (canAutoApply) {
         setPhase('saving')
         try {
           const replacement = await confirmImport(editable)
