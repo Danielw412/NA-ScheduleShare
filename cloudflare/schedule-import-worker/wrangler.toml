@@ -20,3 +20,8 @@ SITE_URL = "https://schedule.naclubs.net/"
 
 [secrets]
 required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"]
+
+[[rules]]
+type = "Data"
+globs = ["**/*.woff2"]
+fallthrough = true

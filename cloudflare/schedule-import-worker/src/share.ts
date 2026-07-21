@@ -1,3 +1,7 @@
+import { Resvg } from '@cf-wasm/resvg/workerd'
+import interSemibold from '@fontsource/inter/files/inter-latin-600-normal.woff2'
+import interBold from '@fontsource/inter/files/inter-latin-700-normal.woff2'
+
 const SHARE_PATH = /^\/share\/([^/]+)(\/image\.png)?$/i
 const SHARE_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WIDTH = 1200
@@ -125,110 +129,41 @@ export async function handleShareRequest(request: Request, env: ShareEnv): Promi
 
   if (match[2]) {
     headers.set('Content-Type', 'image/png')
-    return new Response(request.method === 'HEAD' ? null : renderPreviewPng(share).buffer, { status, headers })
+    const png = request.method === 'HEAD' ? null : await renderPreviewPng(share)
+    return new Response(png, { status, headers })
   }
 
   headers.set('Content-Type', 'text/html; charset=utf-8')
   return new Response(request.method === 'HEAD' ? null : pageHtml(url, token, share, env), { status, headers })
 }
 
-const FONT: Record<string, string[]> = {
-  ' ': ['00000','00000','00000','00000','00000','00000','00000'],
-  A: ['01110','10001','10001','11111','10001','10001','10001'], B: ['11110','10001','10001','11110','10001','10001','11110'],
-  C: ['01111','10000','10000','10000','10000','10000','01111'], D: ['11110','10001','10001','10001','10001','10001','11110'],
-  E: ['11111','10000','10000','11110','10000','10000','11111'], F: ['11111','10000','10000','11110','10000','10000','10000'],
-  G: ['01111','10000','10000','10111','10001','10001','01111'], H: ['10001','10001','10001','11111','10001','10001','10001'],
-  I: ['11111','00100','00100','00100','00100','00100','11111'], J: ['00111','00010','00010','00010','10010','10010','01100'],
-  K: ['10001','10010','10100','11000','10100','10010','10001'], L: ['10000','10000','10000','10000','10000','10000','11111'],
-  M: ['10001','11011','10101','10101','10001','10001','10001'], N: ['10001','11001','10101','10011','10001','10001','10001'],
-  O: ['01110','10001','10001','10001','10001','10001','01110'], P: ['11110','10001','10001','11110','10000','10000','10000'],
-  Q: ['01110','10001','10001','10001','10101','10010','01101'], R: ['11110','10001','10001','11110','10100','10010','10001'],
-  S: ['01111','10000','10000','01110','00001','00001','11110'], T: ['11111','00100','00100','00100','00100','00100','00100'],
-  U: ['10001','10001','10001','10001','10001','10001','01110'], V: ['10001','10001','10001','10001','10001','01010','00100'],
-  W: ['10001','10001','10001','10101','10101','10101','01010'], X: ['10001','10001','01010','00100','01010','10001','10001'],
-  Y: ['10001','10001','01010','00100','00100','00100','00100'], Z: ['11111','00001','00010','00100','01000','10000','11111'],
-  '0': ['01110','10001','10011','10101','11001','10001','01110'], '1': ['00100','01100','00100','00100','00100','00100','01110'],
-  '2': ['01110','10001','00001','00010','00100','01000','11111'], '3': ['11110','00001','00001','01110','00001','00001','11110'],
-  '4': ['00010','00110','01010','10010','11111','00010','00010'], '5': ['11111','10000','10000','11110','00001','00001','11110'],
-  '6': ['01110','10000','10000','11110','10001','10001','01110'], '7': ['11111','00001','00010','00100','01000','01000','01000'],
-  '8': ['01110','10001','10001','01110','10001','10001','01110'], '9': ['01110','10001','10001','01111','00001','00001','01110'],
-  '/': ['00001','00010','00010','00100','01000','01000','10000'], '-': ['00000','00000','00000','11111','00000','00000','00000'],
-  '&': ['01100','10010','10100','01000','10101','10010','01101'], '.': ['00000','00000','00000','00000','00000','01100','01100'],
-  ':': ['00000','01100','01100','00000','01100','01100','00000'], '+': ['00000','00100','00100','11111','00100','00100','00000'],
-  "'": ['01100','01100','00100','00000','00000','00000','00000'], '(': ['00010','00100','01000','01000','01000','00100','00010'],
-  ')': ['01000','00100','00010','00010','00010','00100','01000'],
+const COURSE_FONT_SIZE = 20
+const COURSE_TEXT_WIDTH = 420
+
+function estimatedCharacterWidth(character: string, fontSize: number): number {
+  if (/\s/.test(character)) return fontSize * 0.3
+  if (/[ilI1.,'|!]/.test(character)) return fontSize * 0.3
+  if (/[mwMW@%&]/.test(character)) return fontSize * 0.9
+  if (/[A-Z0-9]/.test(character)) return fontSize * 0.65
+  return fontSize * 0.55
 }
 
-const PALETTE = new Uint8Array([
-  247,240,221, 0,0,0, 242,185,40, 255,255,255,
-  93,101,115, 217,210,194, 181,121,0,
-])
+function truncateToWidth(value: string, maxWidth: number, fontSize: number): string {
+  const characters = [...value]
+  const fullWidth = characters.reduce((width, character) => width + estimatedCharacterWidth(character, fontSize), 0)
+  if (fullWidth <= maxWidth) return value
 
-function concatBytes(parts: ReadonlyArray<Uint8Array<ArrayBufferLike>>): Uint8Array<ArrayBuffer> {
-  const length = parts.reduce((total, part) => total + part.length, 0)
-  const result = new Uint8Array(length)
-  let offset = 0
-  for (const part of parts) { result.set(part, offset); offset += part.length }
-  return result
-}
-
-function uint32(value: number): Uint8Array<ArrayBuffer> {
-  return new Uint8Array([(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255])
-}
-
-function crc32(data: Uint8Array): number {
-  let crc = 0xffffffff
-  for (const byte of data) {
-    crc ^= byte
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0)
+  const ellipsis = '…'
+  const ellipsisWidth = estimatedCharacterWidth(ellipsis, fontSize)
+  let width = 0
+  let result = ''
+  for (const character of characters) {
+    const characterWidth = estimatedCharacterWidth(character, fontSize)
+    if (width + characterWidth + ellipsisWidth > maxWidth) break
+    result += character
+    width += characterWidth
   }
-  return (crc ^ 0xffffffff) >>> 0
-}
-
-function pngChunk(type: string, data: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBuffer> {
-  const typeBytes = new TextEncoder().encode(type)
-  const content = concatBytes([typeBytes, data])
-  return concatBytes([uint32(data.length), content, uint32(crc32(content))])
-}
-
-function adler32(data: Uint8Array): number {
-  let a = 1
-  let b = 0
-  for (const byte of data) { a = (a + byte) % 65521; b = (b + a) % 65521 }
-  return ((b << 16) | a) >>> 0
-}
-
-function storeDeflate(data: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBuffer> {
-  const parts: Uint8Array<ArrayBufferLike>[] = [new Uint8Array([0x78, 0x01])]
-  for (let offset = 0; offset < data.length; offset += 65535) {
-    const length = Math.min(65535, data.length - offset)
-    const final = offset + length >= data.length ? 1 : 0
-    parts.push(new Uint8Array([final, length & 255, (length >>> 8) & 255, (~length) & 255, ((~length) >>> 8) & 255]))
-    parts.push(data.subarray(offset, offset + length))
-  }
-  parts.push(uint32(adler32(data)))
-  return concatBytes(parts)
-}
-
-function drawRect(pixels: Uint8Array, x: number, y: number, width: number, height: number, color: number): void {
-  const left = Math.max(0, x)
-  const top = Math.max(0, y)
-  const right = Math.min(WIDTH, x + width)
-  const bottom = Math.min(HEIGHT, y + height)
-  for (let row = top; row < bottom; row += 1) pixels.fill(color, row * WIDTH + left, row * WIDTH + right)
-}
-
-function drawText(pixels: Uint8Array, value: string, x: number, y: number, scale: number, color: number): void {
-  let cursor = x
-  for (const character of value.toLocaleUpperCase()) {
-    const glyph = FONT[character] ?? FONT[' ']
-    glyph.forEach((line, row) => {
-      for (let column = 0; column < line.length; column += 1) {
-        if (line[column] === '1') drawRect(pixels, cursor + column * scale, y + row * scale, scale, scale, color)
-      }
-    })
-    cursor += 6 * scale
-  }
+  return `${result.trimEnd()}${ellipsis}`
 }
 
 export function previewPeriodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', period: number): string {
@@ -237,49 +172,70 @@ export function previewPeriodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', pe
     && row.period_number === period
     && row.academic_term !== 'semester_2'
   ))
-  if (matches.length === 0) return 'OPEN'
+  if (matches.length === 0) return 'Open'
   const names = [...new Set(matches.map((row) => row.course_name))]
-  const value = names.join(' / ').toLocaleUpperCase()
-  return value.length > 25 ? `${value.slice(0, 22)}...` : value
+  return truncateToWidth(names.join(' / '), COURSE_TEXT_WIDTH, COURSE_FONT_SIZE)
 }
 
-export function renderPreviewPng(share: PublicScheduleShare): Uint8Array<ArrayBuffer> {
-  const pixels = new Uint8Array(WIDTH * HEIGHT)
-  pixels.fill(0)
-  drawRect(pixels, 0, 0, WIDTH, 92, 1)
-  drawRect(pixels, 0, 84, WIDTH, 8, 2)
-  drawText(pixels, 'NA SCHEDULESHARE', 48, 22, 6, 3)
-
-  if (share.available) {
-    for (const [column, day] of (['A', 'B'] as const).entries()) {
+function previewSvg(share: PublicScheduleShare): string {
+  const columns = share.available
+    ? (['A', 'B'] as const).map((day, column) => {
       const x = column === 0 ? 48 : 624
-      drawRect(pixels, x, 106, 528, 40, 2)
-      drawText(pixels, `${day} DAY`, x + 18, 115, 3, 1)
-      for (let period = 1; period <= 9; period += 1) {
-        const y = 154 + (period - 1) * 46
-        drawRect(pixels, x, y, 528, 40, 3)
-        drawRect(pixels, x, y, 54, 40, 1)
-        drawText(pixels, String(period), x + 20, y + 9, 3, 3)
-        drawText(pixels, previewPeriodLabel(share.schedule, day, period), x + 72, y + 10, 3, 1)
-      }
-    }
-  } else {
-    drawRect(pixels, 130, 190, 940, 250, 3)
-    drawRect(pixels, 130, 190, 12, 250, 2)
-    drawText(pixels, 'THIS LINK IS INVALID,', 190, 250, 5, 1)
-    drawText(pixels, 'DISABLED, OR UNAVAILABLE.', 190, 310, 5, 1)
-    drawText(pixels, 'NO SCHEDULE DATA IS SHOWN.', 190, 385, 3, 4)
-  }
-  drawText(pixels, 'BUILT BY THE NA COMPUTER AND AI CLUB', 48, 600, 3, 4)
+      const rows = Array.from({ length: 9 }, (_, index) => {
+        const period = index + 1
+        const y = 154 + index * 46
+        const label = escapeHtml(previewPeriodLabel(share.schedule, day, period))
+        return `
+          <rect x="${x}" y="${y}" width="528" height="40" rx="4" fill="#fff"/>
+          <path d="M${x + 4} ${y}h50v40h-50a4 4 0 0 1-4-4v-32a4 4 0 0 1 4-4z" fill="#000"/>
+          <text x="${x + 27}" y="${y + 27}" text-anchor="middle" font-size="20" font-weight="700" fill="#fff">${period}</text>
+          <text x="${x + 72}" y="${y + 27}" clip-path="url(#course-${day}-${period})" font-size="${COURSE_FONT_SIZE}" font-weight="600" fill="#000">${label}</text>`
+      }).join('')
+      return `
+        <rect x="${x}" y="106" width="528" height="40" rx="4" fill="#f2b928"/>
+        <text x="${x + 18}" y="134" font-size="22" font-weight="700" fill="#000">${day} Day</text>${rows}`
+    }).join('')
+    : `
+      <rect x="130" y="190" width="940" height="250" rx="8" fill="#fff"/>
+      <path d="M138 190h4v250h-4a8 8 0 0 1-8-8v-234a8 8 0 0 1 8-8z" fill="#f2b928"/>
+      <text x="190" y="278" font-size="42" font-weight="700" fill="#000">This link is invalid, disabled,</text>
+      <text x="190" y="330" font-size="42" font-weight="700" fill="#000">or unavailable.</text>
+      <text x="190" y="392" font-size="25" font-weight="600" fill="#5d6573">No schedule data is shown.</text>`
 
-  const scanlines = new Uint8Array((WIDTH + 1) * HEIGHT)
-  for (let y = 0; y < HEIGHT; y += 1) scanlines.set(pixels.subarray(y * WIDTH, (y + 1) * WIDTH), y * (WIDTH + 1) + 1)
-  const ihdr = concatBytes([uint32(WIDTH), uint32(HEIGHT), new Uint8Array([8, 3, 0, 0, 0])])
-  return concatBytes([
-    new Uint8Array([137,80,78,71,13,10,26,10]),
-    pngChunk('IHDR', ihdr),
-    pngChunk('PLTE', PALETTE),
-    pngChunk('IDAT', storeDeflate(scanlines)),
-    pngChunk('IEND', new Uint8Array()),
-  ])
+  const clipPaths = Array.from({ length: 18 }, (_, index) => {
+    const day = index < 9 ? 'A' : 'B'
+    const period = (index % 9) + 1
+    const x = day === 'A' ? 120 : 696
+    const y = 154 + (period - 1) * 46
+    return `<clipPath id="course-${day}-${period}"><rect x="${x}" y="${y}" width="${COURSE_TEXT_WIDTH}" height="40"/></clipPath>`
+  }).join('')
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+    <defs>${clipPaths}</defs>
+    <rect width="${WIDTH}" height="${HEIGHT}" fill="#f7f0dd"/>
+    <rect width="${WIDTH}" height="92" fill="#000"/>
+    <rect y="84" width="${WIDTH}" height="8" fill="#f2b928"/>
+    <g font-family="Inter, sans-serif">
+      <text x="48" y="62" font-size="46" font-weight="700" fill="#fff">NA ScheduleShare</text>
+      ${columns}
+      <text x="48" y="612" font-size="26" font-weight="600" fill="#5d6573">Built by the NA Computer and AI Club</text>
+    </g>
+  </svg>`
+}
+
+export async function renderPreviewPng(share: PublicScheduleShare): Promise<Uint8Array<ArrayBuffer>> {
+  const renderer = await Resvg.async(previewSvg(share), {
+    font: {
+      fontBuffers: [new Uint8Array(interSemibold), new Uint8Array(interBold)],
+      defaultFontFamily: 'Inter',
+      sansSerifFamily: 'Inter',
+    },
+    shapeRendering: 2,
+    textRendering: 2,
+  })
+  const image = renderer.render()
+  const png = image.asPng().slice()
+  image.free()
+  renderer.free()
+  return png
 }

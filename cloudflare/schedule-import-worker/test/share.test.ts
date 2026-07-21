@@ -14,6 +14,17 @@ function mockShare(value: unknown) {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json(value)))
 }
 
+function expectValidPreviewPng(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+  expect(bytes.byteLength).toBeGreaterThan(0)
+  expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
+  expect(new TextDecoder().decode(bytes.subarray(12, 16))).toBe('IHDR')
+  expect(view.getUint32(16)).toBe(1200)
+  expect(view.getUint32(20)).toBe(630)
+  expect(new TextDecoder().decode(bytes.subarray(-8, -4))).toBe('IEND')
+}
+
 describe('schedule share HTML', () => {
   it('returns raw Open Graph and Twitter metadata in the initial response', async () => {
     mockShare({
@@ -70,15 +81,20 @@ describe('schedule preview image', () => {
     })
     const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}/image.png`), env)
     const bytes = new Uint8Array(await response!.arrayBuffer())
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 
     expect(response?.status).toBe(200)
     expect(response?.headers.get('Content-Type')).toBe('image/png')
-    expect([...bytes.subarray(0, 8)]).toEqual([137,80,78,71,13,10,26,10])
-    expect(view.getUint32(16)).toBe(1200)
-    expect(view.getUint32(20)).toBe(630)
-    expect([...bytes.subarray(44, 47)]).toEqual([0, 0, 0])
-    expect(bytes.length).toBeGreaterThan(700_000)
+    expectValidPreviewPng(bytes)
+  })
+
+  it('returns a 404 PNG for an unavailable schedule', async () => {
+    mockShare({ available: false, schedule: [] })
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}/image.png`), env)
+    const bytes = new Uint8Array(await response!.arrayBuffer())
+
+    expect(response?.status).toBe(404)
+    expect(response?.headers.get('Content-Type')).toBe('image/png')
+    expectValidPreviewPng(bytes)
   })
 
   it('renders the first-semester course for period 9 and excludes semester 2', () => {
@@ -87,6 +103,17 @@ describe('schedule preview image', () => {
       { day_type: 'A' as const, period_number: 9, course_name: 'Calculus', academic_term: 'semester_2' as const },
     ]
 
-    expect(previewPeriodLabel(rows, 'A', 9)).toBe('ROBOTICS')
+    expect(previewPeriodLabel(rows, 'A', 9)).toBe('Robotics')
+  })
+
+  it('truncates long course names with an ellipsis', () => {
+    const courseName = 'Introduction to Artificial Intelligence and Machine Learning'
+    const rows = [
+      { day_type: 'A' as const, period_number: 2, course_name: courseName, academic_term: 'full_year' as const },
+    ]
+    const label = previewPeriodLabel(rows, 'A', 2)
+
+    expect(label).toMatch(/…$/)
+    expect(label.length).toBeLessThan(courseName.length)
   })
 })
