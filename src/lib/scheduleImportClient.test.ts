@@ -56,7 +56,7 @@ describe('Supabase Edge Function schedule importer client', () => {
       raw_gemini_output: 'not json',
       parsed_output: null,
       validation_errors: ['invalid JSON'],
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       thinking_level: 'low',
       output_token_limit: 4096,
       timing_ms: 120,

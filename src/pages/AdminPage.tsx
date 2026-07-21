@@ -342,18 +342,32 @@ export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {
   </section>
 }
 
-const demoImportModels: ScheduleImportModelRecord[] = [{
-  model_id: 'gemini-3.1-flash-lite',
-  display_name: 'Gemini 3.1 Flash-Lite',
-  enabled: true,
-  supports_image_input: true,
-  supports_structured_output: true,
-  supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
-  max_output_tokens: 65536,
-  is_active: true,
-  production_thinking_level: 'low',
-  production_output_token_limit: 4096,
-}]
+const demoImportModels: ScheduleImportModelRecord[] = [
+  {
+    model_id: 'gemini-3.5-flash-lite',
+    display_name: 'Gemini 3.5 Flash-Lite',
+    enabled: true,
+    supports_image_input: true,
+    supports_structured_output: true,
+    supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
+    max_output_tokens: 65536,
+    is_active: true,
+    production_thinking_level: 'low',
+    production_output_token_limit: 4096,
+  },
+  {
+    model_id: 'gemini-3.5-flash',
+    display_name: 'Gemini 3.5 Flash',
+    enabled: true,
+    supports_image_input: true,
+    supports_structured_output: true,
+    supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
+    max_output_tokens: 65536,
+    is_active: false,
+    production_thinking_level: 'low',
+    production_output_token_limit: 4096,
+  },
+]
 
 function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
   const [models, setModels] = useState<ScheduleImportModelRecord[]>(isDemo ? demoImportModels : [])

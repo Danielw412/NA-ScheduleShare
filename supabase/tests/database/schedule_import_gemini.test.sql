@@ -3,7 +3,7 @@ select plan(35);
 
 select is(
   (select active_model_id from private.schedule_import_settings where singleton),
-  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
   'Gemini Flash-Lite is the default production model'
 );
 select is(
@@ -18,7 +18,7 @@ select is(
 );
 select is(
   (select count(*) from private.schedule_import_models),
-  2::bigint,
+  3::bigint,
   'only the explicitly supported Gemini models are allowlisted'
 );
 select ok(
@@ -37,7 +37,7 @@ set local role authenticated;
 
 select is(
   (select model_id from public.schedule_import_prepare(false, null, null)),
-  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
   'a regular import receives the active production model'
 );
 select is(
@@ -76,7 +76,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.record_schedule_import_diagnostic(
-    'success', 'gemini-3.1-flash-lite', 'low', 4096, 'prompt', '{}', '{}'::jsonb,
+    'success', 'gemini-3.5-flash-lite', 'low', 4096, 'prompt', '{}', '{}'::jsonb,
     '[]'::jsonb, null, 1, '[{"index":1,"mime_type":"image/png","byte_size":10}]'::jsonb
   )$$,
   '42501',
@@ -130,7 +130,7 @@ select throws_ok(
 );
 select is(
   (select count(*) from public.admin_list_schedule_import_models()),
-  2::bigint,
+  3::bigint,
   'administrators can inspect only the server allowlist'
 );
 select lives_ok(

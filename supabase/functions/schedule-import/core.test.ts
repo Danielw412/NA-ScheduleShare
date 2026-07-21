@@ -73,7 +73,7 @@ function config(overrides: Partial<ImportConfiguration> = {}): ImportConfigurati
     user_id: USER_ID,
     is_admin: false,
     bypassed_rate_limit: false,
-    model_id: 'gemini-3.1-flash-lite',
+    model_id: 'gemini-3.5-flash-lite',
     thinking_level: 'low',
     output_token_limit: 4096,
     ...overrides,
