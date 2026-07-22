@@ -77,6 +77,8 @@ describe('HomePage hero', () => {
 
     expect(screen.getByRole('link', { name: /Find Classmates/ })).toHaveAttribute('href', '/students')
     expect(screen.getByRole('heading', { name: 'Share your schedule with friends' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Share schedule' })).toHaveClass('completion-share-action')
+    expect(screen.getByRole('button', { name: 'Share schedule' }).querySelector('svg')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: /Share schedule/ }))
 

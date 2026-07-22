@@ -89,7 +89,7 @@ export function HomePage() {
           <CalendarDays aria-hidden="true" />
           <div><h2>{scheduleStatus.title}</h2><p role={shareMessage ? 'status' : undefined}>{shareMessage ?? scheduleStatus.description}</p></div>
           {hasCompleteSchedule
-            ? <button className="button button-secondary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : scheduleStatus.action} <ArrowRight size={17} /></button>
+            ? <button className="button button-secondary completion-share-action" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : scheduleStatus.action}</button>
             : <Link to="/schedule">{scheduleStatus.action} <ArrowRight size={17} /></Link>}
         </section>
       ) : null}
