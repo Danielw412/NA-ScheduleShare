@@ -50,8 +50,9 @@ export function SharedSchedulePage() {
 
   return (
     <div className="shared-schedule-page">
-      <header className="page-heading"><div><h1>Shared Schedule</h1></div></header>
+      <header className="page-heading"><div><h1>{loadState.share.owner_name ? `${loadState.share.owner_name}'s schedule` : 'Shared Schedule'}</h1></div></header>
       <TermSelector value={term} onChange={setTerm} />
+      {showScheduleUpload ? <Link className="button button-import shared-schedule-top-upload" to="/schedule?import=1"><ImagePlus size={18} aria-hidden="true" /> Upload your own schedule</Link> : null}
       <div className="schedule-layout">
         <ScheduleGrid
           enrollments={enrollments}

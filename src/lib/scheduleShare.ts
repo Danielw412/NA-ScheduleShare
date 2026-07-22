@@ -16,10 +16,11 @@ export interface PublicScheduleRow {
 
 export interface PublicScheduleShare {
   available: boolean
+  owner_name: string | null
   schedule: PublicScheduleRow[]
 }
 
-const unavailableShare: PublicScheduleShare = { available: false, schedule: [] }
+const unavailableShare: PublicScheduleShare = { available: false, owner_name: null, schedule: [] }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,6 +46,7 @@ export function parsePublicScheduleShare(value: unknown): PublicScheduleShare {
   if (!isRecord(value) || value.available !== true || !Array.isArray(value.schedule)) return unavailableShare
   return {
     available: true,
+    owner_name: typeof value.owner_name === 'string' && value.owner_name.trim() ? value.owner_name.trim().slice(0, 120) : null,
     schedule: value.schedule.map(parsePublicScheduleRow).filter((row): row is PublicScheduleRow => row !== null),
   }
 }

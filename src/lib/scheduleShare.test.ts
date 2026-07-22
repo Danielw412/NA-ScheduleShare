@@ -5,6 +5,7 @@ describe('public schedule share data', () => {
   it('accepts safe period 9 rows and discards private or malformed fields', () => {
     const share = parsePublicScheduleShare({
       available: true,
+      owner_name: ' Bob ',
       schedule: [
         { day_type: 'A', period_number: 9, course_name: ' Robotics ', teacher_last_name: ' Lovelace ', academic_term: 'semester_1', teacher: 'Private' },
         { day_type: 'B', period_number: 10, course_name: 'Invalid', academic_term: 'semester_1' },
@@ -15,6 +16,7 @@ describe('public schedule share data', () => {
 
     expect(share).toEqual({
       available: true,
+      owner_name: 'Bob',
       schedule: [{ day_type: 'A', period_number: 9, course_name: 'Robotics', teacher_last_name: 'Lovelace', academic_term: 'semester_1' }],
     })
     expect(JSON.stringify(share)).not.toContain('private')

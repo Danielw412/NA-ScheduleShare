@@ -40,18 +40,20 @@ describe('shared schedule page', () => {
   it('renders a signed-out-safe read-only grid including period 9', async () => {
     vi.spyOn(scheduleShare, 'fetchPublicScheduleShare').mockResolvedValue({
       available: true,
+      owner_name: 'Bob',
       schedule: [{ day_type: 'A', period_number: 9, course_name: 'Robotics', teacher_last_name: 'Lovelace', academic_term: 'semester_1' }],
     })
 
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Shared Schedule' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: "Bob's schedule" })).toBeInTheDocument()
     expect(screen.getByText('Robotics')).toBeInTheDocument()
     expect(screen.getByText('Lovelace')).toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: /Robotics/i })).toHaveAttribute('data-period', '9')
     expect(screen.queryByRole('button', { name: /Add class/i })).not.toBeInTheDocument()
     expect(screen.queryByText('A read-only A/B-day schedule shared through ScheduleShare.')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Upload My Schedule' })).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getByRole('link', { name: 'Upload your own schedule' })).toHaveAttribute('href', '/schedule?import=1')
   })
 
   it('hides the upload callout for an account with a complete schedule', async () => {
@@ -66,17 +68,19 @@ describe('shared schedule page', () => {
     })
     vi.spyOn(scheduleShare, 'fetchPublicScheduleShare').mockResolvedValue({
       available: true,
+      owner_name: 'Bob',
       schedule: [{ day_type: 'A', period_number: 1, course_name: 'Robotics', teacher_last_name: 'Lovelace', academic_term: 'semester_1' }],
     })
 
     renderPage()
 
-    await screen.findByRole('heading', { name: 'Shared Schedule' })
+    await screen.findByRole('heading', { name: "Bob's schedule" })
     expect(screen.queryByRole('link', { name: 'Upload My Schedule' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Upload your own schedule' })).not.toBeInTheDocument()
   })
 
   it('shows a clear generic state for an invalid or disabled link', async () => {
-    vi.spyOn(scheduleShare, 'fetchPublicScheduleShare').mockResolvedValue({ available: false, schedule: [] })
+    vi.spyOn(scheduleShare, 'fetchPublicScheduleShare').mockResolvedValue({ available: false, owner_name: null, schedule: [] })
 
     renderPage()
 

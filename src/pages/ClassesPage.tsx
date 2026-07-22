@@ -79,6 +79,17 @@ function classResultFromEnrollment(enrollment: ScheduleEnrollment): ClassSearchR
   return { ...enrollment.class, score: 1000 }
 }
 
+function compareBySchedulePosition(left: ClassSearchResult, right: ClassSearchResult): number {
+  const firstSlot = (result: ClassSearchResult) => [...result.meeting_slots].sort(
+    (leftSlot, rightSlot) => leftSlot.period_number - rightSlot.period_number || leftSlot.day_type.localeCompare(rightSlot.day_type),
+  )[0]
+  const leftSlot = firstSlot(left)
+  const rightSlot = firstSlot(right)
+  return (leftSlot?.period_number ?? Number.MAX_SAFE_INTEGER) - (rightSlot?.period_number ?? Number.MAX_SAFE_INTEGER)
+    || (leftSlot?.day_type ?? 'Z').localeCompare(rightSlot?.day_type ?? 'Z')
+    || left.course_name.localeCompare(right.course_name)
+}
+
 function classTermLabel(term: ClassSearchResult['default_academic_term']): string {
   if (term === 'semester_1') return 'Semester 1'
   if (term === 'semester_2') return 'Semester 2'
@@ -191,7 +202,8 @@ function AuthenticatedClassesPage() {
 
   const ownClasses = useMemo(() => schedule.enrollments
     .filter((enrollment) => enrollment.active)
-    .map(classResultFromEnrollment), [schedule.enrollments])
+    .map(classResultFromEnrollment)
+    .sort(compareBySchedulePosition), [schedule.enrollments])
   const ownClassIds = useMemo(() => new Set(ownClasses.map((result) => result.id)), [ownClasses])
   const filteredOwnClasses = useMemo(() => ownClasses.filter((result) => matchesFilters(result, query, dayType, period)), [dayType, ownClasses, period, query])
   const otherClasses = useMemo(() => results.filter((result) => !ownClassIds.has(result.id)), [ownClassIds, results])

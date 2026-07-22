@@ -4,7 +4,6 @@ import { AuthPromptRoute } from './components/auth/AuthPromptRoute'
 import { AppShell } from './components/layout/AppShell'
 import { AdminPage } from './pages/AdminPage'
 import { ClassesPage } from './pages/ClassesPage'
-import { ClassmatesPage } from './pages/ClassmatesPage'
 import { HomePage } from './pages/HomePage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -34,7 +33,7 @@ export function App() {
             <Route path="students" element={<StudentsPage />} />
             <Route path="students/:studentId" element={<StudentDetailPage />} />
             <Route path="directory" element={<StudentsPage />} />
-            <Route path="classmates" element={<ClassmatesPage />} />
+            <Route path="classmates" element={<Navigate to="/students" replace />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="privacy" element={<Navigate to="/profile" replace />} />
             <Route path="report" element={<ReportPage />} />

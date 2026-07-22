@@ -134,7 +134,7 @@ describe('SchedulePage onboarding', () => {
     renderPage()
     await waitFor(() => expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { name: 'See Who You Share Classes With' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Find Classmates' })).toHaveAttribute('href', '/classmates')
+    expect(screen.getByRole('link', { name: 'Find Classmates' })).toHaveAttribute('href', '/students')
     expect(screen.getByRole('heading', { name: 'Share your Schedule with friends' })).toBeInTheDocument()
   })
 

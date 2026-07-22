@@ -60,7 +60,7 @@ export function HomePage() {
       <section className="home-links" aria-label="Major features">
         {!user ? <Link to="/schedule"><span className="home-link-icon"><CalendarDays aria-hidden="true" /></span><span className="home-link-copy"><h2>Schedule</h2><p>Create and view your schedule.</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link> : null}
         <Link to="/classes"><span className="home-link-icon"><Search aria-hidden="true" /></span><span className="home-link-copy"><h2>View Classes</h2><p>Find out who's in each class</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link>
-        <Link to={user ? '/classmates' : '/students'}><span className="home-link-icon"><Users aria-hidden="true" /></span><span className="home-link-copy"><h2>Classmates</h2><p>Find who you share a class with</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link>
+        <Link to="/students"><span className="home-link-icon"><Users aria-hidden="true" /></span><span className="home-link-copy"><h2>Students</h2><p>Find who you share a class with</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link>
       </section>
     </div>
   )

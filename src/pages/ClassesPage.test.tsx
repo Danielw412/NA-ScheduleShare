@@ -63,6 +63,27 @@ describe('ClassesPage organization', () => {
     expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
   })
 
+  it('orders Your Classes by period and then A/B day to match the schedule grid', () => {
+    mocks.useSchedule.mockReturnValue({
+      loading: false,
+      enrollments: [
+        { id: 'enrollment-late', active: true, class: { ...otherClass, id: 'late-class', course_name: 'Late Class', meeting_slots: [{ day_type: 'B', period_number: 4 }] } },
+        { id: 'enrollment-b', active: true, class: { ...otherClass, id: 'b-class', course_name: 'B Day Class', meeting_slots: [{ day_type: 'B', period_number: 1 }] } },
+        { id: 'enrollment-a', active: true, class: { ...ownClass, id: 'a-class', course_name: 'A Day Class', meeting_slots: [{ day_type: 'A', period_number: 1 }] } },
+      ],
+    })
+
+    render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
+
+    const section = screen.getByRole('heading', { name: 'Your Classes' }).closest('section')
+    expect(section).not.toBeNull()
+    expect(within(section!).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      expect.stringContaining('A Day Class'),
+      expect.stringContaining('B Day Class'),
+      expect.stringContaining('Late Class'),
+    ])
+  })
+
   it('shows the upload prompt when the student has no classes', () => {
     mocks.useSchedule.mockReturnValue({ loading: false, enrollments: [] })
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)

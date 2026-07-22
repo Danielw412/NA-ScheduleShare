@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, Home, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
@@ -9,11 +9,10 @@ import { ProfileAvatar } from '../ui/ProfileAvatar'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
 
 const authenticatedNavigation = [
-  { to: '/', label: 'Home', mobileBottomDuplicate: false },
+  { to: '/', label: 'Home', mobileBottomDuplicate: true },
   { to: '/schedule', label: 'My Schedule', mobileBottomDuplicate: true },
   { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
-  { to: '/students', label: 'All Students', mobileBottomDuplicate: true },
-  { to: '/classmates', label: 'Classmates', mobileBottomDuplicate: true },
+  { to: '/students', label: 'Students', mobileBottomDuplicate: true },
   { to: '/profile', label: 'Profile', mobileBottomDuplicate: false },
 ]
 
@@ -24,10 +23,10 @@ const guestNavigation = [
 ]
 
 const mobileBottomNavigation = [
+  { to: '/', label: 'Home', Icon: Home },
   { to: '/schedule', label: 'Schedule', Icon: CalendarDays },
   { to: '/classes', label: 'Classes', Icon: BookOpen },
-  { to: '/classmates', label: 'Classmates', Icon: Users },
-  { to: '/students', label: 'All Students', Icon: UserRound },
+  { to: '/students', label: 'Students', Icon: Users },
 ]
 
 export function AppShell() {
@@ -50,9 +49,12 @@ export function AppShell() {
         </nav>
         <div className="site-header-actions">
           {user ? <ScheduleAccessNotifications userId={user.id} /> : null}
-          <button className="mobile-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+          <button className="tablet-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
             {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
+          {user ? <button className="mobile-profile-button" type="button" aria-label={menuOpen ? 'Close profile menu' : 'Open profile menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+            {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <UserRound aria-hidden="true" />}
+          </button> : <button className="mobile-create-account-button button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>}
           {user ? <div className="profile-menu">
             <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
             <div>
@@ -72,12 +74,12 @@ export function AppShell() {
         </nav>
       </footer>
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {mobileBottomNavigation.map(({ to, label, Icon }) => !user && (to === '/classmates' || to === '/students')
+        {mobileBottomNavigation.map(({ to, label, Icon }) => !user && to === '/students'
           ? <button key={to} type="button" onClick={() => openAccountPrompt(to)}>
             <Icon size={22} strokeWidth={2} aria-hidden="true" />
             <span>{label}</span>
           </button>
-          : <NavLink key={to} to={to}>
+          : <NavLink key={to} to={to} end={to === '/'}>
             <Icon size={22} strokeWidth={2} aria-hidden="true" />
             <span>{label}</span>
           </NavLink>)}

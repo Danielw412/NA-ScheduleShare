@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StudentsPage } from './StudentsPage'
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   removeScheduleAccess: vi.fn(async () => undefined),
   requestScheduleAccess: vi.fn(async () => undefined),
   cancelScheduleAccessRequest: vi.fn(async () => undefined),
+  getClassmates: vi.fn(),
 }))
 
 vi.mock('../components/auth/DiscoveryGate', () => ({ DiscoveryGate: ({ children }: { children: React.ReactNode }) => children }))
@@ -22,8 +23,15 @@ vi.mock('../lib/supabase/data', () => ({
   removeScheduleAccess: mocks.removeScheduleAccess,
   requestScheduleAccess: mocks.requestScheduleAccess,
   cancelScheduleAccessRequest: mocks.cancelScheduleAccessRequest,
+  getClassmates: mocks.getClassmates,
   scheduleAccessChangedEvent: 'scheduleshare:schedule-access-changed',
 }))
+
+beforeEach(() => {
+  mocks.getClassmates.mockResolvedValue([
+    { student_id: 'classmate-1', full_name: 'Taylor', grade: 11, privacy_setting: 'classmates', shared_course_names: ['Biology'], can_view_schedule: true },
+  ])
+})
 
 afterEach(() => {
   cleanup()
@@ -31,13 +39,28 @@ afterEach(() => {
 })
 
 describe('StudentsPage schedule access', () => {
+  it('defaults to classmates and keeps directory search in All students', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    expect(screen.getByRole('button', { name: 'Classmates' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByText('Taylor')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Student name')).not.toBeInTheDocument()
+
+    mocks.searchStudentDirectory.mockResolvedValue([])
+    await user.click(screen.getByRole('button', { name: 'All students' }))
+    expect(screen.getByPlaceholderText('Student name')).toBeInTheDocument()
+  })
+
   it('shows both directions of access and only relevant actions', async () => {
+    const user = userEvent.setup()
     mocks.searchStudentDirectory.mockResolvedValue([
       { student_id: 'private-student', full_name: 'Jordan', grade: 11, privacy_setting: 'private', shared_class_count: 0, can_view_schedule: false, they_can_view_yours: 'no_access', you_can_view_theirs: 'private', outgoing_request_pending: false },
       { student_id: 'public-student', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'school', shared_class_count: 0, can_view_schedule: true, they_can_view_yours: 'shared_class', you_can_view_theirs: 'everyone_allowed', outgoing_request_pending: false },
     ])
 
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    await user.click(screen.getByRole('button', { name: 'All students' }))
 
     expect(await screen.findByText('Jordan')).toBeInTheDocument()
     const privateCard = screen.getByText('Jordan').closest('article')
@@ -59,6 +82,7 @@ describe('StudentsPage schedule access', () => {
       { student_id: 'private-student', full_name: 'Jordan', grade: 11, privacy_setting: 'private', shared_class_count: 0, can_view_schedule: false, they_can_view_yours: 'no_access', you_can_view_theirs: 'private', outgoing_request_pending: false },
     ])
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    await user.click(screen.getByRole('button', { name: 'All students' }))
 
     await user.click(await screen.findByRole('button', { name: 'Allow access' }))
     expect(mocks.allowScheduleAccess).toHaveBeenCalledWith('private-student')
@@ -78,6 +102,7 @@ describe('StudentsPage schedule access', () => {
     const user = userEvent.setup()
     mocks.searchStudentDirectory.mockResolvedValue([])
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+    await user.click(screen.getByRole('button', { name: 'All students' }))
 
     expect(screen.getByPlaceholderText('Student name')).toBeInTheDocument()
     const filterToggle = screen.getByRole('button', { name: 'Filters' })

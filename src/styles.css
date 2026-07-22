@@ -661,13 +661,27 @@ textarea:focus {
   background: var(--brand-gold);
 }
 
-.mobile-menu-button {
+.tablet-menu-button,
+.mobile-profile-button {
   display: none;
   justify-self: end;
   width: 44px;
   height: 44px;
+  place-items: center;
+  padding: 0;
   border: 0;
+  border-radius: 50%;
   background: transparent;
+}
+
+.mobile-profile-button>.avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.mobile-create-account-button {
+  display: none;
+  white-space: nowrap;
 }
 
 .guest-account-actions {
@@ -3196,6 +3210,39 @@ legend {
   gap: 5px;
 }
 
+.students-segmented-control {
+  width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: -4px 0 22px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.students-segmented-control button {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.students-segmented-control button.is-active {
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.students-view-panel {
+  min-width: 0;
+}
+
 .student-results {
   margin-top: 16px;
   display: grid;
@@ -3649,6 +3696,12 @@ a.student-access-profile:hover strong {
 
 .shared-schedule-upload .button {
   white-space: nowrap;
+}
+
+.shared-schedule-top-upload {
+  width: max-content;
+  display: flex;
+  margin: 12px 0 20px auto;
 }
 
 .homepage-stat-settings {
@@ -4333,9 +4386,8 @@ a.student-access-profile:hover strong {
     font-size: 20px;
   }
 
-  .mobile-menu-button {
+  .tablet-menu-button {
     display: grid;
-    place-items: center;
   }
 
   .primary-nav {
@@ -4553,6 +4605,21 @@ a.student-access-profile:hover strong {
     font-size: 19px;
   }
 
+  .mobile-create-account-button {
+    display: inline-flex;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .tablet-menu-button {
+    display: none;
+  }
+
+  .mobile-profile-button {
+    display: grid;
+  }
+
   .notification-bell {
     width: 42px;
     height: 42px;
@@ -4685,6 +4752,16 @@ a.student-access-profile:hover strong {
   .page-heading p {
     font-size: 14px;
     line-height: 1.45;
+  }
+
+  .students-segmented-control {
+    width: 100%;
+    margin: -2px 0 16px;
+  }
+
+  .students-segmented-control button {
+    min-height: 44px;
+    padding-inline: 10px;
   }
 
   .page-heading .button {
@@ -5442,6 +5519,12 @@ a.student-access-profile:hover strong {
   .schedule-discovery-callout .button,
   .shared-schedule-upload .button {
     width: 100%;
+  }
+
+  .shared-schedule-top-upload {
+    width: 100%;
+    justify-content: center;
+    margin: 10px 0 16px;
   }
 
   .schedule-share-cta {
