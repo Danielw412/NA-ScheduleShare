@@ -102,7 +102,7 @@ export function ProfilePage() {
 
     <section className="profile-card profile-picture-card" aria-labelledby="profile-picture-heading">
       <ProfileAvatar userId={auth.user.id} fullName={auth.profile.full_name} revision={avatarRevision} className="profile-avatar-large" />
-      <div><h2 id="profile-picture-heading">Profile picture</h2><p>PNG, JPEG, or WebP · 2 MB maximum. Your picture appears anywhere your profile is visible.</p>
+      <div><h2 id="profile-picture-heading">Profile picture</h2><p>PNG, JPEG, or WebP · 7 MB maximum. Your picture appears anywhere your profile is visible.</p>
         <div className="profile-picture-actions">
           <label className="button button-secondary"><Camera size={17} aria-hidden="true" /> {pictureBusy ? 'Uploading…' : 'Upload or replace'}<input aria-label="Upload profile picture" accept="image/png,image/jpeg,image/webp" disabled={pictureBusy || auth.isDemo} hidden type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePicture(file); event.target.value = '' }} /></label>
           <button className="button button-secondary danger-text" disabled={pictureBusy || auth.isDemo} type="button" onClick={() => void removePicture()}><Trash2 size={17} aria-hidden="true" /> Remove picture</button>

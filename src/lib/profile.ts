@@ -1,7 +1,7 @@
 import { supabase } from './supabase/client'
 
 export const PROFILE_PICTURE_BUCKET = 'profile-pictures'
-export const MAX_PROFILE_PICTURE_BYTES = 2 * 1024 * 1024
+export const MAX_PROFILE_PICTURE_BYTES = 7 * 1024 * 1024
 const PROFILE_PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 function requireSupabase() {
@@ -23,7 +23,7 @@ export function profilePictureUrl(userId: string, revision?: string | number): s
 export function validateProfilePicture(file: File): string | null {
   if (!PROFILE_PICTURE_TYPES.has(file.type)) return 'Use a PNG, JPEG, or WebP image.'
   if (file.size === 0) return 'The selected image is empty.'
-  if (file.size > MAX_PROFILE_PICTURE_BYTES) return 'Profile pictures must be 2 MB or smaller.'
+  if (file.size > MAX_PROFILE_PICTURE_BYTES) return 'Profile pictures must be 7 MB or smaller.'
   return null
 }
 
