@@ -31,7 +31,7 @@ const mobileBottomNavigation = [
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const { user, profile, isAdmin, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
