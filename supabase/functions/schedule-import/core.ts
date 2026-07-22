@@ -215,7 +215,7 @@ Extraction rules:
 - For a readable schedule, issue must be an empty string. For an unreadable, cropped, obstructed, unrelated, or blurry image, issue must explain the visible problem in plain language rather than using a generic failure message.
 - Return only the required structured data.
 
-The following courses are normally double-period courses and should have two meeting periods on each applicable day:
+The following courses normally follow a single/double-period schedule; the course meets for one period on one day of the A/B cycle and two periods on the other day:
   - AP Calculus BC (CHS)
   - Academic Biology
   - Honors Biology
