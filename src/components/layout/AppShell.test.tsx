@@ -50,7 +50,7 @@ describe('AppShell mobile navigation', () => {
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' })
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open profile menu' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open my profile' })).toHaveAttribute('href', '/profile')
     expect(within(primaryNavigation).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
     expect(within(primaryNavigation).queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
     expect(within(primaryNavigation).queryByRole('link', { name: 'Report an issue' })).not.toBeInTheDocument()
@@ -70,7 +70,7 @@ describe('AppShell mobile navigation', () => {
     await user.click(within(navigation).getByRole('button', { name: 'Students' }))
     expect(mocks.openAccountPrompt).toHaveBeenCalledWith('/students')
     expect(screen.queryByRole('button', { name: 'Notifications' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Open profile menu' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open my profile' })).not.toBeInTheDocument()
     const mobileCreateAccount = screen.getAllByRole('button', { name: 'Create account' }).find((button) => button.classList.contains('mobile-create-account-button'))
     expect(mobileCreateAccount).toBeDefined()
     await user.click(mobileCreateAccount!)

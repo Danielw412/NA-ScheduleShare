@@ -1,6 +1,6 @@
 import { AlertTriangle, Camera, LogOut, ShieldCheck, Trash2, UserRound, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import type { PrivacySetting } from '../lib/domain'
@@ -130,6 +130,8 @@ export function ProfilePage() {
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <button className="button button-primary" disabled={saving || Boolean(nameError)}>{saving ? 'Saving…' : 'Save profile'}</button>
     </form>
+
+    {auth.isAdmin ? <Link className="profile-card profile-admin-access" to="/admin"><ShieldCheck aria-hidden="true" /><div><h2>Admin</h2><p>Open the administrator dashboard to manage students, classes, reports, and site settings.</p></div></Link> : null}
 
     <section className="profile-card danger-zone" aria-labelledby="delete-account-heading">
       <div><h2 id="delete-account-heading">Delete account</h2><p>Permanently deletes your email, profile, schedule, and your appearance to other students. This is not reversible.</p></div>
