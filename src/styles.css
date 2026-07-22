@@ -3230,9 +3230,9 @@ legend {
 }
 
 .students-segmented-control button.is-active {
-  background: var(--white);
-  color: var(--ink);
-  box-shadow: var(--shadow-sm);
+  background: #fff3d6;
+  color: #4a3100;
+  box-shadow: 0 2px 0 #e0ae45;
 }
 
 .students-view-panel {
@@ -4756,7 +4756,8 @@ a.student-access-profile:hover strong {
   }
 
   .students-segmented-control button {
-    min-height: 44px;
+    min-height: 38px;
+    padding-block: 6px;
     padding-inline: 10px;
   }
 

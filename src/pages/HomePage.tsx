@@ -7,19 +7,30 @@ import { useSchedule } from '../hooks/useSchedule'
 import { clearAuthDestination, hasPendingAuthDestination, pendingAuthDestination } from '../lib/authDestination'
 import type { HomepageStatistic } from '../lib/domain'
 import { scheduleCompletion } from '../lib/schedule'
+import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
 import { getHomepageStatistic } from '../lib/supabase/data'
+
+function isMobileShareDevice(): boolean {
+  const navigatorWithUserAgentData = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
+  if (typeof navigatorWithUserAgentData.userAgentData?.mobile === 'boolean') return navigatorWithUserAgentData.userAgentData.mobile
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
   const { enrollments } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const [shareMessage, setShareMessage] = useState<string | null>(null)
   const navigate = useNavigate()
   const completion = scheduleCompletion(enrollments)
+  const hasCompleteSchedule = Boolean(user) && completion === 100
   const scheduleStatus = completion === 0
     ? { title: 'Start your schedule', description: 'Add your classes to find classmates and compare schedules.', action: 'Add classes' }
     : completion < 100
       ? { title: 'Keep building your schedule', description: 'Add the remaining periods to get better classmate matches.', action: 'Continue' }
-      : { title: 'Your schedule is ready', description: 'View or update your classes at any time.', action: 'View schedule' }
+      : { title: 'Share your schedule with friends', description: 'Send a link that shows your full schedule.', action: 'Share schedule' }
 
   useEffect(() => {
     if (!user || !hasPendingAuthDestination()) return
@@ -35,6 +46,31 @@ export function HomePage() {
     return () => { active = false }
   }, [isDemo])
 
+  async function shareSchedule() {
+    setSharing(true)
+    setShareMessage(null)
+    try {
+      const url = await createScheduleShareUrl()
+      if (isMobileShareDevice() && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: scheduleShareTitle, url })
+          setShareMessage('Schedule shared.')
+        } catch (caught) {
+          if (caught instanceof DOMException && caught.name === 'AbortError') return
+          if (caught instanceof Error && caught.name === 'AbortError') return
+          throw caught
+        }
+      } else {
+        await navigator.clipboard.writeText(url)
+        setShareMessage('Schedule link copied.')
+      }
+    } catch (caught) {
+      setShareMessage(caught instanceof Error ? caught.message : 'The schedule link could not be shared.')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
     <div className="home-page">
       <section className="home-hero">
@@ -43,7 +79,7 @@ export function HomePage() {
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
           <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
           <div className="hero-actions">
-            <Link className="button button-primary" to="/schedule">Upload My Schedule <ArrowRight size={18} /></Link>
+            <Link className="button button-primary" to={hasCompleteSchedule ? '/students' : '/schedule'}>{hasCompleteSchedule ? 'Find Classmates' : 'Upload My Schedule'} <ArrowRight size={18} /></Link>
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
@@ -51,8 +87,10 @@ export function HomePage() {
       {user ? (
         <section className="completion-callout schedule-status-card">
           <CalendarDays aria-hidden="true" />
-          <div><h2>{scheduleStatus.title}</h2><p>{scheduleStatus.description}</p></div>
-          <Link to="/schedule">{scheduleStatus.action} <ArrowRight size={17} /></Link>
+          <div><h2>{scheduleStatus.title}</h2><p role={shareMessage ? 'status' : undefined}>{shareMessage ?? scheduleStatus.description}</p></div>
+          {hasCompleteSchedule
+            ? <button className="button button-secondary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : scheduleStatus.action} <ArrowRight size={17} /></button>
+            : <Link to="/schedule">{scheduleStatus.action} <ArrowRight size={17} /></Link>}
         </section>
       ) : null}
       <section className="home-links" aria-label="Major features">
