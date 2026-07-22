@@ -55,7 +55,7 @@ export function AppShell() {
             {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <UserRound aria-hidden="true" />}
           </NavLink> : <button className="mobile-create-account-button button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>}
           {user ? <div className="profile-menu">
-            <NavLink to="/profile" aria-label="Open my profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
+            <NavLink to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
             <div>
               <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
             </div>
