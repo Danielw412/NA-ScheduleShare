@@ -1,0 +1,352 @@
+name: Apply import size and special teacher fixes once
+
+on:
+  push:
+    branches:
+      - fix/import-size-special-teachers
+    paths:
+      - .github/workflows/apply-import-size-special-teachers-once.yml
+
+permissions:
+  contents: write
+
+env:
+  VITE_SUPABASE_URL: https://example.supabase.co
+  VITE_SUPABASE_PUBLISHABLE_KEY: test-publishable-key
+  VITE_SCHEDULE_SHARE_BASE_URL: https://schedule-api.naclubs.net
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/import-size-special-teachers
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply code and database changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int | None = None) -> None:
+              file = Path(path)
+              text = file.read_text()
+              actual = text.count(old)
+              expected = count if count is not None else 1
+              if actual != expected:
+                  raise SystemExit(f'{path}: expected {expected} occurrence(s), found {actual}: {old!r}')
+              file.write_text(text.replace(old, new))
+
+          for path in [
+              'README.md',
+              'src/lib/scheduleImport.ts',
+              'src/components/schedule/ScheduleImportDialog.tsx',
+              'src/components/schedule/ScheduleImportDialog.test.tsx',
+              'supabase/functions/schedule-import/core.ts',
+              'src/pages/AdminPage.tsx',
+          ]:
+              file = Path(path)
+              text = file.read_text()
+              if '5 MB' in text:
+                  file.write_text(text.replace('5 MB', '10 MB'))
+
+          replace('src/lib/scheduleImport.ts', 'const MAX_IMAGE_BYTES = 5 * 1024 * 1024', 'const MAX_IMAGE_BYTES = 10 * 1024 * 1024')
+          replace('supabase/functions/schedule-import/core.ts', 'export const MAX_IMAGE_BYTES = 5 * 1024 * 1024', 'export const MAX_IMAGE_BYTES = 10 * 1024 * 1024')
+
+          add_dialog = Path('src/components/schedule/AddClassDialog.tsx')
+          text = add_dialog.read_text()
+          old = """function semesterEveryDaySlots(period: number): MeetingSlot[] {
+  return [{ day_type: 'A', period_number: period }, { day_type: 'B', period_number: period }]
+}
+
+function scheduleRuleError"""
+          new = """function semesterEveryDaySlots(period: number): MeetingSlot[] {
+  return [{ day_type: 'A', period_number: period }, { day_type: 'B', period_number: period }]
+}
+
+function teacherNotApplicable(courseName?: string): boolean {
+  const normalized = courseName?.trim().toLocaleLowerCase().replace(/\\s*-\\s*/g, ' ').replace(/\\s+/g, ' ')
+  return normalized === 'lunch'
+    || normalized === 'lunch nai'
+    || normalized === 'lunch nash'
+    || normalized === 'study hall'
+    || normalized === 'study hall nai'
+    || normalized === 'study hall nash'
+}
+
+function scheduleRuleError"""
+          if text.count(old) != 1:
+              raise SystemExit('Could not insert teacherNotApplicable helper')
+          text = text.replace(old, new)
+
+          old = """  const activePolicy = mode === 'search' ? selectedPolicy : creatingPolicy
+  const meetingSlotError = scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
+  const teacherError = teacherLastName ? teacherLastNameError(teacherLastName) : null
+  const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
+    && !teacherLastNameError(teacherLastName)
+    && !meetingSlotError
+"""
+          new = """  const activePolicy = mode === 'search' ? selectedPolicy : creatingPolicy
+  const activeCourseName = mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName
+  const teacherIsNotApplicable = teacherNotApplicable(activeCourseName)
+  const effectiveTeacherLastName = teacherIsNotApplicable ? 'N/A' : teacherLastName
+  const meetingSlotError = scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
+  const teacherError = teacherIsNotApplicable || !teacherLastName ? null : teacherLastNameError(teacherLastName)
+  const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
+    && (teacherIsNotApplicable || !teacherLastNameError(teacherLastName))
+    && !meetingSlotError
+"""
+          if text.count(old) != 1:
+              raise SystemExit('Could not update teacher validation block')
+          text = text.replace(old, new)
+
+          old = """    setSelectedCourseName(courseName)
+    setCourseQuery(courseName.course_name)
+    setConfirmedNoCourseMatch(false)
+"""
+          new = """    setSelectedCourseName(courseName)
+    setCourseQuery(courseName.course_name)
+    setTeacherLastName(teacherNotApplicable(courseName.course_name) ? 'N/A' : '')
+    setConfirmedNoCourseMatch(false)
+"""
+          if text.count(old) != 1:
+              raise SystemExit('Could not update course selection teacher behavior')
+          text = text.replace(old, new)
+
+          replace_pairs = [
+              ("teacher_last_name: normalizeTeacherLastName(teacherLastName),", "teacher_last_name: normalizeTeacherLastName(effectiveTeacherLastName),"),
+              ("        teacherLastName,\n        term,", "        teacherLastName: effectiveTeacherLastName,\n        term,"),
+              ("                    setConfirmedNoCourseMatch(false)\n                    setTerm('full_year')", "                    setConfirmedNoCourseMatch(false)\n                    setTeacherLastName(teacherNotApplicable(event.target.value) ? 'N/A' : '')\n                    setTerm('full_year')"),
+          ]
+          for old, new in replace_pairs:
+              if text.count(old) != 1:
+                  raise SystemExit(f'Could not apply AddClassDialog replacement: {old!r}')
+              text = text.replace(old, new)
+
+          old = """            <label>Teacher Last Name
+              <input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />
+              <small id="teacher-last-name-help" className="field-help">Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.</small>
+            </label>
+"""
+          new = """            <label>Teacher Last Name
+              <input required={!teacherIsNotApplicable} disabled={teacherIsNotApplicable} maxLength={120} value={effectiveTeacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />
+              <small id="teacher-last-name-help" className="field-help">{teacherIsNotApplicable ? 'Lunch and Study Hall always use N/A for the teacher.' : 'Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.'}</small>
+            </label>
+"""
+          if text.count(old) != 1:
+              raise SystemExit('Could not update teacher input')
+          text = text.replace(old, new)
+          add_dialog.write_text(text)
+
+          test = Path('src/components/schedule/AddClassDialog.test.tsx')
+          text = test.read_text()
+          old = """  { id: 'course-lunch', course_name: 'Lunch - NASH', course_term_policy: 'lunch', score: 97 },
+]"""
+          new = """  { id: 'course-lunch', course_name: 'Lunch - NASH', course_term_policy: 'lunch', score: 97 },
+  { id: 'course-study-hall', course_name: 'Study Hall - NASH', course_term_policy: 'flexible_attendance', score: 96 },
+]"""
+          if text.count(old) != 1:
+              raise SystemExit('Could not add Study Hall test catalogue entry')
+          text = text.replace(old, new)
+
+          teacher_type = "await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Cafe')"
+          if text.count(teacher_type) != 2:
+              raise SystemExit(f'Expected two Lunch teacher typing statements, found {text.count(teacher_type)}')
+          teacher_assert = """expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toHaveValue('N/A')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toBeDisabled()"""
+          text = text.replace(teacher_type, teacher_assert)
+          text = text.replace("      courseNameId: 'course-lunch',\n      term:", "      courseNameId: 'course-lunch',\n      teacherLastName: 'N/A',\n      term:")
+
+          anchor = """  it('edits a student-specific Gym pattern on the existing shared class', async () => {"""
+          study_test = """
+  it('automatically uses N/A for Study Hall teachers', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Study Hall - NASH' }))
+
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toHaveValue('N/A')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Create and add class' }))
+
+    await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
+      courseNameId: 'course-study-hall',
+      teacherLastName: 'N/A',
+    })))
+  })
+
+"""
+          if text.count(anchor) != 1:
+              raise SystemExit('Could not insert Study Hall test')
+          text = text.replace(anchor, study_test + anchor)
+          test.write_text(text)
+
+          migration = Path('supabase/migrations/20260723230000_special_course_teachers_na.sql')
+          migration.write_text("""-- Lunch and Study Hall do not have a classroom teacher. Enforce N/A at
+-- the database boundary so manual entry, imports, and admin edits stay consistent.
+
+create or replace function private.special_course_teacher_not_applicable(target_course_name_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    regexp_replace(
+      replace(lower(trim(course_name.name)), '-', ' '),
+      '[[:space:]]+',
+      ' ',
+      'g'
+    ) in (
+      'lunch',
+      'lunch nai',
+      'lunch nash',
+      'study hall',
+      'study hall nai',
+      'study hall nash'
+    ),
+    false
+  )
+  from public.course_names course_name
+  where course_name.id = target_course_name_id;
+$$;
+
+create or replace function private.force_special_course_teacher_na()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if private.special_course_teacher_not_applicable(new.course_name_id) then
+    new.teacher_last_name := 'N/A';
+    new.normalized_teacher_last_name := private.normalize_search('N/A');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists force_special_course_teacher_na on public.classes;
+create trigger force_special_course_teacher_na
+before insert or update of course_name_id, teacher_last_name, normalized_teacher_last_name
+on public.classes
+for each row execute function private.force_special_course_teacher_na();
+
+update public.classes class_record
+set teacher_last_name = 'N/A',
+    normalized_teacher_last_name = private.normalize_search('N/A')
+where private.special_course_teacher_not_applicable(class_record.course_name_id)
+  and (
+    class_record.teacher_last_name is distinct from 'N/A'
+    or class_record.normalized_teacher_last_name is distinct from private.normalize_search('N/A')
+  );
+
+revoke all on function private.special_course_teacher_not_applicable(uuid) from public, anon, authenticated;
+revoke all on function private.force_special_course_teacher_na() from public, anon, authenticated;
+
+comment on function private.special_course_teacher_not_applicable(uuid) is
+  'Returns true for campus Lunch and Study Hall catalogue entries whose class teacher must be N/A.';
+""")
+
+          db_test = Path('supabase/tests/database/special_course_teachers_na.test.sql')
+          db_test.write_text("""begin;
+select plan(6);
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period)
+select '97000000-0000-4000-8000-000000000001', id, 'Cafe', 'semester_1', false
+from public.course_names
+where normalized_name = 'lunch - nash';
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period)
+select '97000000-0000-4000-8000-000000000002', id, 'Advisor', 'semester_1', false
+from public.course_names
+where normalized_name = 'study hall - nash';
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period)
+select '97000000-0000-4000-8000-000000000003', id, 'Kim', 'full_year', false
+from public.course_names
+where normalized_name = 'academic physics';
+
+insert into public.class_meeting_slots (class_id, day_type, period_number) values
+  ('97000000-0000-4000-8000-000000000001', 'A', 7),
+  ('97000000-0000-4000-8000-000000000001', 'B', 7),
+  ('97000000-0000-4000-8000-000000000002', 'A', 8),
+  ('97000000-0000-4000-8000-000000000002', 'B', 8),
+  ('97000000-0000-4000-8000-000000000003', 'A', 9),
+  ('97000000-0000-4000-8000-000000000003', 'B', 9);
+
+select is(
+  (select teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000001'),
+  'N/A',
+  'Lunch teacher is forced to N/A on insert'
+);
+select is(
+  (select teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000002'),
+  'N/A',
+  'Study Hall teacher is forced to N/A on insert'
+);
+select is(
+  (select normalized_teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000001'),
+  private.normalize_search('N/A'),
+  'Lunch normalized teacher is also N/A'
+);
+select is(
+  (select teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000003'),
+  'Kim',
+  'ordinary course teachers are unchanged'
+);
+
+update public.classes
+set teacher_last_name = 'Changed', normalized_teacher_last_name = private.normalize_search('Changed')
+where id = '97000000-0000-4000-8000-000000000001';
+select is(
+  (select teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000001'),
+  'N/A',
+  'Lunch teacher remains N/A after an edit'
+);
+
+update public.classes
+set course_name_id = (select id from public.course_names where normalized_name = 'study hall - nash'),
+    teacher_last_name = 'Changed',
+    normalized_teacher_last_name = private.normalize_search('Changed')
+where id = '97000000-0000-4000-8000-000000000003';
+select is(
+  (select teacher_last_name from public.classes where id = '97000000-0000-4000-8000-000000000003'),
+  'N/A',
+  'changing a class to Study Hall forces its teacher to N/A'
+);
+
+select * from finish();
+rollback;
+""")
+          PY
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm worker:typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:function
+      - run: pnpm test:worker
+      - run: pnpm build
+      - name: Start local Supabase
+        run: pnpm exec supabase start
+      - name: Run database tests
+        run: pnpm test:privacy
+      - name: Commit tested changes and remove workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-import-size-special-teachers-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Increase import size and normalize special course teachers"
+          git push origin HEAD:fix/import-size-special-teachers
