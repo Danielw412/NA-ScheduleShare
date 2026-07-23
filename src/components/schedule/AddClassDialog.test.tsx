@@ -113,6 +113,25 @@ describe('AddClassDialog semester formats', () => {
     })))
   })
 
+
+  it('submits Full Year Lunch for expansion into both semester enrollments', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Lunch - NASH' }))
+    expect(screen.getByText('Full Year adds matching Semester 1 and Semester 2 lunch entries at this period.')).toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Academic term' }), 'full_year')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Period' }), '8')
+    await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Cafe')
+    await user.click(screen.getByRole('button', { name: 'Create and add class' }))
+
+    await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
+      courseNameId: 'course-lunch',
+      term: 'full_year',
+      meetingSlots: [{ day_type: 'A', period_number: 8 }, { day_type: 'B', period_number: 8 }],
+    })))
+  })
+
   it('edits a student-specific Gym pattern on the existing shared class', async () => {
     const user = userEvent.setup()
     const replacing: ScheduleEnrollment = {

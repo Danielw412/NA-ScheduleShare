@@ -238,7 +238,6 @@ export function ScheduleImportDialog({
   const [developerData, setDeveloperData] = useState<ScheduleImportDeveloperDiagnostics | null>(null)
   const [developerModelError, setDeveloperModelError] = useState<string | null>(null)
   const [progressDurationMs, setProgressDurationMs] = useState(6500)
-  const [checkingAgain, setCheckingAgain] = useState(false)
   const [resultSummary, setResultSummary] = useState<Omit<ScheduleImportResult, 'rows'>>({ warnings: [], image_count: 0 })
   const imagesRef = useRef(images)
   imagesRef.current = images
@@ -257,15 +256,6 @@ export function ScheduleImportDialog({
     }).catch(() => undefined)
     return () => { active = false }
   }, [loadUiSettings, open])
-
-  useEffect(() => {
-    if (phase !== 'processing') {
-      setCheckingAgain(false)
-      return
-    }
-    const timer = window.setTimeout(() => setCheckingAgain(true), progressDurationMs)
-    return () => window.clearTimeout(timer)
-  }, [phase, progressDurationMs])
 
   useEffect(() => {
     if (!open || !initialResult || rows.length > 0) return
@@ -387,7 +377,6 @@ export function ScheduleImportDialog({
     setDeveloperThinkingLevel('low')
     setDeveloperData(null)
     setDeveloperModelError(null)
-    setCheckingAgain(false)
     setResultSummary({ warnings: [], image_count: 0 })
     onClose()
   }
@@ -554,7 +543,7 @@ export function ScheduleImportDialog({
             </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>{checkingAgain ? 'Checking the schedule again…' : 'AI is analyzing your screenshots…'}</strong><small>{checkingAgain ? 'If Gemini found missing classes or conflicts, it is trying again automatically.' : 'Identifying classes, semesters, and A/B-day periods for review.'}</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
+            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes, semesters, and A/B-day periods for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
             <div className="import-upload-action-bar"><button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
               {phase === 'processing' ? `Analyzing ${images.length <= 1 ? 'screenshot' : 'screenshots'}…` : `Analyze ${images.length <= 1 ? 'screenshot' : 'screenshots'}`}
             </button></div>

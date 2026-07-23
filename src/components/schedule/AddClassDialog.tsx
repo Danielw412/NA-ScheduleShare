@@ -443,7 +443,7 @@ function LunchControls({ term, meetingSlots, onChange, periodLocked = false }: {
   return <fieldset className="meeting-slot-picker lunch-format-picker"><legend>Lunch schedule</legend>
     <label>Academic term<select value={term} onChange={(event) => onChange(event.target.value as AcademicTerm, meetingSlots)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label>
     {periodLocked ? <p className="inferred-slot">Period: <strong>{lunchPeriod}</strong></p> : <label>Period<select value={lunchPeriod} onChange={(event) => { const nextPeriod = Number(event.target.value); onChange(term, semesterEveryDaySlots(nextPeriod)) }}>{PERIOD_NUMBERS.map((option) => <option value={option} key={option}>Period {option}</option>)}</select></label>}
-    <small className="field-help">Using the same lunch period in both semesters will be stored as one full-year entry.</small>
+    <small className="field-help">Full Year adds matching Semester 1 and Semester 2 lunch entries at this period.</small>
   </fieldset>
 }
 

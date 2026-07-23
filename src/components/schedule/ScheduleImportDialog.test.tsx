@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CourseNameSearchResult, ScheduleEnrollment } from '../../lib/domain'
@@ -152,11 +152,16 @@ describe('ScheduleImportDialog image input', () => {
     let finishImport: ((result: ScheduleImportResult) => void) | undefined
     const importScreenshots = vi.fn(() => new Promise<ScheduleImportResult>((resolve) => { finishImport = resolve }))
     const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
-    renderDialog({ importScreenshots, confirmImport })
+    const loadUiSettings = vi.fn(async () => ({ progress_bar_duration_ms: 1000 }))
+    renderDialog({ importScreenshots, confirmImport, loadUiSettings })
+    await waitFor(() => expect(loadUiSettings).toHaveBeenCalledTimes(1))
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
 
     expect(screen.getByRole('progressbar', { name: 'AI screenshot analysis progress' })).toBeInTheDocument()
+    expect(screen.getByText('AI is analyzing your screenshots…')).toBeInTheDocument()
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1100)) })
+    expect(screen.queryByText('Checking the schedule again…')).not.toBeInTheDocument()
     expect(screen.getByText('AI is analyzing your screenshots…')).toBeInTheDocument()
 
     finishImport?.(importResult())
