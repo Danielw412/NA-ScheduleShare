@@ -223,6 +223,18 @@ export interface ScheduleImportUiSettings {
   progress_bar_duration_ms: number
 }
 
+export interface AdminUserRecord {
+  user_id: string
+  full_name: string
+  grade: Grade | null
+  privacy_setting: PrivacySetting
+  status: 'active' | 'suspended' | 'deleted'
+  is_admin: boolean
+  created_at: string
+  last_login_at: string | null
+  last_active_at: string | null
+}
+
 export type EventLogCategory = 'security' | 'audit' | 'import' | 'admin'
 
 export interface EventLogRecord {

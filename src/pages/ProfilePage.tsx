@@ -16,7 +16,6 @@ export function ProfilePage() {
   const [privacy, setPrivacy] = useState<PrivacySetting>(profilePrivacy ?? 'classmates')
   const [saving, setSaving] = useState(false)
   const [pictureBusy, setPictureBusy] = useState(false)
-  const [avatarRevision, setAvatarRevision] = useState<number>()
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -61,8 +60,10 @@ export function ProfilePage() {
     setMessage(null)
     try {
       await uploadProfilePicture(auth.user!.id, file)
-      void recordAuthenticatedEvent('profile_picture_changed', 'succeeded').catch(() => undefined)
-      setAvatarRevision(Date.now())
+      auth.refreshAvatar()
+      await recordAuthenticatedEvent('profile_picture_changed', 'succeeded').catch(() => undefined)
+      await auth.refreshProfile()
+      auth.refreshAvatar()
       setMessage('Profile picture updated.')
     } catch (caught) {
       void recordAuthenticatedEvent('profile_picture_rejected', 'failed', { error_category: caught instanceof Error ? caught.message : 'upload_failed' }).catch(() => undefined)
@@ -78,8 +79,10 @@ export function ProfilePage() {
     setMessage(null)
     try {
       await removeProfilePicture(auth.user!.id)
-      void recordAuthenticatedEvent('profile_picture_removed', 'succeeded').catch(() => undefined)
-      setAvatarRevision(Date.now())
+      auth.refreshAvatar()
+      await recordAuthenticatedEvent('profile_picture_removed', 'succeeded').catch(() => undefined)
+      await auth.refreshProfile()
+      auth.refreshAvatar()
       setMessage('Profile picture removed. Your initials are shown instead.')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The profile picture could not be removed.')
@@ -105,7 +108,7 @@ export function ProfilePage() {
     <header className="page-heading"><div><h1>My Profile</h1><p>Manage how you appear in ScheduleShare and who can discover your schedule.</p></div><div className="profile-page-actions"><button className="button button-secondary" type="button" onClick={() => void auth.signOut()}><LogOut size={17} aria-hidden="true" /> Sign out</button><UserRound size={34} aria-hidden="true" /></div></header>
 
     <section className="profile-card profile-picture-card" aria-labelledby="profile-picture-heading">
-      <ProfileAvatar userId={auth.user.id} fullName={auth.profile.full_name} revision={avatarRevision} className="profile-avatar-large" />
+      <ProfileAvatar userId={auth.user.id} fullName={auth.profile.full_name} revision={auth.avatarRevision ?? auth.profile.updated_at} className="profile-avatar-large" />
       <div><h2 id="profile-picture-heading">Profile picture</h2><p>PNG, JPEG, or WebP · 7 MB maximum. Your picture appears anywhere your profile is visible.</p>
         <div className="profile-picture-actions">
           <label className="button button-secondary"><Camera size={17} aria-hidden="true" /> {pictureBusy ? 'Uploading…' : 'Upload or replace'}<input aria-label="Upload profile picture" accept="image/png,image/jpeg,image/webp" disabled={pictureBusy || auth.isDemo} hidden type="file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePicture(file); event.target.value = '' }} /></label>

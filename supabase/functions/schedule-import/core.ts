@@ -299,7 +299,7 @@ export async function handleScheduleImportRequest(
   let rawOutput: string | null = null
   let parsedOutput: unknown = null
   let imageMetadata: ImageMetadata[] = []
-  let importId = (dependencies.randomUUID ?? crypto.randomUUID)()
+  let importId: string | null = null
 
   try {
     responseOrigin = allowedOrigin(request)
@@ -431,7 +431,7 @@ export async function handleScheduleImportRequest(
       {
         error: error.code,
         message: error.message,
-        import_id: importId,
+        ...(importId ? { import_id: importId } : {}),
         ...(config ? { model: config.model_id } : {}),
         processing_duration_ms: elapsedMs,
         ...(developer ? { developer } : {}),

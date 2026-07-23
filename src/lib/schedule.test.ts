@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { MeetingSlot, ScheduleEnrollment } from './domain'
-import { buildNormalMeetingSlots, compactMeetingSlotLabels, defaultDoubleMeetingSlots, defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
+import { buildNormalMeetingSlots, compactMeetingSlotLabels, defaultDoubleMeetingSlots, defaultMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isLunchCourse, isTermFlexibleCourse, meetingDaySelectionFromSlots, meetingPeriodFromSlots, termIncludes, termsOverlap, validateMeetingSlots } from './schedule'
+
+describe('course term rules', () => {
+  it('recognizes flexible special courses and semester-only lunch variants', () => {
+    expect(['Gym', 'Advanced Gym', 'Unified Gym - Senior', 'Study Hall - NAI', 'Wellness for Life'].every(isTermFlexibleCourse)).toBe(true)
+    expect(isTermFlexibleCourse('AP Biology')).toBe(false)
+    expect(isLunchCourse('Lunch - NASH')).toBe(true)
+    expect(isLunchCourse('Lunch')).toBe(true)
+    expect(isLunchCourse('Study Hall - NASH')).toBe(false)
+  })
+})
 
 function enrollment(id: string, term: ScheduleEnrollment['academic_term'], meetingSlots: MeetingSlot[]): ScheduleEnrollment {
   return {

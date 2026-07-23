@@ -1922,6 +1922,17 @@ legend {
   gap: 5px;
 }
 
+.cell-menu-term {
+  padding: 7px;
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.cell-menu-term span {
+  color: var(--muted);
+}
+
 .cell-menu-popover select {
   min-height: 36px;
   padding: 6px;
@@ -2207,6 +2218,23 @@ legend {
   grid-template-columns: 140px 1fr;
   align-items: center;
   gap: 12px;
+}
+
+.term-field p,
+.field-readonly {
+  margin: 0;
+  padding: 10px 12px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.term-field p span,
+.field-readonly span,
+.field-readonly small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .cant-find {
@@ -4339,6 +4367,11 @@ a.student-access-profile:hover strong {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
+}
+
+.admin-table-row [class^="status-"] {
+  display: grid;
+  gap: 3px;
 }
 
 .row-actions {

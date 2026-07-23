@@ -31,7 +31,7 @@ const mobileBottomNavigation = [
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const { user, profile, signOut } = useAuth()
+  const { user, profile, avatarRevision, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
@@ -52,10 +52,10 @@ export function AppShell() {
             {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
           {user ? <NavLink viewTransition className="mobile-profile-button" to="/profile" aria-label="Open my profile" onClick={() => setMenuOpen(false)}>
-            {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <UserRound aria-hidden="true" />}
+            {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={avatarRevision ?? profile.updated_at} /> : <UserRound aria-hidden="true" />}
           </NavLink> : <button className="mobile-create-account-button button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>}
           {user ? <div className="profile-menu">
-            <NavLink viewTransition to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
+            <NavLink viewTransition to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={avatarRevision ?? profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
             <div>
               <NavLink viewTransition to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
             </div>

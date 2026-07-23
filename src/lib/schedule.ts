@@ -1,5 +1,21 @@
 import type { AcademicTerm, DayType, MeetingSlot, ScheduleEnrollment } from './domain'
 
+function normalizedCourseName(courseName: string): string {
+  return courseName.trim().toLocaleLowerCase().replace(/\s+/g, ' ')
+}
+
+export function isLunchCourse(courseName?: string): boolean {
+  return Boolean(courseName && /^lunch(?:\s*-|$)/.test(normalizedCourseName(courseName)))
+}
+
+export function isTermFlexibleCourse(courseName?: string): boolean {
+  if (!courseName) return false
+  const normalized = normalizedCourseName(courseName)
+  return /(?:^|[\s-])gym(?:[\s-]|$)/.test(normalized)
+    || /^study hall(?:\s*-|$)/.test(normalized)
+    || normalized === 'wellness for life'
+}
+
 export const PERIOD_NUMBERS = Array.from({ length: 9 }, (_, index) => index + 1)
 const MAX_PERIOD = PERIOD_NUMBERS.length
 export type MeetingDaySelection = 'both' | DayType

@@ -4,7 +4,7 @@ import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { AcademicTerm, ClassDefinition, ClassSearchResult, CourseNameSearchResult, DayType, ScheduleEnrollment } from '../../lib/domain'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, formatMeetingSlotSummary, type MeetingDaySelection, validateMeetingSlots } from '../../lib/schedule'
+import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, defaultMeetingSlots, formatMeetingSlotSummary, isLunchCourse, isTermFlexibleCourse, type MeetingDaySelection, validateMeetingSlots } from '../../lib/schedule'
 import { classFromSearch, createClassAndEnroll, enrollInClass, replaceEnrollment, searchClasses } from '../../lib/supabase/data'
 import { normalizeTeacherLastName, teacherLastNameError } from '../../lib/teacher'
 import { MeetingSlotEditor } from './MeetingSlotEditor'
@@ -119,9 +119,15 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
   const meetingSlotError = validateMeetingSlots(activeMeetingSlots, isDoublePeriod)
   const teacherError = teacherLastName ? teacherLastNameError(teacherLastName) : null
   const newCourseName = courseQuery.trim().replace(/\s+/g, ' ')
+  const creatingCourseName = selectedCourseName?.course_name ?? newCourseName
+  const creatingLunch = isLunchCourse(creatingCourseName)
   const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
     && !teacherLastNameError(teacherLastName)
     && !meetingSlotError
+
+  useEffect(() => {
+    if (mode === 'create' && creatingLunch && term === 'full_year') setTerm('semester_1')
+  }, [creatingLunch, mode, term])
 
   function changeDoublePeriod(nextIsDoublePeriod: boolean) {
     setIsDoublePeriod(nextIsDoublePeriod)
@@ -216,7 +222,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
                 </label>
               ))}
             </div>
-            <div className="term-field"><label>Enrollment term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label></div>
+            {selected ? <div className="term-field">{isTermFlexibleCourse(selected.course_name) ? <label>Enrollment term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label> : <p><span>Enrollment term</span><strong>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</strong></p>}</div> : null}
             <div className="cant-find"><span>Can’t find the right class?</span><button className="button button-secondary" type="button" onClick={() => setMode('create')}><Plus aria-hidden="true" /> Create a new class</button></div>
             {searchError || error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{searchError ?? error}</span></div> : null}
             <div className="dialog-action-bar"><button className="button button-primary button-block" type="button" disabled={!selected || saving} onClick={() => void confirmSelection()}>{saving ? 'Saving…' : allowConflict ? 'Confirm and add anyway' : replacing ? 'Replace class' : 'Add class'}</button></div>
@@ -258,7 +264,7 @@ export function AddClassDialog({ open, dayType, period, replacing, onClose, onCh
               <small id="teacher-last-name-help" className="field-help">Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.</small>
             </label>
             {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
-            <label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label>
+            <label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}>{creatingLunch ? null : <option value="full_year">Full Year</option>}<option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select>{creatingLunch ? <small className="field-help">Lunch is always semester-based.</small> : null}</label>
             <MeetingSlotEditor
               isDoublePeriod={isDoublePeriod}
               meetingSlots={meetingSlots}

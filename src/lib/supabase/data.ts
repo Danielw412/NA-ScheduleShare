@@ -3,6 +3,7 @@ import type {
   AdminClassRecord,
   AdminCourseNameRecord,
   AdminReportRecord,
+  AdminUserRecord,
   ClassDefinition,
   ClassmateResult,
   ClassMemberResult,
@@ -381,11 +382,21 @@ export async function searchReportableUsers(query = '', userId?: string): Promis
   return data as unknown as ReportableUser[]
 }
 
-export async function adminListUsers(query = '', grade?: number, status?: string) {
+export async function adminListUsers(query = '', grade?: number, status?: string): Promise<AdminUserRecord[]> {
   const client = requireClient()
   const { data, error } = await client.rpc('admin_list_users', { p_query: query, p_grade: grade, p_status: status })
   if (error) throw error
-  return data as unknown as Array<Record<string, unknown>>
+  return (data as unknown as Array<Record<string, unknown>>).map((row) => ({
+    user_id: String(row.user_id),
+    full_name: String(row.full_name),
+    grade: row.grade === null ? null : Number(row.grade) as AdminUserRecord['grade'],
+    privacy_setting: String(row.privacy_setting) as AdminUserRecord['privacy_setting'],
+    status: String(row.status) as AdminUserRecord['status'],
+    is_admin: Boolean(row.is_admin),
+    created_at: String(row.created_at),
+    last_login_at: row.last_login_at ? String(row.last_login_at) : null,
+    last_active_at: row.last_active_at ? String(row.last_active_at) : null,
+  }))
 }
 
 export async function adminListReports(): Promise<AdminReportRecord[]> {

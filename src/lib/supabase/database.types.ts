@@ -714,6 +714,8 @@ export type Database = {
           full_name: string
           grade: number
           is_admin: boolean
+          last_active_at: string
+          last_login_at: string
           privacy_setting: Database["public"]["Enums"]["privacy_setting"]
           status: string
           user_id: string

@@ -497,9 +497,11 @@ describe('authentication, CORS, files, and rate limiting', () => {
   })
 
   it('handles allowed preflight requests and rejects unapproved origins', async () => {
+    const preflightDependencies = dependencies()
+    delete preflightDependencies.randomUUID
     const preflight = await handleScheduleImportRequest(new Request('https://project.supabase.co/functions/v1/schedule-import', {
       method: 'OPTIONS', headers: { Origin: ORIGIN },
-    }), dependencies())
+    }), preflightDependencies)
     expect(preflight.status).toBe(204)
     expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN)
 

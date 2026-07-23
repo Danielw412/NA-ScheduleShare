@@ -2,7 +2,7 @@ import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { termLabels, type AcademicTerm, type DayType, type ScheduleEnrollment } from '../../lib/domain'
-import { enrollmentAtSlot, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
+import { enrollmentAtSlot, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, isTermFlexibleCourse, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
 
 interface ScheduleGridProps {
   enrollments: ScheduleEnrollment[]
@@ -127,7 +127,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
       </div>
       {openMenu ? createPortal(
         <div className="cell-menu-popover" ref={menuRef} role="menu" style={openMenu.style}>
-          <label>Academic term
+          {isTermFlexibleCourse(openMenu.enrollment.class.course_name) ? <label>Academic term
             <select value={openMenu.enrollment.academic_term} onChange={(event) => {
               onTermChange(openMenu.enrollment, event.target.value as AcademicTerm)
               setOpenMenu(null)
@@ -136,7 +136,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
               <option value="semester_1">Semester 1</option>
               <option value="semester_2">Semester 2</option>
             </select>
-          </label>
+          </label> : <div className="cell-menu-term"><span>Academic term</span><strong>{termLabels[openMenu.enrollment.academic_term]}</strong></div>}
           <button type="button" role="menuitem" onClick={() => {
             onReplace(openMenu.enrollment, openMenu.dayType, openMenu.period)
             setOpenMenu(null)

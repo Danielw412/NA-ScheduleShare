@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   uploadProfilePicture: vi.fn(async () => undefined),
   removeProfilePicture: vi.fn(async () => undefined),
   deleteOwnAccount: vi.fn(async () => undefined),
+  refreshAvatar: vi.fn(),
+  refreshProfile: vi.fn(async () => undefined),
+  recordAuthenticatedEvent: vi.fn(async () => undefined),
 }))
 
 vi.mock('../features/auth/AuthProvider', () => ({
@@ -26,6 +29,8 @@ vi.mock('../features/auth/AuthProvider', () => ({
     },
     isDemo: false,
     updateProfile: mocks.updateProfile,
+    refreshAvatar: mocks.refreshAvatar,
+    refreshProfile: mocks.refreshProfile,
   }),
 }))
 
@@ -34,6 +39,10 @@ vi.mock('../lib/profile', () => ({
   uploadProfilePicture: mocks.uploadProfilePicture,
   removeProfilePicture: mocks.removeProfilePicture,
   deleteOwnAccount: mocks.deleteOwnAccount,
+}))
+
+vi.mock('../lib/supabase/data', () => ({
+  recordAuthenticatedEvent: mocks.recordAuthenticatedEvent,
 }))
 
 function renderPage() {

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
+import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
 import { adminRemoveProfilePicture } from '../lib/profile'
 import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
@@ -22,10 +22,14 @@ const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
 ]
 
 const demoUsers = [
-  { user_id: 'a', full_name: 'Jordan Smith', grade: 11, privacy_setting: 'classmates', status: 'active', is_admin: true, created_at: new Date().toISOString() },
-  { user_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', status: 'active', is_admin: false, created_at: new Date().toISOString() },
-  { user_id: 'c', full_name: 'Suspicious Account', grade: 9, privacy_setting: 'school', status: 'suspended', is_admin: false, created_at: new Date().toISOString() },
+  { user_id: 'a', full_name: 'Jordan Smith', grade: 11, privacy_setting: 'classmates', status: 'active', is_admin: true, created_at: new Date().toISOString(), last_login_at: new Date().toISOString(), last_active_at: new Date().toISOString() },
+  { user_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', status: 'active', is_admin: false, created_at: new Date().toISOString(), last_login_at: null, last_active_at: null },
+  { user_id: 'c', full_name: 'Suspicious Account', grade: 9, privacy_setting: 'school', status: 'suspended', is_admin: false, created_at: new Date().toISOString(), last_login_at: null, last_active_at: null },
 ]
+
+function activityTimestamp(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : 'Never'
+}
 
 const demoReports: AdminReportRecord[] = [{
   report_id: 'demo-report',
@@ -106,7 +110,7 @@ function adminActionErrorMessage(caught: unknown) {
 export function AdminPage() {
   const { isDemo } = useAuth()
   const [tab, setTab] = useState<AdminTab>('users')
-  const [users, setUsers] = useState<Array<Record<string, unknown>>>(isDemo ? demoUsers : [])
+  const [users, setUsers] = useState<AdminUserRecord[]>(isDemo ? demoUsers as AdminUserRecord[] : [])
   const [reports, setReports] = useState<AdminReportRecord[]>(isDemo ? demoReports : [])
   const [classes, setClasses] = useState<AdminClassRecord[]>(isDemo ? demoClasses : [])
   const [courseNames, setCourseNames] = useState<AdminCourseNameRecord[]>(isDemo ? demoCourseNames : [])
@@ -188,8 +192,8 @@ export function AdminPage() {
     }
   }
 
-  function confirmDelete(user: Record<string, unknown>) {
-    const expected = String(user.full_name)
+  function confirmDelete(user: AdminUserRecord) {
+    const expected = user.full_name
     const typed = window.prompt(`Type “${expected}” to permanently delete this account. This revokes access and removes Auth data.`)
     if (typed !== expected) return
     void adminAction('admin_delete_user', { p_user_id: user.user_id, p_reason: 'Deleted from admin console' }, `${expected} was deleted.`)
@@ -203,7 +207,7 @@ export function AdminPage() {
     void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
   }
 
-  function changeGrade(user: Record<string, unknown>) {
+  function changeGrade(user: AdminUserRecord) {
     const nextGrade = Number(window.prompt('Corrected grade (9-12)', String(user.grade)))
     if (![9, 10, 11, 12].includes(nextGrade)) {
       setError('Grade must be 9, 10, 11, or 12.')
@@ -218,8 +222,8 @@ export function AdminPage() {
     }, 'Student grade updated.')
   }
 
-  async function removeUserPicture(user: Record<string, unknown>) {
-    const name = String(user.full_name)
+  async function removeUserPicture(user: AdminUserRecord) {
+    const name = user.full_name
     if (!window.confirm(`Remove ${name}'s profile picture? Their initials will be shown instead.`)) return
     setError(null)
     try {
@@ -241,7 +245,7 @@ export function AdminPage() {
 
       {tab === 'users' ? <section className="admin-section">
         <div className="admin-toolbar"><input placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /><select value={grade} onChange={(event) => setGrade(event.target.value ? Number(event.target.value) : '')}><option value="">All grades</option>{[9, 10, 11, 12].map((value) => <option key={value}>{value}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
-        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={String(user.user_id)}><span className="admin-user-cell"><ProfileAvatar userId={String(user.user_id)} fullName={String(user.full_name)} revision={avatarRevision} /><span><strong>{String(user.full_name)}</strong><small>{String(user.user_id)}</small></span></span><span>{String(user.grade)}</span><span>{privacyLabels[String(user.privacy_setting) as PrivacySetting] ?? String(user.privacy_setting)}</span><span className={`status-${String(user.status)}`}>{String(user.status)}</span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', String(user.full_name)); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button onClick={() => void removeUserPicture(user)}>Remove picture</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
+        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status / activity</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.user_id}><span className="admin-user-cell"><ProfileAvatar userId={user.user_id} fullName={user.full_name} revision={avatarRevision} /><span><strong>{user.full_name}</strong><small>{user.user_id}</small></span></span><span>{user.grade ?? '—'}</span><span>{privacyLabels[user.privacy_setting]}</span><span className={`status-${user.status}`}><strong>{user.status}</strong><small>Last online: {activityTimestamp(user.last_active_at)}</small><small>Last login: {activityTimestamp(user.last_login_at)}</small></span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', user.full_name); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button onClick={() => void removeUserPicture(user)}>Remove picture</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
       </section> : null}
 
       {tab === 'reports' ? <section className="admin-section"><h2>Reports</h2><div className="admin-table admin-report-table"><div className="admin-table-head"><span>Category</span><span>Reported account or class</span><span>Reporter</span><span>Status / submitted</span><span>Actions</span></div>{reports.map((report) => <div className="admin-table-row" key={report.report_id}><span><strong>{reportReasonLabels[report.reason_category]}</strong></span><span><strong>{report.reported_user_name ?? report.reported_course_name ?? 'General issue'}</strong><small>{report.reported_user_id ? 'User' : report.reported_class_id || report.reported_course_name ? 'Class' : 'No target'}</small></span><span>{report.reporter_name ?? 'Deleted user'}</span><span><strong>{report.status.replace('_', ' ')}</strong><small>{new Date(report.created_at).toLocaleString()}</small></span><span className="row-actions"><button onClick={() => setSelectedReportId((current) => current === report.report_id ? null : report.report_id)}>{selectedReportId === report.report_id ? 'Hide details' : 'View details'}</button>{report.status === 'resolved' || report.status === 'dismissed' ? null : <button onClick={() => { const notes = window.prompt('Resolution notes'); if (notes) void adminAction('admin_resolve_report', { p_report_id: report.report_id, p_status: 'resolved', p_resolution_notes: notes }, 'Report resolved.') }}>Resolve</button>}</span></div>)}</div>{selectedReport ? <ReportDetails report={selectedReport} onClose={() => setSelectedReportId(null)} /> : null}</section> : null}
@@ -567,7 +571,7 @@ function AdminClassEditDialog({
 }) {
   const [courseNameId, setCourseNameId] = useState(course.course_name_id)
   const [teacherLastName, setTeacherLastName] = useState(course.teacher_last_name)
-  const [term, setTerm] = useState<AcademicTerm>(course.default_academic_term)
+  const term = course.default_academic_term
   const [isDoublePeriod, setIsDoublePeriod] = useState(course.is_double_period || hasMultiplePeriodsOnAnyDay(course.meeting_slots))
   const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>(meetingDaySelectionFromSlots(course.meeting_slots))
   const [meetingPeriod, setMeetingPeriod] = useState(meetingPeriodFromSlots(course.meeting_slots))
@@ -605,7 +609,7 @@ function AdminClassEditDialog({
     void onSave({ courseNameId, teacherLastName, term, isDoublePeriod, meetingSlots: activeMeetingSlots, reason })
   }
 
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} meetingDays={meetingDays} meetingPeriod={meetingPeriod} onDoublePeriodChange={changeDoublePeriod} onMeetingDaysChange={changeMeetingDays} onMeetingPeriodChange={changeMeetingPeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<div className="field-readonly"><span>Academic term</span><strong>{termLabels[term]}</strong><small>Class terms are fixed after creation. Create a new section to use a different term.</small></div><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} meetingDays={meetingDays} meetingPeriod={meetingPeriod} onDoublePeriodChange={changeDoublePeriod} onMeetingDaysChange={changeMeetingDays} onMeetingPeriodChange={changeMeetingPeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
 }
 
 const emptyActivitySummary: ActivitySummary = {

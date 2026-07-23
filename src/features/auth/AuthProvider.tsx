@@ -28,6 +28,7 @@ interface AuthContextValue {
   accountState: AccountState | null
   loading: boolean
   passwordRecovery: boolean
+  avatarRevision: number | undefined
   isAdmin: boolean
   isDemo: boolean
   configurationMissing: boolean
@@ -41,6 +42,7 @@ interface AuthContextValue {
   updateProfile: (input: ProfileUpdateInput) => Promise<void>
   markStudentsVisited: () => Promise<void>
   refreshProfile: () => Promise<void>
+  refreshAvatar: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -89,11 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [passwordRecovery, setPasswordRecovery] = useState(false)
+  const [avatarRevision, setAvatarRevision] = useState<number>()
   const isDemo = !isSupabaseConfigured && demoModeEnabled
 
   const hydrateUser = useCallback(async (nextUser: CurrentUser | null) => {
     setUser(nextUser)
     setProfile(null)
+    setAvatarRevision(undefined)
     setIsAdmin(false)
     setAccountState(null)
     if (!nextUser || !supabase) {
@@ -270,6 +274,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await hydrateUser(user)
   }, [hydrateUser, user])
 
+  const refreshAvatar = useCallback(() => setAvatarRevision(Date.now()), [])
+
   const markStudentsVisited = useCallback(async () => {
     if (profile?.students_visited_at) return
     const visitedAt = new Date().toISOString()
@@ -293,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     accountState,
     loading,
     passwordRecovery,
+    avatarRevision,
     isAdmin,
     isDemo,
     configurationMissing: !isSupabaseConfigured && !isDemo,
@@ -306,7 +313,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateProfile,
     markStudentsVisited,
     refreshProfile,
-  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, markStudentsVisited, passwordRecovery, profile, refreshProfile, requestPasswordReset, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, updateRecoveredPassword, user])
+    refreshAvatar,
+  }), [accountState, avatarRevision, completeOnboarding, isAdmin, isDemo, loading, markStudentsVisited, passwordRecovery, profile, refreshAvatar, refreshProfile, requestPasswordReset, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, updateRecoveredPassword, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

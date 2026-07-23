@@ -149,11 +149,29 @@ describe('ScheduleGrid borders', () => {
 
     await user.click(triggers[0])
     expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Academic term' })).not.toBeInTheDocument()
+    expect(screen.getByText('Full Year')).toBeInTheDocument()
 
     await user.click(triggers[1])
     expect(screen.getAllByRole('menu')).toHaveLength(1)
 
     await user.click(screen.getByRole('grid'))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('allows term changes only for the approved flexible special courses', async () => {
+    const user = userEvent.setup()
+    const gymEnrollment: ScheduleEnrollment = {
+      ...doublePeriod,
+      id: 'gym-enrollment',
+      class_id: 'gym-class',
+      class: { ...doublePeriod.class, id: 'gym-class', course_name: 'Unified Gym - Senior' },
+    }
+    render(<ScheduleGrid enrollments={[gymEnrollment]} selectedTerm="full_year" {...callbacks} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Actions for Unified Gym - Senior' })[0])
+    const termSelect = screen.getByRole('combobox', { name: 'Academic term' })
+    await user.selectOptions(termSelect, 'semester_1')
+    expect(callbacks.onTermChange).toHaveBeenCalledWith(gymEnrollment, 'semester_1')
   })
 })
