@@ -2,8 +2,8 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/runner/work/NA-ScheduleShare/NA-ScheduleShare[39m
 
- [31m❯[39m supabase/functions/schedule-import/core.test.ts [2m([22m[2m30 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 130[2mms[22m[39m
-     [32m✓[39m sends one image with low thinking, structured JSON, and no catalogue text[32m 47[2mms[22m[39m
+ [31m❯[39m supabase/functions/schedule-import/core.test.ts [2m([22m[2m30 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 132[2mms[22m[39m
+     [32m✓[39m sends one image with low thinking, structured JSON, and no catalogue text[32m 50[2mms[22m[39m
      [32m✓[39m continues the Gemini conversation once when the first read conflicts[32m 8[2mms[22m[39m
      [32m✓[39m asks Gemini to fill an unresolved half-credit term, but never retries a clean result[32m 5[2mms[22m[39m
      [32m✓[39m passes three images in one Gemini request[32m 3[2mms[22m[39m
@@ -32,7 +32,7 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
      [32m✓[39m denies developer options to regular users and never returns developer data[32m 1[2mms[22m[39m
      [32m✓[39m allows a verified admin model override, bypasses only the app limit, and stores diagnostics[32m 2[2mms[22m[39m
      [32m✓[39m never logs image bytes, tokens, or secrets[32m 2[2mms[22m[39m
-     [32m✓[39m maps quota, timeout, and provider errors and exposes sanitized details only to admins[32m 4[2mms[22m[39m
+     [32m✓[39m maps quota, timeout, and provider errors and exposes sanitized details only to admins[32m 3[2mms[22m[39m
 
 [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
@@ -58,8 +58,8 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
 
 [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m29 passed[39m[22m[90m (30)[39m
-[2m   Start at [22m 23:02:27
-[2m   Duration [22m 387ms[2m (transform 101ms, setup 0ms, import 122ms, tests 130ms, environment 0ms)[22m
+[2m   Start at [22m 23:07:33
+[2m   Duration [22m 388ms[2m (transform 105ms, setup 0ms, import 126ms, tests 132ms, environment 0ms)[22m
 
 
 ::error file=/home/runner/work/NA-ScheduleShare/NA-ScheduleShare/supabase/functions/schedule-import/core.test.ts,title=supabase/functions/schedule-import/core.test.ts > authentication%2C CORS%2C files%2C and rate limiting > validates file count%2C MIME%2C size%2C and magic bytes before provider use,line=586,column=30::AssertionError: expected 415 to be 413 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 413%0A+ 415%0A%0A ❯ supabase/functions/schedule-import/core.test.ts:586:30%0A%0A
