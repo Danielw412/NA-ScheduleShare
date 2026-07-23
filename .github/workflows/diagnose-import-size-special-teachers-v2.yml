@@ -1,0 +1,44 @@
+name: Diagnose import size patch v2
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/import-size-special-teachers
+          fetch-depth: 0
+      - name: Apply patch and capture error
+        id: patch
+        continue-on-error: true
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/apply-import-size-special-teachers-once.yml').read_text()
+          block = source.split("python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+          Path('/tmp/apply_changes.py').write_text(script + '\n')
+          PY
+          python /tmp/apply_changes.py > patch-error-v2.txt 2>&1
+      - name: Commit exact error
+        if: steps.patch.outcome == 'failure'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add patch-error-v2.txt
+          git commit -m "Record exact schedule patch failure"
+          git push origin HEAD:fix/import-size-special-teachers
+      - name: Fail after capture
+        if: steps.patch.outcome == 'failure'
+        run: exit 1
