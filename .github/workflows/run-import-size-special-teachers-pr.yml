@@ -65,6 +65,14 @@ jobs:
                   raise SystemExit(f'Expected one teacher help line, found {text.count(old_help)}')
               text = text.replace(old_help, new_help)
           path.write_text(text)
+
+          core_test = Path('supabase/functions/schedule-import/core.test.ts')
+          core_text = core_test.read_text()
+          old_size = 'new Uint8Array(5 * 1024 * 1024 + 1)'
+          new_size = 'new Uint8Array(10 * 1024 * 1024 + 1)'
+          if core_text.count(old_size) != 1:
+              raise SystemExit(f'Expected one oversized-image test, found {core_text.count(old_size)}')
+          core_test.write_text(core_text.replace(old_size, new_size))
           PY
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -83,7 +91,7 @@ jobs:
         run: |
           rm .github/workflows/apply-import-size-special-teachers-once.yml
           rm .github/workflows/run-import-size-special-teachers-pr.yml
-          rm -f .github/workflows/diagnose-import-size-special-teachers.yml .github/workflows/diagnose-import-size-special-teachers-v2.yml patch-error.txt patch-error-v2.txt
+          rm -f .github/workflows/diagnose-import-size-special-teachers.yml .github/workflows/diagnose-import-size-special-teachers-v2.yml .github/workflows/diagnose-function-tests.yml patch-error.txt patch-error-v2.txt function-test-error.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
