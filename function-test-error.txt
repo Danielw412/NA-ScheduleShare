@@ -2,7 +2,7 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/home/runner/work/NA-ScheduleShare/NA-ScheduleShare[39m
 
- [31m❯[39m supabase/functions/schedule-import/core.test.ts [2m([22m[2m30 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 136[2mms[22m[39m
+ [31m❯[39m supabase/functions/schedule-import/core.test.ts [2m([22m[2m30 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 130[2mms[22m[39m
      [32m✓[39m sends one image with low thinking, structured JSON, and no catalogue text[32m 47[2mms[22m[39m
      [32m✓[39m continues the Gemini conversation once when the first read conflicts[32m 8[2mms[22m[39m
      [32m✓[39m asks Gemini to fill an unresolved half-credit term, but never retries a clean result[32m 5[2mms[22m[39m
@@ -15,7 +15,7 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
      [32m✓[39m rejects invalid, out-of-range, and nonconsecutive slots[32m 1[2mms[22m[39m
      [32m✓[39m keeps the same course and teacher at different periods as separate rows[32m 2[2mms[22m[39m
      [32m✓[39m still merges exact duplicate screenshot rows[32m 2[2mms[22m[39m
-     [32m✓[39m defaults a missing term to full year but preserves explicit semester markers in course names[32m 3[2mms[22m[39m
+     [32m✓[39m defaults a missing term to full year but preserves explicit semester markers in course names[32m 2[2mms[22m[39m
      [32m✓[39m uses the authenticated grade and keeps same-period full-year lunch as one entry[32m 1[2mms[22m[39m
      [32m✓[39m keeps campus names hidden for guests and returns only one aggregate match count[32m 3[2mms[22m[39m
      [32m✓[39m infers grade 12 from AP English Literature for guest campus matching[32m 2[2mms[22m[39m
@@ -27,8 +27,8 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
      [32m✓[39m matches an existing class only when course, teacher, term, and every slot agree[32m 3[2mms[22m[39m
      [32m✓[39m accepts the publishable key for guests and server-validates signed-in access tokens[32m 3[2mms[22m[39m
      [32m✓[39m handles allowed preflight requests and rejects unapproved origins[32m 1[2mms[22m[39m
-[31m     [31m×[31m validates file count, MIME, size, and magic bytes before provider use[39m[32m 20[2mms[22m[39m
-     [32m✓[39m maps the database-backed regular-user rate limit safely[32m 4[2mms[22m[39m
+[31m     [31m×[31m validates file count, MIME, size, and magic bytes before provider use[39m[32m 17[2mms[22m[39m
+     [32m✓[39m maps the database-backed regular-user rate limit safely[32m 2[2mms[22m[39m
      [32m✓[39m denies developer options to regular users and never returns developer data[32m 1[2mms[22m[39m
      [32m✓[39m allows a verified admin model override, bypasses only the app limit, and stores diagnostics[32m 2[2mms[22m[39m
      [32m✓[39m never logs image bytes, tokens, or secrets[32m 2[2mms[22m[39m
@@ -58,8 +58,8 @@ $ vitest run --config supabase/functions/schedule-import/vitest.config.ts && vit
 
 [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m29 passed[39m[22m[90m (30)[39m
-[2m   Start at [22m 22:58:57
-[2m   Duration [22m 392ms[2m (transform 105ms, setup 0ms, import 126ms, tests 136ms, environment 0ms)[22m
+[2m   Start at [22m 23:02:27
+[2m   Duration [22m 387ms[2m (transform 101ms, setup 0ms, import 122ms, tests 130ms, environment 0ms)[22m
 
 
 ::error file=/home/runner/work/NA-ScheduleShare/NA-ScheduleShare/supabase/functions/schedule-import/core.test.ts,title=supabase/functions/schedule-import/core.test.ts > authentication%2C CORS%2C files%2C and rate limiting > validates file count%2C MIME%2C size%2C and magic bytes before provider use,line=586,column=30::AssertionError: expected 415 to be 413 // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- 413%0A+ 415%0A%0A ❯ supabase/functions/schedule-import/core.test.ts:586:30%0A%0A
