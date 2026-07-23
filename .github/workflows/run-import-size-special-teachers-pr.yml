@@ -73,6 +73,13 @@ jobs:
           if core_text.count(old_size) != 1:
               raise SystemExit(f'Expected one oversized-image test, found {core_text.count(old_size)}')
           core_test.write_text(core_text.replace(old_size, new_size))
+
+          semester_test = Path('supabase/tests/database/semester_enrollment_patterns.test.sql')
+          semester_text = semester_test.read_text()
+          old_teacher = "'teacher_last_name', 'Cafe'"
+          if semester_text.count(old_teacher) != 4:
+              raise SystemExit(f'Expected four imported Lunch teacher values, found {semester_text.count(old_teacher)}')
+          semester_test.write_text(semester_text.replace(old_teacher, "'teacher_last_name', 'N/A'"))
           PY
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -85,8 +92,7 @@ jobs:
       - name: Start local Supabase
         run: pnpm exec supabase start
       - name: Run database tests
-        shell: bash
-        run: pnpm test:privacy || { pnpm exec supabase stop --no-backup; pnpm exec supabase start; pnpm test:privacy; }
+        run: pnpm test:privacy
       - name: Commit tested changes
         shell: bash
         run: |
