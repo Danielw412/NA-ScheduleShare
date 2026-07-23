@@ -113,7 +113,6 @@ describe('AddClassDialog semester formats', () => {
     })))
   })
 
-
   it('submits Full Year Lunch for expansion into both semester enrollments', async () => {
     const user = userEvent.setup()
     renderDialog()
