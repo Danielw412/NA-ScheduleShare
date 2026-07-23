@@ -334,7 +334,12 @@ export function SchedulePage() {
         <div><h2>Add your schedule in about a minute</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p><div className="import-onboarding-flow"><span>Screenshot</span><strong>→</strong><span>Review classes</span><strong>→</strong><span>Find classmates</span></div></div>
         <div><button className="button button-primary" type="button" disabled={isDemo} onClick={() => openImport(false)}>Choose Screenshot</button><button className="button button-secondary" type="button" onClick={() => setActiveCell({ dayType: 'A', period: 1 })}>Enter Schedule Manually</button></div>
       </section> : null}
-      {hasSchedule && !shareCtaDismissed ? <section className="schedule-share-cta">
+      {hasSchedule && !profile?.students_visited_at ? <section className="schedule-discovery-callout">
+        <Users aria-hidden="true" />
+        <div><h2>See Who You Share Classes With</h2></div>
+        <Link className="button button-primary" to="/students">Find Classmates</Link>
+      </section> : null}
+      {hasSchedule && profile?.students_visited_at && !shareCtaDismissed ? <section className="schedule-share-cta">
         <Share2 size={34} aria-hidden="true" />
         <div><h2>Share your Schedule with friends</h2><p>Send a link that shows your full schedule</p></div>
         <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
@@ -350,7 +355,6 @@ export function SchedulePage() {
           onTermChange={(enrollment, term) => void changeTerm(enrollment, term)}
         />
       </div>
-      {hasSchedule ? <section className="schedule-discovery-callout"><Users aria-hidden="true" /><div><h2>See Who You Share Classes With</h2></div><Link className="button button-primary" to="/students">Find Classmates</Link></section> : null}
       {activeCell ? <AddClassDialog
         open
         dayType={activeCell.dayType}

@@ -19,13 +19,13 @@ function isMobileShareDevice(): boolean {
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
-  const { enrollments } = useSchedule()
+  const { enrollments, loading: scheduleLoading } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const [sharing, setSharing] = useState(false)
   const [shareMessage, setShareMessage] = useState<string | null>(null)
   const navigate = useNavigate()
   const completion = scheduleCompletion(enrollments)
-  const hasCompleteSchedule = Boolean(user) && completion === 100
+  const hasCompleteSchedule = Boolean(user) && !scheduleLoading && completion === 100
   const scheduleStatus = completion === 0
     ? { title: 'Start your schedule', description: 'Add your classes to find classmates and compare schedules.', action: 'Add classes' }
     : completion < 100
@@ -79,12 +79,14 @@ export function HomePage() {
           <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
           <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
           <div className="hero-actions">
-            <Link className="button button-primary" to={hasCompleteSchedule ? '/students' : '/schedule'}>{hasCompleteSchedule ? 'Find Classmates' : 'Upload My Schedule'} <ArrowRight size={18} /></Link>
+            {user && scheduleLoading
+              ? <span className="button button-primary home-schedule-loading" aria-label="Loading schedule">Loading...</span>
+              : <Link className="button button-primary" to={hasCompleteSchedule ? '/students' : '/schedule'}>{hasCompleteSchedule ? 'Find Classmates' : 'Upload My Schedule'} <ArrowRight size={18} /></Link>}
           </div>
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
       </section>
-      {user ? (
+      {user && !scheduleLoading ? (
         <section className="completion-callout schedule-status-card">
           <CalendarDays aria-hidden="true" />
           <div><h2>{scheduleStatus.title}</h2><p role={shareMessage ? 'status' : undefined}>{shareMessage ?? scheduleStatus.description}</p></div>

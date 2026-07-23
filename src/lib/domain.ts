@@ -36,6 +36,7 @@ export interface Profile {
   grade: Grade | null
   privacy_setting: PrivacySetting
   onboarding_completed: boolean
+  students_visited_at: string | null
   created_at: string
   updated_at: string
 }

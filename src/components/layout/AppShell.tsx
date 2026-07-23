@@ -38,10 +38,10 @@ export function AppShell() {
   return (
     <div className="app-shell has-mobile-bottom-nav">
       <header className="site-header">
-        <NavLink to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
+        <NavLink viewTransition to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
         <nav className={menuOpen ? 'primary-nav is-open' : 'primary-nav'} aria-label="Primary navigation">
           {primaryNavigation.map((item) => (
-            <NavLink className={'mobileBottomDuplicate' in item && item.mobileBottomDuplicate ? 'mobile-bottom-duplicate' : undefined} key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
+            <NavLink viewTransition className={'mobileBottomDuplicate' in item && item.mobileBottomDuplicate ? 'mobile-bottom-duplicate' : undefined} key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
           ))}
           {!user ? <><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openSignInPrompt('/schedule') }}>Sign in</button><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openAccountPrompt('/schedule') }}>Create account</button></> : null}
           {user ? <button className="mobile-menu-only mobile-menu-sign-out" type="button" onClick={() => { setMenuOpen(false); void signOut() }}><LogOut size={17} aria-hidden="true" /> Sign out</button> : null}
@@ -51,13 +51,13 @@ export function AppShell() {
           <button className="tablet-menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
             {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           </button>
-          {user ? <NavLink className="mobile-profile-button" to="/profile" aria-label="Open my profile" onClick={() => setMenuOpen(false)}>
+          {user ? <NavLink viewTransition className="mobile-profile-button" to="/profile" aria-label="Open my profile" onClick={() => setMenuOpen(false)}>
             {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <UserRound aria-hidden="true" />}
           </NavLink> : <button className="mobile-create-account-button button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>}
           {user ? <div className="profile-menu">
-            <NavLink to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
+            <NavLink viewTransition to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
             <div>
-              <NavLink to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
+              <NavLink viewTransition to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
             </div>
           </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
         </div>
@@ -77,7 +77,7 @@ export function AppShell() {
             <Icon size={22} strokeWidth={2} aria-hidden="true" />
             <span>{label}</span>
           </button>
-          : <NavLink key={to} to={to} end={to === '/'}>
+          : <NavLink viewTransition key={to} to={to} end={to === '/'}>
             <Icon size={22} strokeWidth={2} aria-hidden="true" />
             <span>{label}</span>
           </NavLink>)}

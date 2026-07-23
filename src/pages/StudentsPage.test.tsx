@@ -12,11 +12,12 @@ const mocks = vi.hoisted(() => ({
   requestScheduleAccess: vi.fn(async () => undefined),
   cancelScheduleAccessRequest: vi.fn(async () => undefined),
   getClassmates: vi.fn(),
+  markStudentsVisited: vi.fn(async () => undefined),
 }))
 
 vi.mock('../components/auth/DiscoveryGate', () => ({ DiscoveryGate: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock('../components/ui/ProfileAvatar', () => ({ ProfileAvatar: ({ fullName }: { fullName: string }) => <span aria-label={`${fullName} avatar`} /> }))
-vi.mock('../features/auth/AuthProvider', () => ({ useAuth: () => ({ isDemo: false }) }))
+vi.mock('../features/auth/AuthProvider', () => ({ useAuth: () => ({ isDemo: false, markStudentsVisited: mocks.markStudentsVisited }) }))
 vi.mock('../lib/supabase/data', () => ({
   searchStudentDirectory: mocks.searchStudentDirectory,
   allowScheduleAccess: mocks.allowScheduleAccess,
@@ -39,6 +40,12 @@ afterEach(() => {
 })
 
 describe('StudentsPage schedule access', () => {
+  it('records the first visit to the Students tab', async () => {
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    await waitFor(() => expect(mocks.markStudentsVisited).toHaveBeenCalled())
+  })
+
   it('defaults to classmates and keeps directory search in All students', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><StudentsPage /></MemoryRouter>)

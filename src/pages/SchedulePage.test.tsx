@@ -126,7 +126,7 @@ describe('SchedulePage onboarding', () => {
     expect(screen.getByRole('heading', { name: 'Add your schedule in about a minute' })).toBeInTheDocument()
   })
 
-  it('does not show onboarding when a schedule already exists and offers classmate discovery', async () => {
+  it('shows classmate discovery after the first import until Students has been visited', async () => {
     mocks.useSchedule.mockReturnValue({
       ...emptySchedule(),
       enrollments: [{ id: 'enrollment-1', student_id: 'student-1' }],
@@ -135,11 +135,34 @@ describe('SchedulePage onboarding', () => {
     await waitFor(() => expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { name: 'See Who You Share Classes With' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Find Classmates' })).toHaveAttribute('href', '/students')
+    expect(screen.queryByRole('heading', { name: 'Share your Schedule with friends' })).not.toBeInTheDocument()
+  })
+
+  it('shows the sharing prompt after Students has been visited', () => {
+    mocks.useAuth.mockReturnValue({
+      user: { id: 'student-1' },
+      profile: { students_visited_at: '2026-07-23T01:00:00Z' },
+      isAdmin: false,
+      isDemo: false,
+    })
+    mocks.useSchedule.mockReturnValue({
+      ...emptySchedule(),
+      enrollments: [{ id: 'enrollment-1', student_id: 'student-1' }],
+    })
+    renderPage()
+
     expect(screen.getByRole('heading', { name: 'Share your Schedule with friends' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'See Who You Share Classes With' })).not.toBeInTheDocument()
   })
 
   it('remembers when the inline sharing reminder is dismissed', async () => {
     const user = userEvent.setup()
+    mocks.useAuth.mockReturnValue({
+      user: { id: 'student-1' },
+      profile: { students_visited_at: '2026-07-23T01:00:00Z' },
+      isAdmin: false,
+      isDemo: false,
+    })
     mocks.useSchedule.mockReturnValue({
       ...emptySchedule(),
       enrollments: [{ id: 'enrollment-1', student_id: 'student-1' }],

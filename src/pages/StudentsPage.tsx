@@ -40,6 +40,12 @@ type StudentAction = 'allow' | 'remove' | 'request' | 'cancel'
 type StudentsView = 'classmates' | 'all'
 
 export function StudentsPage() {
+  const { markStudentsVisited } = useAuth()
+
+  useEffect(() => {
+    void markStudentsVisited().catch(() => undefined)
+  }, [markStudentsVisited])
+
   return <DiscoveryGate><StudentBrowser /></DiscoveryGate>
 }
 

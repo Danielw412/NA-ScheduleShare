@@ -69,6 +69,17 @@ describe('HomePage hero', () => {
     expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
   })
 
+  it('does not show an incorrect schedule action while the signed-in schedule is loading', () => {
+    mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })
+    mocks.useSchedule.mockReturnValue({ enrollments: [], loading: true })
+    renderPage()
+
+    expect(screen.getByLabelText('Loading schedule')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Upload My Schedule/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Keep building your schedule' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Share your schedule with friends' })).not.toBeInTheDocument()
+  })
+
   it('sends students with a complete schedule to classmates and offers sharing', async () => {
     const user = userEvent.setup()
     mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })

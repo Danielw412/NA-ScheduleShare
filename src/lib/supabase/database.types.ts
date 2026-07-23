@@ -259,6 +259,7 @@ export type Database = {
           normalized_name: string
           onboarding_completed: boolean
           privacy_setting: Database["public"]["Enums"]["privacy_setting"]
+          students_visited_at: string | null
           updated_at: string
         }
         Insert: {
@@ -269,6 +270,7 @@ export type Database = {
           normalized_name?: string
           onboarding_completed?: boolean
           privacy_setting?: Database["public"]["Enums"]["privacy_setting"]
+          students_visited_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -279,6 +281,7 @@ export type Database = {
           normalized_name?: string
           onboarding_completed?: boolean
           privacy_setting?: Database["public"]["Enums"]["privacy_setting"]
+          students_visited_at?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -35,6 +35,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>
   completeOnboarding: (input: OnboardingInput) => Promise<void>
   updateProfile: (input: ProfileUpdateInput) => Promise<void>
+  markStudentsVisited: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
@@ -59,6 +60,7 @@ function toProfile(row: Record<string, unknown>): Profile {
     grade: row.grade as Grade | null,
     privacy_setting: row.privacy_setting as PrivacySetting,
     onboarding_completed: row.onboarding_completed as boolean,
+    students_visited_at: (row.students_visited_at as string | null) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   }
@@ -103,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const [profileResult, adminResult] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, grade, privacy_setting, onboarding_completed, created_at, updated_at').eq('id', nextUser.id).single(),
+      supabase.from('profiles').select('id, full_name, grade, privacy_setting, onboarding_completed, students_visited_at, created_at, updated_at').eq('id', nextUser.id).single(),
       supabase.rpc('is_current_user_admin'),
     ])
     if (profileResult.error) throw profileResult.error
@@ -208,6 +210,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await hydrateUser(user)
   }, [hydrateUser, user])
 
+  const markStudentsVisited = useCallback(async () => {
+    if (profile?.students_visited_at) return
+    const visitedAt = new Date().toISOString()
+    if (isDemo) {
+      setProfile((current) => current ? { ...current, students_visited_at: visitedAt } : current)
+      return
+    }
+    if (!supabase || !user) throw new Error('You must be signed in.')
+    const { error } = await supabase
+      .from('profiles')
+      .update({ students_visited_at: visitedAt })
+      .eq('id', user.id)
+      .is('students_visited_at', null)
+    if (error) throw error
+    setProfile((current) => current ? { ...current, students_visited_at: current.students_visited_at ?? visitedAt } : current)
+  }, [isDemo, profile?.students_visited_at, user])
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     profile,
@@ -222,8 +241,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     completeOnboarding,
     updateProfile,
+    markStudentsVisited,
     refreshProfile,
-  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, profile, refreshProfile, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, user])
+  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, markStudentsVisited, profile, refreshProfile, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -8,6 +8,7 @@ export const demoProfile: Profile = {
   grade: 11,
   privacy_setting: 'classmates',
   onboarding_completed: true,
+  students_visited_at: null,
   created_at: now,
   updated_at: now,
 }
