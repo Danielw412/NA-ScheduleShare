@@ -94,7 +94,7 @@ describe('ScheduleImportDialog image input', () => {
     renderDialog()
     const picker = screen.getByLabelText('Choose schedule screenshots')
     expect(picker).toHaveAttribute('multiple')
-    expect(screen.getByText('PNG, JPEG, or WebP · 5 MB maximum each')).toBeInTheDocument()
+    expect(screen.getByText('PNG, JPEG, or WebP · 10 MB maximum each')).toBeInTheDocument()
     expect(screen.queryByText('0 of 3')).not.toBeInTheDocument()
 
     await user.upload(picker, [scheduleFile('one.png'), scheduleFile('two.png'), scheduleFile('three.png')])

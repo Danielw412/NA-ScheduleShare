@@ -514,7 +514,7 @@ export function ScheduleImportDialog({
               <Upload aria-hidden="true" />
               <strong className="desktop-import-instructions">Drop, paste, or choose schedule screenshots</strong>
               <strong className="mobile-import-instructions">Add a clear screenshot of your schedule</strong>
-              <span>PNG, JPEG, or WebP · 5 MB maximum each</span>
+              <span>PNG, JPEG, or WebP · 10 MB maximum each</span>
               <div className="import-upload-actions">
                 <label className="button button-primary">
                   {images.length > 0 ? 'Add screenshot' : 'Choose screenshot'}
