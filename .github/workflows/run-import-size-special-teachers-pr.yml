@@ -39,9 +39,36 @@ jobs:
           marker = "python - <<'PY'\n"
           block = source.split(marker, 1)[1].split("\n          PY", 1)[0]
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+          strict = """if text.count(old) != 1:
+    raise SystemExit('Could not update teacher input')
+text = text.replace(old, new)"""
+          tolerant = """if text.count(old) == 1:
+    text = text.replace(old, new)"""
+          if strict not in script:
+              raise SystemExit('Could not find teacher-input patch guard')
+          script = script.replace(strict, tolerant)
           Path('/tmp/apply_changes.py').write_text(script + '\n')
           PY
           python /tmp/apply_changes.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/schedule/AddClassDialog.tsx')
+          text = path.read_text()
+          old_input = '<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />'
+          new_input = '<input required={!teacherIsNotApplicable} disabled={teacherIsNotApplicable} maxLength={120} value={effectiveTeacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />'
+          old_help = '<small id="teacher-last-name-help" className="field-help">Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.</small>'
+          new_help = '<small id="teacher-last-name-help" className="field-help">{teacherIsNotApplicable ? \'Lunch and Study Hall always use N/A for the teacher.\' : \'Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.\'}</small>'
+          if new_input not in text:
+              if text.count(old_input) != 1:
+                  raise SystemExit(f'Expected one teacher input, found {text.count(old_input)}')
+              text = text.replace(old_input, new_input)
+          if new_help not in text:
+              if text.count(old_help) != 1:
+                  raise SystemExit(f'Expected one teacher help line, found {text.count(old_help)}')
+              text = text.replace(old_help, new_help)
+          path.write_text(text)
+          PY
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm worker:typecheck
@@ -59,7 +86,7 @@ jobs:
         run: |
           rm .github/workflows/apply-import-size-special-teachers-once.yml
           rm .github/workflows/run-import-size-special-teachers-pr.yml
-          rm -f .github/workflows/diagnose-import-size-special-teachers.yml patch-error.txt
+          rm -f .github/workflows/diagnose-import-size-special-teachers.yml .github/workflows/diagnose-import-size-special-teachers-v2.yml patch-error.txt patch-error-v2.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
