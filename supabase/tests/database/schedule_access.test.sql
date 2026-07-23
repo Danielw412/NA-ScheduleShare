@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(40);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -49,6 +49,31 @@ values
 
 select set_config('request.jwt.claim.sub', '96000000-0000-4000-8000-000000000002', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+select is(
+  (select full_name from public.search_student_access_directory('', null, null, null) where student_id = '96000000-0000-4000-8000-000000000001'),
+  'Private O.'::text,
+  'a Private student is shown with a last initial in the student directory'
+);
+
+reset role;
+update public.profiles
+set privacy_setting = 'classmates'
+where id = '96000000-0000-4000-8000-000000000001';
+select set_config('request.jwt.claim.sub', '96000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+select is(
+  (select full_name from public.search_student_access_directory('', null, null, null) where student_id = '96000000-0000-4000-8000-000000000001'),
+  'Private O.'::text,
+  'a Classmates student outside the shared-class relationship is shown with a last initial'
+);
+
+reset role;
+update public.profiles
+set privacy_setting = 'private'
+where id = '96000000-0000-4000-8000-000000000001';
+select set_config('request.jwt.claim.sub', '96000000-0000-4000-8000-000000000002', true);
 set local role authenticated;
 
 select throws_ok(
@@ -117,6 +142,11 @@ select is(
   (select count(*) from public.get_visible_schedule('96000000-0000-4000-8000-000000000001')),
   1::bigint,
   'approval exposes the full target schedule'
+);
+select is(
+  (select full_name from public.search_student_access_directory('', null, null, null) where student_id = '96000000-0000-4000-8000-000000000001'),
+  'Private Owner'::text,
+  'the directory keeps the full name when schedule access is available'
 );
 
 reset role;
