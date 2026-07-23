@@ -1,4 +1,5 @@
 import { supabase } from './supabase/client'
+import { recordShareButtonPressed } from './supabase/data'
 import type { AcademicTerm, DayType, ScheduleEnrollment } from './domain'
 
 export const scheduleShareTitle = 'My A/B-Day Schedule | NA ScheduleShare'
@@ -98,6 +99,7 @@ export async function createScheduleShareUrl(): Promise<string> {
 
   const { data, error } = await supabase.rpc('get_or_create_schedule_share')
   if (error) throw error
+  void recordShareButtonPressed().catch(() => undefined)
 
   const token = typeof data === 'string' ? data : ''
   if (!tokenPattern.test(token)) throw new Error('Schedule sharing returned an invalid link.')

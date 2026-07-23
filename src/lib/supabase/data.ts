@@ -9,6 +9,8 @@ import type {
   ClassSearchResult,
   CourseNameSearchResult,
   DayType,
+  EventLogCategory,
+  EventLogRecord,
   GuestStudentResult,
   HistoryRecord,
   HomepageStatistic,
@@ -21,6 +23,8 @@ import type {
   ScheduleImportDiagnosticLog,
   ScheduleImportModelRecord,
   ScheduleImportUiSettings,
+  ActivitySummary,
+  SiteResetPreview,
   StudentDirectoryResult,
 } from '../domain'
 import { supabase } from './client'
@@ -610,6 +614,162 @@ export async function callAdminAction(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   return callUntypedRpc(functionName, args)
+}
+
+export async function isCurrentUserSuperAdmin(): Promise<boolean> {
+  return Boolean(await callUntypedRpc('is_current_user_super_admin'))
+}
+
+export interface EventLogFilters {
+  category?: EventLogCategory | ''
+  event?: string
+  user?: string
+  target?: string
+  createdFrom?: string
+  createdTo?: string
+  result?: string
+  limit?: number
+  offset?: number
+}
+
+export async function superAdminListLogs(filters: EventLogFilters = {}): Promise<EventLogRecord[]> {
+  const data = await callUntypedRpc('super_admin_list_logs', {
+    p_category: filters.category || undefined,
+    p_event: filters.event || undefined,
+    p_user: filters.user || undefined,
+    p_target: filters.target || undefined,
+    p_created_from: filters.createdFrom || undefined,
+    p_created_to: filters.createdTo || undefined,
+    p_result: filters.result || undefined,
+    p_limit: filters.limit ?? 100,
+    p_offset: filters.offset ?? 0,
+  })
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    log_category: String(row.log_category) as EventLogCategory,
+    event_type: String(row.event_type),
+    actor_user_id: row.actor_user_id ? String(row.actor_user_id) : null,
+    actor_name: row.actor_name ? String(row.actor_name) : null,
+    subject_user_id: row.subject_user_id ? String(row.subject_user_id) : null,
+    subject_name: row.subject_name ? String(row.subject_name) : null,
+    target_type: row.target_type ? String(row.target_type) : null,
+    target_id: row.target_id ? String(row.target_id) : null,
+    result: row.result ? String(row.result) : null,
+    metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {},
+    created_at: String(row.created_at),
+  }))
+}
+
+export async function superAdminGetActivitySummary(): Promise<ActivitySummary> {
+  const data = await callUntypedRpc('super_admin_get_activity_summary')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) throw new Error('Activity summary is unavailable.')
+  return {
+    total_users: Number(row.total_users),
+    daily_active_users: Number(row.daily_active_users),
+    weekly_active_users: Number(row.weekly_active_users),
+    schedule_imports: Number(row.schedule_imports),
+    schedules_shared: Number(row.schedules_shared),
+    access_requests: Number(row.access_requests),
+  }
+}
+
+export async function superAdminDeleteLog(logId: string): Promise<void> {
+  const confirmation = `DELETE LOG ${logId.replaceAll('-', '').slice(0, 8).toUpperCase()}`
+  await callUntypedRpc('super_admin_delete_log', { p_log_id: logId, p_confirmation: confirmation })
+}
+
+export async function superAdminDeleteLogs(filters: EventLogFilters = {}): Promise<number> {
+  const data = await callUntypedRpc('super_admin_delete_logs', {
+    p_category: filters.category || undefined,
+    p_event: filters.event || undefined,
+    p_user: filters.user || undefined,
+    p_target: filters.target || undefined,
+    p_created_from: filters.createdFrom || undefined,
+    p_created_to: filters.createdTo || undefined,
+    p_result: filters.result || undefined,
+    p_confirmation: 'DELETE FILTERED LOGS PERMANENTLY',
+  })
+  return Number(data)
+}
+
+export async function superAdminAdd(email: string): Promise<string> {
+  return String(await callUntypedRpc('super_admin_add', { p_email: email }))
+}
+
+export async function superAdminGetSiteResetPreview(): Promise<SiteResetPreview> {
+  const data = await callUntypedRpc('super_admin_get_site_reset_preview')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) throw new Error('Reset preview is unavailable.')
+  return {
+    accounts: Number(row.accounts),
+    profiles: Number(row.profiles),
+    classes: Number(row.classes),
+    course_names: Number(row.course_names),
+    enrollments: Number(row.enrollments),
+    reports: Number(row.reports),
+    profile_pictures: Number(row.profile_pictures),
+  }
+}
+
+export async function superAdminResetSite(confirmation: string): Promise<void> {
+  const client = requireClient()
+  const { error } = await client.functions.invoke('site-reset', { body: { confirmation } })
+  if (error) {
+    const context = (error as unknown as { context?: unknown }).context
+    const response = context instanceof Response ? context : null
+    const body = response ? await response.clone().json().catch(() => ({})) as { message?: string } : {}
+    throw new Error(body.message || 'The website reset did not complete. No database changes were made.')
+  }
+  await client.auth.signOut({ scope: 'local' })
+}
+
+export async function markUserActive(): Promise<void> {
+  await callUntypedRpc('mark_user_active')
+}
+
+export async function recordShareButtonPressed(): Promise<void> {
+  await callUntypedRpc('record_share_button_pressed')
+}
+
+export async function recordAuthAttempt(
+  eventType: 'login_failed' | 'login_blocked_rate_limit' | 'password_reset_requested' | 'password_reset_failed',
+  email: string,
+  result?: string,
+  errorCategory?: string,
+): Promise<void> {
+  await callUntypedRpc('record_auth_attempt', {
+    p_event_type: eventType,
+    p_email: email,
+    p_result: result,
+    p_error_category: errorCategory,
+  })
+}
+
+export async function recordAuthenticatedEvent(
+  eventType: string,
+  result?: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  await callUntypedRpc('record_authenticated_event', {
+    p_event_type: eventType,
+    p_result: result,
+    p_metadata: metadata as Json,
+  })
+}
+
+export async function recordScheduleImportEvent(
+  eventType: string,
+  importId: string,
+  result?: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  await callUntypedRpc('record_schedule_import_event', {
+    p_event_type: eventType,
+    p_import_id: importId,
+    p_result: result,
+    p_metadata: metadata as Json,
+  })
 }
 
 export function classFromSearch(result: ClassSearchResult): ClassDefinition {

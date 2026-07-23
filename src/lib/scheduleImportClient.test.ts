@@ -29,11 +29,12 @@ beforeEach(() => {
 describe('Supabase Edge Function schedule importer client', () => {
   it('invokes the authenticated schedule-import function without a Cloudflare endpoint', async () => {
     const file = new File(['image'], 'schedule.png', { type: 'image/png' })
-    await expect(submitScheduleScreenshots([file])).resolves.toEqual(result)
+    await expect(submitScheduleScreenshots([file])).resolves.toMatchObject(result)
     expect(mocks.invoke).toHaveBeenCalledWith('schedule-import', { body: expect.any(FormData) })
     const form = mocks.invoke.mock.calls[0][1].body as FormData
     expect(form.getAll('images')).toEqual([file])
     expect(form.get('developer_mode')).toBe('false')
+    expect(form.get('import_id')).toMatch(/^[0-9a-f-]{36}$/)
     expect(form.get('model')).toBeNull()
   })
 

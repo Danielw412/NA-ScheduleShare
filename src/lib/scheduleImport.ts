@@ -1,6 +1,6 @@
 import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, Grade, MeetingSlot, ScheduleEnrollment } from './domain'
 import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
-import { searchClasses, searchCourseNames, searchGuestClasses } from './supabase/data'
+import { recordAuthenticatedEvent, recordScheduleImportEvent, searchClasses, searchCourseNames, searchGuestClasses } from './supabase/data'
 import { supabase } from './supabase/client'
 import type { Json } from './supabase/database.types'
 import { normalizeTeacherLastName, teacherLastNameError } from './teacher'
@@ -29,9 +29,13 @@ export interface ScheduleImportRow {
   resolution: 'existing_class' | 'new_class' | 'unresolved_course'
   existing_class_id: string | null
   class_options: ImportClassOption[]
+  import_id?: string
 }
 
 export interface ScheduleImportResult {
+  import_id?: string
+  model?: string
+  processing_duration_ms?: number
   rows: ScheduleImportRow[]
   warnings: string[]
   image_count: number
@@ -69,6 +73,9 @@ export interface EditableScheduleImportRow extends ScheduleImportRow {
 export interface ScheduleImportErrorBody {
   error?: string
   message?: string
+  import_id?: string
+  model?: string
+  processing_duration_ms?: number
   developer?: ScheduleImportDeveloperDiagnostics
 }
 
@@ -81,7 +88,12 @@ export function normalizeReviewTerm(value: unknown): AcademicTerm {
 }
 
 export class ScheduleImportRequestError extends Error {
-  constructor(message: string, readonly developer?: ScheduleImportDeveloperDiagnostics) {
+  constructor(
+    message: string,
+    readonly developer?: ScheduleImportDeveloperDiagnostics,
+    readonly code?: string,
+    readonly importId?: string,
+  ) {
     super(message)
   }
 }
@@ -132,11 +144,16 @@ export async function submitScheduleScreenshots(
 ): Promise<ScheduleImportResult> {
   validateScheduleImageCount(files.length)
   if (!supabase) throw new Error('Schedule importing is not configured.')
+  const importId = crypto.randomUUID()
+  const startedAt = performance.now()
   const formData = new FormData()
   files.forEach((file) => formData.append('images', file, file.name))
+  formData.set('import_id', importId)
   formData.set('developer_mode', String(developerOptions.enabled))
   if (developerOptions.enabled && developerOptions.modelId) formData.set('model', developerOptions.modelId)
   if (developerOptions.enabled && developerOptions.thinkingLevel) formData.set('thinking_level', developerOptions.thinkingLevel)
+
+  void recordScheduleImportEvent('schedule_import_started', importId, 'started', { image_count: files.length }).catch(() => undefined)
 
   try {
     const result = await supabase.functions.invoke('schedule-import', { body: formData })
@@ -146,18 +163,59 @@ export async function submitScheduleScreenshots(
       const errorBody = response
         ? await response.clone().json().catch(() => ({})) as ScheduleImportErrorBody
         : {}
+      const code = errorBody.error ?? 'schedule_import_failure'
+      const eventType = code === 'rate_limit_exceeded'
+        ? 'schedule_import_rate_limited'
+        : ['unsupported_file_type', 'image_too_large', 'invalid_image_data', 'empty_file'].includes(code)
+          ? 'schedule_import_invalid_image'
+          : code === 'schedule_not_detected'
+            ? 'schedule_import_no_schedule_detected'
+            : 'schedule_import_failed'
+      void recordScheduleImportEvent(eventType, errorBody.import_id ?? importId, 'failed', {
+        error_category: code,
+        processing_duration_ms: errorBody.processing_duration_ms ?? Math.round(performance.now() - startedAt),
+        ai_model: errorBody.model ?? errorBody.developer?.model ?? 'configured-production-model',
+        image_count: files.length,
+      }).catch(() => undefined)
       throw new ScheduleImportRequestError(
         errorBody.message || importErrorMessage(errorBody.error, response?.status ?? 0),
         errorBody.developer,
+        code,
+        errorBody.import_id ?? importId,
       )
     }
     if (!result.data || typeof result.data !== 'object') {
       throw new ScheduleImportRequestError('Schedule recognition returned an invalid response.')
     }
-    return result.data as ScheduleImportResult
+    const received = result.data as ScheduleImportResult
+    const resolvedImportId = received.import_id ?? importId
+    const rows = received.rows.map((row) => ({ ...row, import_id: resolvedImportId }))
+    const found = rows.length
+    const matched = rows.filter((row) => row.course !== null).length
+    const reviewRequired = rows.some((row) => row.term === 'unknown' || row.flags.length > 0 || row.warnings.length > 0)
+    const metadata = {
+      classes_found: found,
+      classes_matched: matched,
+      review_required: reviewRequired,
+      error_category: null,
+      processing_duration_ms: received.processing_duration_ms ?? Math.round(performance.now() - startedAt),
+      ai_model: received.model ?? received.developer?.model ?? 'configured-production-model',
+      image_count: received.image_count,
+    }
+    const outcome = found === 0 ? 'schedule_import_no_schedule_detected' : matched < found ? 'schedule_import_partially_succeeded' : 'schedule_import_succeeded'
+    void recordScheduleImportEvent(outcome, resolvedImportId, found === 0 ? 'no_schedule' : matched < found ? 'partial' : 'succeeded', metadata).catch(() => undefined)
+    if (reviewRequired) void recordScheduleImportEvent('schedule_import_needs_review', resolvedImportId, 'review_required', metadata).catch(() => undefined)
+    if (matched < found) void recordScheduleImportEvent('schedule_import_course_unmatched', resolvedImportId, 'unmatched_courses', metadata).catch(() => undefined)
+    if (rows.some((row) => row.term === 'unknown')) void recordScheduleImportEvent('schedule_import_period_uncertain', resolvedImportId, 'uncertain', metadata).catch(() => undefined)
+    return { ...received, import_id: resolvedImportId, rows }
   } catch (caught) {
     if (caught instanceof ScheduleImportRequestError) throw caught
-    throw new ScheduleImportRequestError('The schedule import service could not be reached. Your previews are still here so you can try again.')
+    void recordScheduleImportEvent('schedule_import_failed', importId, 'failed', {
+      error_category: 'service_unreachable',
+      processing_duration_ms: Math.round(performance.now() - startedAt),
+      image_count: files.length,
+    }).catch(() => undefined)
+    throw new ScheduleImportRequestError('The schedule import service could not be reached. Your previews are still here so you can try again.', undefined, 'service_unreachable', importId)
   }
 }
 
@@ -281,10 +339,16 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
     }
   })
 
+  const importId = rows.find((row) => row.import_id)?.import_id
   const { data, error } = await supabase.rpc('replace_schedule_from_import', {
     p_rows: replacementRows as unknown as Json,
   })
-  if (error) throw new Error(scheduleReplacementErrorMessage(error))
+  if (error) {
+    if (importId && error.message.includes('import_schedule_conflict')) {
+      void recordScheduleImportEvent('schedule_import_conflict_detected', importId, 'failed', { error_category: 'schedule_conflict' }).catch(() => undefined)
+    }
+    throw new Error(scheduleReplacementErrorMessage(error))
+  }
 
   const result = Array.isArray(data) ? data[0] : data
   if (!result || typeof result !== 'object') throw new Error('Schedule replacement returned an invalid response.')
@@ -292,6 +356,14 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
   const removed = Number((result as ScheduleReplacementResult).removed_count)
   if (!Number.isInteger(added) || !Number.isInteger(removed)) throw new Error('Schedule replacement returned invalid counts.')
   if (added !== replacementRows.length) throw new Error(`Schedule replacement reported ${added} of ${replacementRows.length} reviewed classes. Reload the page before trying again.`)
+  if (importId) {
+    const reviewMetadata = { classes_found: rows.length, classes_matched: replacementRows.length, review_required: true }
+    void recordScheduleImportEvent('schedule_import_review_completed', importId, 'succeeded', reviewMetadata).catch(() => undefined)
+    if (rows.some((row) => row.flags.length > 0 || row.warnings.length > 0 || !row.include)) {
+      void recordScheduleImportEvent('schedule_import_corrected', importId, 'succeeded', reviewMetadata).catch(() => undefined)
+    }
+  }
+  void recordAuthenticatedEvent('schedule_replaced', 'succeeded', { added_count: added, removed_count: removed }).catch(() => undefined)
   return { added, removed }
 }
 

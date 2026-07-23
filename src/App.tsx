@@ -6,14 +6,18 @@ import { AdminPage } from './pages/AdminPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { HomePage } from './pages/HomePage'
 import { OnboardingPage } from './pages/OnboardingPage'
+import { PasswordResetPage } from './pages/PasswordResetPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ReportPage } from './pages/ReportPage'
 import { SchedulePage } from './pages/SchedulePage'
 import { SharedSchedulePage } from './pages/SharedSchedulePage'
 import { StudentDetailPage } from './pages/StudentDetailPage'
 import { StudentsPage } from './pages/StudentsPage'
+import { useAuth } from './features/auth/AuthProvider'
 
 export function App() {
+  const auth = useAuth()
+  if (auth.passwordRecovery) return <PasswordResetPage />
   return (
     <Routes>
       <Route path="/auth" element={<AuthPromptRoute />} />

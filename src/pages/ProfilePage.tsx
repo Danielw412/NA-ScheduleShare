@@ -5,6 +5,7 @@ import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import type { PrivacySetting } from '../lib/domain'
 import { deleteOwnAccount, removeProfilePicture, uploadProfilePicture } from '../lib/profile'
+import { recordAuthenticatedEvent } from '../lib/supabase/data'
 
 export function ProfilePage() {
   const auth = useAuth()
@@ -60,9 +61,11 @@ export function ProfilePage() {
     setMessage(null)
     try {
       await uploadProfilePicture(auth.user!.id, file)
+      void recordAuthenticatedEvent('profile_picture_changed', 'succeeded').catch(() => undefined)
       setAvatarRevision(Date.now())
       setMessage('Profile picture updated.')
     } catch (caught) {
+      void recordAuthenticatedEvent('profile_picture_rejected', 'failed', { error_category: caught instanceof Error ? caught.message : 'upload_failed' }).catch(() => undefined)
       setError(caught instanceof Error ? caught.message : 'The profile picture could not be uploaded.')
     } finally {
       setPictureBusy(false)
@@ -75,6 +78,7 @@ export function ProfilePage() {
     setMessage(null)
     try {
       await removeProfilePicture(auth.user!.id)
+      void recordAuthenticatedEvent('profile_picture_removed', 'succeeded').catch(() => undefined)
       setAvatarRevision(Date.now())
       setMessage('Profile picture removed. Your initials are shown instead.')
     } catch (caught) {

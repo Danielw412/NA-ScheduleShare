@@ -13,7 +13,7 @@ export function AuthForm({
   next = '/schedule',
 }: AuthFormProps) {
   const auth = useAuth()
-  const [mode, setMode] = useState<'sign-in' | 'sign-up'>(initialMode)
+  const [mode, setMode] = useState<'sign-in' | 'sign-up' | 'forgot'>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,7 +29,10 @@ export function AuthForm({
     try {
       rememberAuthDestination(next)
 
-      if (mode === 'sign-in') {
+      if (mode === 'forgot') {
+        await auth.requestPasswordReset(email)
+        setMessage('If an account uses that email, a password-reset link is on its way. Check your spam folder too.')
+      } else if (mode === 'sign-in') {
         await auth.signInWithPassword(email, password)
       } else {
         await auth.signUpWithPassword(email, password)
@@ -64,11 +67,13 @@ export function AuthForm({
 
   return (
     <div className="auth-form-wrap">
-      <h2>{mode === 'sign-in' ? 'Welcome back' : 'Create your account'}</h2>
+      <h2>{mode === 'sign-in' ? 'Welcome back' : mode === 'sign-up' ? 'Create your account' : 'Reset your password'}</h2>
 
       <p>
         {mode === 'sign-in'
           ? 'Sign in to continue to your schedule.'
+          : mode === 'forgot'
+            ? 'Enter your email and we will send you a secure reset link.'
           : "Don't worry, we won't spam you with emails!"}
       </p>
 
@@ -83,7 +88,7 @@ export function AuthForm({
         </div>
       ) : null}
 
-      <div
+      {mode !== 'forgot' ? <div
         className={`google-button-host${busy ? ' is-busy' : ''}`}
         aria-busy={busy}
       >
@@ -116,19 +121,19 @@ export function AuthForm({
           </span>
           Continue with Google
         </button>
-      </div>
+      </div> : null}
 
-      <p className="google-note">
+      {mode !== 'forgot' ? <p className="google-note">
         <strong>Use a personal Google account.</strong> All data is stored
         securely on servers.
-      </p>
+      </p> : null}
 
-      <div className="form-divider">
+      {mode !== 'forgot' ? <div className="form-divider">
         <span>or use email</span>
-      </div>
+      </div> : null}
 
       <form onSubmit={(event) => void handleEmail(event)}>
-        <label>
+        {mode !== 'forgot' ? <label>
           Email
           <input
             type="email"
@@ -137,7 +142,7 @@ export function AuthForm({
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-        </label>
+        </label> : null}
 
         <label>
           Password
@@ -175,22 +180,24 @@ export function AuthForm({
             ? 'Please wait…'
             : mode === 'sign-in'
               ? 'Sign in'
-              : 'Create account'}
+              : mode === 'sign-up'
+                ? 'Create account'
+                : 'Send reset link'}
         </button>
       </form>
+
+      {mode === 'sign-in' ? <button className="text-button auth-forgot-button" type="button" onClick={() => { setMode('forgot'); setError(null); setMessage(null) }}>Forgot password?</button> : null}
 
       <button
         className="text-button"
         type="button"
-        onClick={() =>
-          setMode((current) =>
-            current === 'sign-in' ? 'sign-up' : 'sign-in',
-          )
-        }
+        onClick={() => setMode((current) => current === 'sign-in' ? 'sign-up' : 'sign-in')}
       >
         {mode === 'sign-in'
           ? 'Need an account? Sign up'
-          : 'Already have an account? Sign in'}
+          : mode === 'forgot'
+            ? 'Back to sign in'
+            : 'Already have an account? Sign in'}
       </button>
     </div>
   )

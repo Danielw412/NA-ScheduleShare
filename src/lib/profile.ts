@@ -45,6 +45,21 @@ export async function removeProfilePicture(userId: string): Promise<void> {
   if (error) throw new Error(error.message || 'The profile picture could not be removed.')
 }
 
+export async function adminRemoveProfilePicture(userId: string): Promise<void> {
+  const client = requireSupabase()
+  const { error } = await client.storage.from(PROFILE_PICTURE_BUCKET).remove([profilePicturePath(userId)])
+  if (error) throw new Error(error.message || 'The profile picture could not be removed.')
+  const rpc = client.rpc.bind(client) as unknown as (
+    name: string,
+    parameters: Record<string, unknown>,
+  ) => Promise<{ error: Error | null }>
+  const { error: auditError } = await rpc('admin_record_profile_picture_removed', {
+    p_user_id: userId,
+    p_reason: 'Removed from admin console',
+  })
+  if (auditError) throw auditError
+}
+
 export async function deleteOwnAccount(confirmation: string): Promise<void> {
   const client = requireSupabase()
   const { error } = await client.functions.invoke('delete-account', { body: { confirmation } })

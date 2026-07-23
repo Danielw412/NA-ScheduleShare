@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:function": "vitest run --config supabase/functions/schedule-import/vitest.config.ts && vitest run --config supabase/functions/delete-account/vitest.config.ts",
+    "test:function": "vitest run --config supabase/functions/schedule-import/vitest.config.ts && vitest run --config supabase/functions/delete-account/vitest.config.ts && vitest run --config supabase/functions/site-reset/vitest.config.ts",
     "test:worker": "vitest run --config cloudflare/schedule-import-worker/vitest.config.ts",
     "test:watch": "vitest",
     "test:privacy": "supabase test db --local supabase/tests/database",

@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   searchClasses: vi.fn(),
   searchCourseNames: vi.fn(),
   searchGuestClasses: vi.fn(),
+  recordAuthenticatedEvent: vi.fn(async () => undefined),
+  recordScheduleImportEvent: vi.fn(async () => undefined),
 }))
 
 vi.mock('./supabase/client', () => ({
@@ -15,6 +17,8 @@ vi.mock('./supabase/data', () => ({
   searchClasses: mocks.searchClasses,
   searchCourseNames: mocks.searchCourseNames,
   searchGuestClasses: mocks.searchGuestClasses,
+  recordAuthenticatedEvent: mocks.recordAuthenticatedEvent,
+  recordScheduleImportEvent: mocks.recordScheduleImportEvent,
 }))
 
 import {

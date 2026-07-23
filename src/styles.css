@@ -384,6 +384,185 @@ textarea:focus {
   transform: scaleX(1);
 }
 
+.event-logs-panel,
+.protected-tools-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.activity-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.activity-summary-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-top: 4px solid var(--brand-gold);
+  background: var(--white);
+}
+
+.activity-summary-grid span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.activity-summary-grid strong {
+  font-size: 24px;
+}
+
+.event-log-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.event-log-filters label,
+.protected-access-form label,
+.reset-confirmation-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.event-log-filters .button {
+  align-self: end;
+}
+
+.event-log-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.event-log-table {
+  --max-admin-columns: minmax(220px, 1.2fr) minmax(190px, 1fr) minmax(190px, 1fr) 170px minmax(180px, .8fr);
+}
+
+.event-log-details {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-log-details summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.event-log-details pre {
+  width: min(440px, 70vw);
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.protected-tools-panel>div>p,
+.site-reset-card p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.protected-access-form {
+  width: min(720px, 100%);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+}
+
+.site-reset-card {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 4vw, 28px);
+  border: 2px solid var(--danger);
+  background: #fffafa;
+}
+
+.site-reset-card h3 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.site-reset-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.site-reset-card dl div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e6bcbc;
+  background: var(--white);
+}
+
+.site-reset-card dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.site-reset-card dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.reset-confirmation-field strong {
+  overflow-wrap: anywhere;
+}
+
+.site-reset-card>.button {
+  justify-self: start;
+}
+
+@media (max-width: 900px) {
+  .activity-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .event-log-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .site-reset-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .activity-summary-grid,
+  .event-log-filters,
+  .protected-access-form,
+  .site-reset-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .event-log-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .profile-menu {
   justify-self: end;
   display: flex;
@@ -986,6 +1165,46 @@ textarea:focus {
 .auth-form-wrap .text-button {
   margin-top: 18px;
   width: 100%;
+}
+
+.auth-form-wrap .auth-forgot-button {
+  margin-top: 10px;
+}
+
+.password-reset-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 26px;
+  padding: var(--page-gutter);
+  background: var(--surface-subtle);
+}
+
+.password-reset-card {
+  width: min(520px, 100%);
+  grid-template-columns: auto 1fr;
+  border-top: 6px solid var(--brand-gold);
+}
+
+.password-reset-card>svg {
+  color: var(--brand-gold-dark);
+}
+
+.password-reset-card h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.password-reset-card form {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 15px;
+}
+
+.password-reset-card form label {
+  display: grid;
+  gap: 7px;
 }
 
 .onboarding-page {

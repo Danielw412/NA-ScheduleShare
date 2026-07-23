@@ -2,6 +2,7 @@ export interface DeleteAccountDependencies {
   verifyUser: (token: string) => Promise<{ id: string }>
   deleteAvatar: (userId: string) => Promise<void>
   deleteUser: (userId: string) => Promise<void>
+  recordEvent: (userId: string, event: 'account_deletion_requested' | 'account_deleted' | 'account_deletion_failed', result: string) => Promise<void>
 }
 
 class HttpError extends Error {
@@ -45,16 +46,21 @@ export async function handleDeleteAccountRequest(request: Request, dependencies:
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS })
   if (request.method !== 'POST') return json(405, { error: 'method_not_allowed', message: 'Use POST to delete an account.' })
 
+  let userId: string | null = null
   try {
     const token = bearerToken(request)
     if (await confirmation(request) !== 'DELETE') {
       throw new HttpError(400, 'confirmation_required', 'Type DELETE to confirm permanent account deletion.')
     }
     const user = await dependencies.verifyUser(token)
+    userId = user.id
+    await dependencies.recordEvent(user.id, 'account_deletion_requested', 'requested').catch(() => undefined)
     await dependencies.deleteAvatar(user.id)
     await dependencies.deleteUser(user.id)
+    await dependencies.recordEvent(user.id, 'account_deleted', 'succeeded').catch(() => undefined)
     return json(200, { deleted: true, removed_profile_picture: true })
   } catch (caught) {
+    if (userId) await dependencies.recordEvent(userId, 'account_deletion_failed', 'failed').catch(() => undefined)
     if (caught instanceof HttpError) return json(caught.status, { error: caught.code, message: caught.message })
     return json(500, { error: 'account_deletion_failed', message: 'Your account could not be deleted. Please try again.' })
   }

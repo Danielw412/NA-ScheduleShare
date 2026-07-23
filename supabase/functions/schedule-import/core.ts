@@ -95,6 +95,9 @@ export interface DeveloperDiagnostics {
 }
 
 export interface ScheduleImportResponse {
+  import_id: string
+  model: string
+  processing_duration_ms: number
   rows: ImportReviewRow[]
   warnings: string[]
   image_count: number
@@ -296,6 +299,7 @@ export async function handleScheduleImportRequest(
   let rawOutput: string | null = null
   let parsedOutput: unknown = null
   let imageMetadata: ImageMetadata[] = []
+  let importId = (dependencies.randomUUID ?? crypto.randomUUID)()
 
   try {
     responseOrigin = allowedOrigin(request)
@@ -309,6 +313,7 @@ export async function handleScheduleImportRequest(
     token = getBearerToken(request)
     const requester = await resolveImportRequester(token, request, dependencies)
     const upload = await readUpload(request)
+    importId = upload.importId
     developerRequested = upload.developerMode
     const images = await Promise.all(upload.files.map((file, index) => validateAndEncodeImage(file, index + 1)))
     imageMetadata = images.map((image) => image.metadata)
@@ -372,6 +377,9 @@ export async function handleScheduleImportRequest(
     }
 
     return jsonResponse(responseOrigin, 200, {
+      import_id: importId,
+      model: config.model_id,
+      processing_duration_ms: elapsedMs,
       rows,
       warnings: [],
       image_count: images.length,
@@ -423,6 +431,9 @@ export async function handleScheduleImportRequest(
       {
         error: error.code,
         message: error.message,
+        import_id: importId,
+        ...(config ? { model: config.model_id } : {}),
+        processing_duration_ms: elapsedMs,
         ...(developer ? { developer } : {}),
       },
       error.retryAfter,
@@ -490,6 +501,7 @@ function validateBackendData(catalog: CourseRecord[], classes: ExistingClassReco
 
 async function readUpload(request: Request): Promise<{
   files: File[]
+  importId: string
   developerMode: boolean
   modelId: string | null
   thinkingLevel: string | null
@@ -511,6 +523,11 @@ async function readUpload(request: Request): Promise<{
     throw new HttpError(400, 'invalid_image_count', 'Upload between one and three schedule screenshots.')
   }
 
+  const importId = optionalFormString(formData.get('import_id'))
+  if (!importId || !UUID_PATTERN.test(importId)) {
+    throw new HttpError(400, 'invalid_import_id', 'The schedule import identifier was invalid.')
+  }
+
   const developerValue = formData.get('developer_mode')
   if (developerValue !== null && developerValue !== 'true' && developerValue !== 'false') {
     throw new HttpError(400, 'invalid_developer_mode', 'The developer-mode setting was invalid.')
@@ -522,7 +539,7 @@ async function readUpload(request: Request): Promise<{
     throw new HttpError(403, 'developer_overrides_not_allowed', 'Model overrides require administrator developer mode.')
   }
 
-  return { files, developerMode, modelId, thinkingLevel }
+  return { files, importId, developerMode, modelId, thinkingLevel }
 }
 
 async function validateAndEncodeImage(file: File, index: number): Promise<EncodedImage> {

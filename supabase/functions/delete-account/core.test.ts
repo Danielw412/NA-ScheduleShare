@@ -8,6 +8,7 @@ function dependencies(): DeleteAccountDependencies {
     verifyUser: vi.fn(async () => ({ id: USER_ID })),
     deleteAvatar: vi.fn(async () => undefined),
     deleteUser: vi.fn(async () => undefined),
+    recordEvent: vi.fn(async () => undefined),
   }
 }
 

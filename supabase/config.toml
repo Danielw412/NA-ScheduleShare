@@ -119,3 +119,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/delete-account/deno.json"
 entrypoint = "./functions/delete-account/index.ts"
+
+[functions.site-reset]
+enabled = true
+verify_jwt = true
+import_map = "./functions/site-reset/deno.json"
+entrypoint = "./functions/site-reset/index.ts"

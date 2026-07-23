@@ -222,3 +222,39 @@ export interface ScheduleImportDiagnosticLog {
 export interface ScheduleImportUiSettings {
   progress_bar_duration_ms: number
 }
+
+export type EventLogCategory = 'security' | 'audit' | 'import' | 'admin'
+
+export interface EventLogRecord {
+  id: string
+  log_category: EventLogCategory
+  event_type: string
+  actor_user_id: string | null
+  actor_name: string | null
+  subject_user_id: string | null
+  subject_name: string | null
+  target_type: string | null
+  target_id: string | null
+  result: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface ActivitySummary {
+  total_users: number
+  daily_active_users: number
+  weekly_active_users: number
+  schedule_imports: number
+  schedules_shared: number
+  access_requests: number
+}
+
+export interface SiteResetPreview {
+  accounts: number
+  profiles: number
+  classes: number
+  course_names: number
+  enrollments: number
+  reports: number
+  profile_pictures: number
+}

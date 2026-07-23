@@ -32,6 +32,15 @@ function dependencies(): DeleteAccountDependencies {
       const { error } = await adminClient.auth.admin.deleteUser(userId)
       if (error) throw error
     },
+    recordEvent: async (userId, event, result) => {
+      const { error } = await adminClient.rpc('service_record_account_event', {
+        p_user_id: userId,
+        p_event_type: event,
+        p_result: result,
+        p_metadata: {},
+      })
+      if (error) throw error
+    },
   }
 }
 

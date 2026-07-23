@@ -1,15 +1,16 @@
-import { BarChart3, BrainCircuit, ChevronDown, ChevronRight, FileClock, Flag, GraduationCap, History, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { BarChart3, BrainCircuit, ChevronDown, ChevronRight, Database, FileClock, Flag, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, type AcademicTerm, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord } from '../lib/domain'
+import { privacyLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type PrivacySetting, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
+import { adminRemoveProfilePicture } from '../lib/profile'
 import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogs, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'history' | 'admins' | 'audit'
+type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
 
 const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'users', label: 'User management', icon: Users },
@@ -17,9 +18,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'classes', label: 'Class management', icon: GraduationCap },
   { id: 'homepage', label: 'Homepage', icon: BarChart3 },
   { id: 'ai', label: 'AI importer', icon: BrainCircuit },
-  { id: 'history', label: 'Schedule history', icon: History },
   { id: 'admins', label: 'Admin management', icon: ShieldCheck },
-  { id: 'audit', label: 'Audit logs', icon: FileClock },
 ]
 
 const demoUsers = [
@@ -111,8 +110,8 @@ export function AdminPage() {
   const [reports, setReports] = useState<AdminReportRecord[]>(isDemo ? demoReports : [])
   const [classes, setClasses] = useState<AdminClassRecord[]>(isDemo ? demoClasses : [])
   const [courseNames, setCourseNames] = useState<AdminCourseNameRecord[]>(isDemo ? demoCourseNames : [])
-  const [historyRows, setHistoryRows] = useState<Array<Record<string, unknown>>>([])
-  const [auditRows, setAuditRows] = useState<Array<Record<string, unknown>>>([])
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [avatarRevision, setAvatarRevision] = useState(0)
   const [query, setQuery] = useState('')
   const [grade, setGrade] = useState<number | ''>('')
   const [status, setStatus] = useState('')
@@ -129,26 +128,25 @@ export function AdminPage() {
   const load = useCallback(async () => {
     if (isDemo || !supabase) return
     try {
-      const [nextUsers, nextReports, nextClasses, nextCourseNames, historyResult, auditResult] = await Promise.all([
+      const [nextUsers, nextReports, nextClasses, nextCourseNames] = await Promise.all([
         adminListUsers(query, grade || undefined, status || undefined),
         adminListReports(),
         adminListClasses(),
         adminListCourseNames(),
-        supabase.from('schedule_change_history').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100),
       ])
-      if (historyResult.error) throw historyResult.error
-      if (auditResult.error) throw auditResult.error
       setUsers(nextUsers)
       setReports(nextReports)
       setClasses(nextClasses)
       setCourseNames(nextCourseNames)
-      setHistoryRows(historyResult.data as unknown as Array<Record<string, unknown>>)
-      setAuditRows(auditResult.data as unknown as Array<Record<string, unknown>>)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load administrative data.')
     }
   }, [grade, isDemo, query, status])
+
+  useEffect(() => {
+    if (isDemo) return
+    void isCurrentUserSuperAdmin().then(setIsSuperAdmin).catch(() => setIsSuperAdmin(false))
+  }, [isDemo])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 200)
@@ -220,17 +218,30 @@ export function AdminPage() {
     }, 'Student grade updated.')
   }
 
+  async function removeUserPicture(user: Record<string, unknown>) {
+    const name = String(user.full_name)
+    if (!window.confirm(`Remove ${name}'s profile picture? Their initials will be shown instead.`)) return
+    setError(null)
+    try {
+      if (!isDemo) await adminRemoveProfilePicture(String(user.user_id))
+      setAvatarRevision(Date.now())
+      setMessage(`${name}'s profile picture was removed.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The profile picture could not be removed.')
+    }
+  }
+
   const selectedReport = reports.find((report) => report.report_id === selectedReportId) ?? null
 
   return (
     <div className="admin-page">
       <header className="page-heading"><div><h1>Administration</h1><p>Protected user, class, report, schedule, role, and audit operations.</p></div><span className="admin-lock"><ShieldCheck /> Admin only</span></header>
-      <div className="admin-tabs" role="tablist">{tabs.map((item) => { const Icon = item.icon; return <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setTab(item.id)}><Icon size={17} /> {item.label}</button> })}</div>
+      <div className="admin-tabs" role="tablist">{[...tabs, ...(isSuperAdmin ? [{ id: 'logs' as const, label: 'Logs', icon: FileClock }, { id: 'protected' as const, label: 'Protected tools', icon: Database }] : [])].map((item) => { const Icon = item.icon; return <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setTab(item.id)}><Icon size={17} /> {item.label}</button> })}</div>
       {message ? <div className="toast-message" role="status">{message}<button onClick={() => setMessage(null)}>×</button></div> : null}{error ? <p className="form-error" role="alert">{error}</p> : null}
 
       {tab === 'users' ? <section className="admin-section">
         <div className="admin-toolbar"><input placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /><select value={grade} onChange={(event) => setGrade(event.target.value ? Number(event.target.value) : '')}><option value="">All grades</option>{[9, 10, 11, 12].map((value) => <option key={value}>{value}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
-        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={String(user.user_id)}><span className="admin-user-cell"><ProfileAvatar userId={String(user.user_id)} fullName={String(user.full_name)} /><span><strong>{String(user.full_name)}</strong><small>{String(user.user_id)}</small></span></span><span>{String(user.grade)}</span><span>{privacyLabels[String(user.privacy_setting) as PrivacySetting] ?? String(user.privacy_setting)}</span><span className={`status-${String(user.status)}`}>{String(user.status)}</span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', String(user.full_name)); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
+        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={String(user.user_id)}><span className="admin-user-cell"><ProfileAvatar userId={String(user.user_id)} fullName={String(user.full_name)} revision={avatarRevision} /><span><strong>{String(user.full_name)}</strong><small>{String(user.user_id)}</small></span></span><span>{String(user.grade)}</span><span>{privacyLabels[String(user.privacy_setting) as PrivacySetting] ?? String(user.privacy_setting)}</span><span className={`status-${String(user.status)}`}>{String(user.status)}</span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', String(user.full_name)); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button onClick={() => void removeUserPicture(user)}>Remove picture</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
       </section> : null}
 
       {tab === 'reports' ? <section className="admin-section"><h2>Reports</h2><div className="admin-table admin-report-table"><div className="admin-table-head"><span>Category</span><span>Reported account or class</span><span>Reporter</span><span>Status / submitted</span><span>Actions</span></div>{reports.map((report) => <div className="admin-table-row" key={report.report_id}><span><strong>{reportReasonLabels[report.reason_category]}</strong></span><span><strong>{report.reported_user_name ?? report.reported_course_name ?? 'General issue'}</strong><small>{report.reported_user_id ? 'User' : report.reported_class_id || report.reported_course_name ? 'Class' : 'No target'}</small></span><span>{report.reporter_name ?? 'Deleted user'}</span><span><strong>{report.status.replace('_', ' ')}</strong><small>{new Date(report.created_at).toLocaleString()}</small></span><span className="row-actions"><button onClick={() => setSelectedReportId((current) => current === report.report_id ? null : report.report_id)}>{selectedReportId === report.report_id ? 'Hide details' : 'View details'}</button>{report.status === 'resolved' || report.status === 'dismissed' ? null : <button onClick={() => { const notes = window.prompt('Resolution notes'); if (notes) void adminAction('admin_resolve_report', { p_report_id: report.report_id, p_status: 'resolved', p_resolution_notes: notes }, 'Report resolved.') }}>Resolve</button>}</span></div>)}</div>{selectedReport ? <ReportDetails report={selectedReport} onClose={() => setSelectedReportId(null)} /> : null}</section> : null}
@@ -253,8 +264,8 @@ export function AdminPage() {
 
       {tab === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
 
-      {tab === 'history' ? <AdminLogTable title="Schedule history" rows={historyRows} primary="action" target="student_id" /> : null}
-      {tab === 'audit' ? <AdminLogTable title="Immutable audit log" rows={auditRows} primary="action_type" target="target_id" /> : null}
+      {tab === 'logs' && isSuperAdmin ? <EventLogsPanel /> : null}
+      {tab === 'protected' && isSuperAdmin ? <ProtectedToolsPanel /> : null}
       {tab === 'admins' ? <section className="admin-section narrow-admin"><h2>Admin management</h2><p>Role changes require an existing administrator. The last administrator cannot remove their own access.</p><label>User ID<input value={adminUserId} onChange={(event) => setAdminUserId(event.target.value)} /></label><div className="form-actions"><button className="button button-primary" disabled={!adminUserId} onClick={() => void adminAction('admin_promote_user', { p_user_id: adminUserId, p_reason: 'Promoted from admin console' }, 'Administrator access granted.')}>Promote to administrator</button><button className="button button-secondary danger-text" disabled={!adminUserId} onClick={() => void adminAction('admin_remove_user_role', { p_user_id: adminUserId, p_reason: 'Removed from admin console' }, 'Administrator access removed.')}>Remove administrator</button></div></section> : null}
 
       {editingClass ? <AdminClassEditDialog key={editingClass.id} course={editingClass} courseNames={courseNames} saving={classSaving} onClose={() => setEditingClass(null)} onSave={saveClass} /> : null}
@@ -597,6 +608,170 @@ function AdminClassEditDialog({
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<label>Academic term<select value={term} onChange={(event) => setTerm(event.target.value as AcademicTerm)}><option value="full_year">Full Year</option><option value="semester_1">Semester 1</option><option value="semester_2">Semester 2</option></select></label><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} meetingDays={meetingDays} meetingPeriod={meetingPeriod} onDoublePeriodChange={changeDoublePeriod} onMeetingDaysChange={changeMeetingDays} onMeetingPeriodChange={changeMeetingPeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
 }
 
-function AdminLogTable({ title, rows, primary, target }: { title: string; rows: Array<Record<string, unknown>>; primary: string; target: string }) {
-  return <section className="admin-section"><h2>{title}</h2><div className="admin-table"><div className="admin-table-head"><span>Action</span><span>Target</span><span>Actor</span><span>Timestamp</span><span>Details</span></div>{rows.map((row) => <div className="admin-table-row" key={String(row.id)}><span>{String(row[primary])}</span><span>{String(row[target] ?? '—')}</span><span>{String(row.administrator_id ?? row.changed_by ?? 'system')}</span><span>{new Date(String(row.created_at)).toLocaleString()}</span><span><code>{JSON.stringify(row.after_values ?? row.new_value ?? {})}</code></span></div>)}</div></section>
+const emptyActivitySummary: ActivitySummary = {
+  total_users: 0,
+  daily_active_users: 0,
+  weekly_active_users: 0,
+  schedule_imports: 0,
+  schedules_shared: 0,
+  access_requests: 0,
+}
+
+function EventLogsPanel() {
+  const [logs, setLogs] = useState<EventLogRecord[]>([])
+  const [summary, setSummary] = useState<ActivitySummary>(emptyActivitySummary)
+  const [category, setCategory] = useState<EventLogCategory | ''>('')
+  const [eventFilter, setEventFilter] = useState('')
+  const [userFilter, setUserFilter] = useState('')
+  const [targetFilter, setTargetFilter] = useState('')
+  const [resultFilter, setResultFilter] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [nextLogs, nextSummary] = await Promise.all([
+        superAdminListLogs({
+          category,
+          event: eventFilter,
+          user: userFilter,
+          target: targetFilter,
+          result: resultFilter,
+          createdFrom: createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined,
+          createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
+          limit: 150,
+        }),
+        superAdminGetActivitySummary(),
+      ])
+      setLogs(nextLogs)
+      setSummary(nextSummary)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The logs could not be loaded.')
+    } finally {
+      setLoading(false)
+    }
+  }, [category, createdFrom, createdTo, eventFilter, resultFilter, targetFilter, userFilter])
+
+  useEffect(() => { void load() }, [load])
+
+  async function deleteLog(log: EventLogRecord) {
+    const phrase = `DELETE LOG ${log.id.replaceAll('-', '').slice(0, 8).toUpperCase()}`
+    if (window.prompt(`This permanently deletes one log. Type ${phrase} to continue.`) !== phrase) return
+    setError(null)
+    try {
+      await superAdminDeleteLog(log.id)
+      setMessage('The selected log was permanently deleted.')
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The log could not be deleted.')
+    }
+  }
+
+  async function deleteFilteredLogs() {
+    if (!window.confirm('This permanently deletes every record matching the current filters, including records beyond the 150 displayed here. This cannot be undone.')) return
+    if (window.prompt('Type DELETE FILTERED LOGS PERMANENTLY to continue.') !== 'DELETE FILTERED LOGS PERMANENTLY') return
+    setError(null)
+    try {
+      const removed = await superAdminDeleteLogs({
+        category,
+        event: eventFilter,
+        user: userFilter,
+        target: targetFilter,
+        result: resultFilter,
+        createdFrom: createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined,
+        createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
+      })
+      setMessage(`${removed} log${removed === 1 ? '' : 's'} permanently deleted.`)
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The filtered logs could not be deleted.')
+    }
+  }
+
+  return <section className="admin-section event-logs-panel">
+    <div className="section-heading"><div><h2>Security and audit logs</h2><p>Permanent records contain identifiers and useful change details, never image contents, share tokens, signed URLs, full prompts, or full extracted schedules.</p></div><button className="button button-secondary" type="button" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</button></div>
+    <div className="activity-summary-grid">
+      {[['Users', summary.total_users], ['Active today', summary.daily_active_users], ['Active this week', summary.weekly_active_users], ['Imports', summary.schedule_imports], ['Shares pressed', summary.schedules_shared], ['Access requests', summary.access_requests]].map(([label, value]) => <article key={String(label)}><span>{String(label)}</span><strong>{Number(value).toLocaleString()}</strong></article>)}
+    </div>
+    <form className="event-log-filters" onSubmit={(event) => { event.preventDefault(); void load() }}>
+      <label>Log<select value={category} onChange={(event) => setCategory(event.target.value as EventLogCategory | '')}><option value="">All logs</option><option value="security">Security</option><option value="audit">Audit</option><option value="import">Import/debug</option><option value="admin">Administrative</option></select></label>
+      <label>Event<input placeholder="e.g. login_failed" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} /></label>
+      <label>User name or ID<input placeholder="Name or exact UUID" value={userFilter} onChange={(event) => setUserFilter(event.target.value)} /></label>
+      <label>Target<input placeholder="Type or ID" value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} /></label>
+      <label>Result<input placeholder="succeeded, failed…" value={resultFilter} onChange={(event) => setResultFilter(event.target.value)} /></label>
+      <label>From<input type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} /></label>
+      <label>Through<input type="date" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} /></label>
+      <button className="button button-primary" disabled={loading}>{loading ? 'Loading…' : 'Apply filters'}</button>
+    </form>
+    {message ? <p className="form-success" role="status">{message}</p> : null}
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <div className="event-log-actions"><span>{logs.length} most recent matching records</span><button className="button button-secondary danger-text" type="button" disabled={loading || logs.length === 0} onClick={() => void deleteFilteredLogs()}><Trash2 size={16} /> Permanently delete filtered logs</button></div>
+    <div className="admin-table event-log-table"><div className="admin-table-head"><span>Event</span><span>User</span><span>Subject / target</span><span>Timestamp</span><span>Details</span></div>{logs.map((log) => <div className="admin-table-row" key={log.id}><span><strong>{log.event_type}</strong><small>{log.log_category} · {log.result ?? 'no result'}</small></span><span><strong>{log.actor_name ?? 'System / signed-out'}</strong><small>{log.actor_user_id ?? '—'}</small></span><span><strong>{log.subject_name ?? log.target_type ?? '—'}</strong><small>{log.subject_user_id ?? log.target_id ?? '—'}</small></span><span>{new Date(log.created_at).toLocaleString()}</span><span className="event-log-details"><details><summary>Metadata</summary><pre>{JSON.stringify(log.metadata, null, 2)}</pre></details><button className="danger-text" type="button" onClick={() => void deleteLog(log)}>Delete</button></span></div>)}</div>
+  </section>
+}
+
+const resetPhrase = 'RESET SCHEDULESHARE DELETE ALL ACCOUNTS AND CLASSES'
+
+function ProtectedToolsPanel() {
+  const [preview, setPreview] = useState<SiteResetPreview | null>(null)
+  const [email, setEmail] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadPreview = useCallback(async () => {
+    try { setPreview(await superAdminGetSiteResetPreview()) }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'The reset preview could not be loaded.') }
+  }, [])
+
+  useEffect(() => { void loadPreview() }, [loadPreview])
+
+  async function addAccess(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await superAdminAdd(email)
+      setEmail('')
+      setMessage('Protected access was granted to the existing account with that exact email.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Protected access could not be granted.')
+    } finally { setBusy(false) }
+  }
+
+  async function resetSite() {
+    if (!acknowledged || confirmation !== resetPhrase) return
+    if (!window.confirm('Final warning: every account, profile picture, schedule, class, course, access request, and report will be permanently removed. Continue?')) return
+    setBusy(true)
+    setError(null)
+    try {
+      await superAdminResetSite(confirmation)
+      window.location.assign(import.meta.env.BASE_URL)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The website reset did not complete.')
+      setBusy(false)
+    }
+  }
+
+  return <section className="admin-section protected-tools-panel">
+    <div><h2>Protected access</h2><p>Grant access only to a trusted existing administrator. This page does not display or expose who already has access.</p></div>
+    <form className="protected-access-form" onSubmit={(event) => void addAccess(event)}><label>Exact account email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><button className="button button-primary" disabled={busy || !email}>Grant protected access</button></form>
+    {message ? <p className="form-success" role="status">{message}</p> : null}
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <section className="site-reset-card">
+      <div><h3>Reset for a new school year</h3><p>This deletes all accounts, profile pictures, profiles, schedules, classes, course names, access requests, reports, and temporary importer data. Configuration and the protected audit record remain.</p></div>
+      {preview ? <dl>{Object.entries(preview).map(([label, value]) => <div key={label}><dt>{label.replaceAll('_', ' ')}</dt><dd>{value.toLocaleString()}</dd></div>)}</dl> : <p className="muted">Loading exact deletion counts…</p>}
+      <label className="checkbox-row"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>I understand that this removes every account, including mine.</strong><small>Recovery requires students and administrators to create new accounts.</small></span></label>
+      <label className="reset-confirmation-field"><span>Type <strong>{resetPhrase}</strong></span><input autoComplete="off" spellCheck={false} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+      <button className="button button-danger" type="button" disabled={busy || !acknowledged || confirmation !== resetPhrase} onClick={() => void resetSite()}>{busy ? 'Resetting…' : 'Permanently reset ScheduleShare'}</button>
+    </section>
+  </section>
 }

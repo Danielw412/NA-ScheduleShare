@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -250,12 +255,59 @@ export type Database = {
           },
         ]
       }
+      event_logs: {
+        Row: {
+          actor_name: string | null
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          log_category: string
+          metadata: Json
+          result: string | null
+          subject_name: string | null
+          subject_user_id: string | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          log_category: string
+          metadata?: Json
+          result?: string | null
+          subject_name?: string | null
+          subject_user_id?: string | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          actor_name?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          log_category?: string
+          metadata?: Json
+          result?: string | null
+          subject_name?: string | null
+          subject_user_id?: string | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
           full_name: string
           grade: number | null
           id: string
+          last_active_at: string | null
+          last_login_at: string | null
           normalized_name: string
           onboarding_completed: boolean
           privacy_setting: Database["public"]["Enums"]["privacy_setting"]
@@ -267,6 +319,8 @@ export type Database = {
           full_name?: string
           grade?: number | null
           id: string
+          last_active_at?: string | null
+          last_login_at?: string | null
           normalized_name?: string
           onboarding_completed?: boolean
           privacy_setting?: Database["public"]["Enums"]["privacy_setting"]
@@ -278,6 +332,8 @@ export type Database = {
           full_name?: string
           grade?: number | null
           id?: string
+          last_active_at?: string | null
+          last_login_at?: string | null
           normalized_name?: string
           onboarding_completed?: boolean
           privacy_setting?: Database["public"]["Enums"]["privacy_setting"]
@@ -683,6 +739,10 @@ export type Database = {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
       }
+      admin_record_profile_picture_removed: {
+        Args: { p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
       admin_remove_user_role: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
@@ -773,6 +833,7 @@ export type Database = {
         Args: { p_owner_id: string }
         Returns: undefined
       }
+      clear_my_schedule: { Args: never; Returns: number }
       create_class_and_enroll: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -884,6 +945,14 @@ export type Database = {
           teacher_last_name: string
         }[]
       }
+      guest_search_course_names: {
+        Args: { p_limit?: number; p_query?: string }
+        Returns: {
+          course_name: string
+          course_name_id: string
+          score: number
+        }[]
+      }
       guest_search_students: {
         Args: { p_first_name: string; p_limit?: number }
         Returns: {
@@ -893,8 +962,23 @@ export type Database = {
         }[]
       }
       is_current_user_admin: { Args: never; Returns: boolean }
+      is_current_user_super_admin: { Args: never; Returns: boolean }
       mark_schedule_access_notifications_read: {
         Args: never
+        Returns: undefined
+      }
+      mark_user_active: { Args: never; Returns: undefined }
+      record_auth_attempt: {
+        Args: {
+          p_email: string
+          p_error_category?: string
+          p_event_type: string
+          p_result?: string
+        }
+        Returns: undefined
+      }
+      record_authenticated_event: {
+        Args: { p_event_type: string; p_metadata?: Json; p_result?: string }
         Returns: undefined
       }
       record_schedule_import_diagnostic: {
@@ -913,11 +997,20 @@ export type Database = {
         }
         Returns: string
       }
+      record_schedule_import_event: {
+        Args: {
+          p_event_type: string
+          p_import_id: string
+          p_metadata?: Json
+          p_result?: string
+        }
+        Returns: undefined
+      }
+      record_share_button_pressed: { Args: never; Returns: undefined }
       remove_enrollment: {
         Args: { p_enrollment_id: string }
         Returns: undefined
       }
-      clear_my_schedule: { Args: never; Returns: number }
       remove_schedule_access: {
         Args: { p_viewer_id: string }
         Returns: undefined
@@ -943,6 +1036,10 @@ export type Database = {
         Args: { p_allow: boolean; p_request_id: string }
         Returns: undefined
       }
+      schedule_import_guest_match_count: {
+        Args: { p_class_ids: string[] }
+        Returns: number
+      }
       schedule_import_prepare: {
         Args: {
           p_developer_mode?: boolean
@@ -956,6 +1053,14 @@ export type Database = {
           output_token_limit: number
           thinking_level: string
           user_id: string
+        }[]
+      }
+      schedule_import_prepare_guest: {
+        Args: { p_guest_key: string }
+        Returns: {
+          model_id: string
+          output_token_limit: number
+          thinking_level: string
         }[]
       }
       search_classes: {
@@ -1025,6 +1130,87 @@ export type Database = {
           privacy_setting: Database["public"]["Enums"]["privacy_setting"]
           shared_class_count: number
           student_id: string
+        }[]
+      }
+      service_record_account_event: {
+        Args: {
+          p_event_type: string
+          p_metadata?: Json
+          p_result?: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      service_reset_site_data: {
+        Args: { p_actor_id: string; p_confirmation: string }
+        Returns: Json
+      }
+      super_admin_add: { Args: { p_email: string }; Returns: string }
+      super_admin_delete_log: {
+        Args: { p_confirmation: string; p_log_id: string }
+        Returns: undefined
+      }
+      super_admin_delete_logs: {
+        Args: {
+          p_category?: string
+          p_confirmation?: string
+          p_created_from?: string
+          p_created_to?: string
+          p_event?: string
+          p_result?: string
+          p_target?: string
+          p_user?: string
+        }
+        Returns: number
+      }
+      super_admin_get_activity_summary: {
+        Args: never
+        Returns: {
+          access_requests: number
+          daily_active_users: number
+          schedule_imports: number
+          schedules_shared: number
+          total_users: number
+          weekly_active_users: number
+        }[]
+      }
+      super_admin_get_site_reset_preview: {
+        Args: never
+        Returns: {
+          accounts: number
+          classes: number
+          course_names: number
+          enrollments: number
+          profile_pictures: number
+          profiles: number
+          reports: number
+        }[]
+      }
+      super_admin_list_logs: {
+        Args: {
+          p_category?: string
+          p_created_from?: string
+          p_created_to?: string
+          p_event?: string
+          p_limit?: number
+          p_offset?: number
+          p_result?: string
+          p_target?: string
+          p_user?: string
+        }
+        Returns: {
+          actor_name: string
+          actor_user_id: string
+          created_at: string
+          event_type: string
+          id: string
+          log_category: string
+          metadata: Json
+          result: string
+          subject_name: string
+          subject_user_id: string
+          target_id: string
+          target_type: string
         }[]
       }
       update_enrollment_term: {

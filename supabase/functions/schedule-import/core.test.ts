@@ -63,6 +63,7 @@ function request(files: File[], options: {
 } = {}): Request {
   const body = new FormData()
   files.forEach((file) => body.append('images', file))
+  body.set('import_id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   if (options.developerMode !== undefined) body.set('developer_mode', String(options.developerMode))
   if (options.model) body.set('model', options.model)
   if (options.thinkingLevel) body.set('thinking_level', options.thinkingLevel)

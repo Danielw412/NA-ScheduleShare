@@ -4,6 +4,7 @@ import { demoProfile } from '../../lib/demo-data'
 import type { AccountState, Grade, PrivacySetting, Profile } from '../../lib/domain'
 import { authRedirectUrl } from '../../lib/authRedirect'
 import { demoModeEnabled, isSupabaseConfigured, supabase } from '../../lib/supabase/client'
+import { markUserActive, recordAuthenticatedEvent, recordAuthAttempt } from '../../lib/supabase/data'
 
 interface CurrentUser {
   id: string
@@ -26,12 +27,15 @@ interface AuthContextValue {
   profile: Profile | null
   accountState: AccountState | null
   loading: boolean
+  passwordRecovery: boolean
   isAdmin: boolean
   isDemo: boolean
   configurationMissing: boolean
   signInWithGoogle: () => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signUpWithPassword: (email: string, password: string) => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  updateRecoveredPassword: (password: string) => Promise<void>
   signOut: () => Promise<void>
   completeOnboarding: (input: OnboardingInput) => Promise<void>
   updateProfile: (input: ProfileUpdateInput) => Promise<void>
@@ -66,12 +70,25 @@ function toProfile(row: Record<string, unknown>): Profile {
   }
 }
 
+async function recordSignInOutcome(provider: 'google' | 'password'): Promise<void> {
+  if (!supabase) return
+  const { data } = await supabase.rpc('get_my_account_state')
+  const row = Array.isArray(data) ? data[0] : data
+  const suspended = Boolean(row && typeof row === 'object' && (row as Record<string, unknown>).suspended)
+  await recordAuthenticatedEvent(
+    suspended ? 'login_blocked_suspended' : 'login_succeeded',
+    suspended ? 'blocked' : 'succeeded',
+    { provider },
+  )
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [accountState, setAccountState] = useState<AccountState | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
   const isDemo = !isSupabaseConfigured && demoModeEnabled
 
   const hydrateUser = useCallback(async (nextUser: CurrentUser | null) => {
@@ -133,8 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!active) return
       void hydrateUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       if (!active) return
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
+      if (event === 'SIGNED_IN' && window.sessionStorage.getItem('scheduleshare:oauth-sign-in') === 'pending') {
+        window.sessionStorage.removeItem('scheduleshare:oauth-sign-in')
+        void recordSignInOutcome('google').catch(() => undefined)
+      }
       void hydrateUser(session?.user ? { id: session.user.id, email: session.user.email ?? null } : null)
     })
     return () => {
@@ -143,17 +165,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [hydrateUser, isDemo])
 
+  useEffect(() => {
+    if (!user || accountState?.suspended || accountState?.deleted || isDemo) return
+    void markUserActive().catch(() => undefined)
+    const timer = window.setInterval(() => void markUserActive().catch(() => undefined), 10 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [accountState?.deleted, accountState?.suspended, isDemo, user])
+
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) throw new Error('Supabase is not configured.')
     const redirectTo = authRedirectUrl()
+    window.sessionStorage.setItem('scheduleshare:oauth-sign-in', 'pending')
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })
-    if (error) throw error
+    if (error) {
+      window.sessionStorage.removeItem('scheduleshare:oauth-sign-in')
+      throw error
+    }
   }, [])
 
   const signInWithPassword = useCallback(async (email: string, password: string) => {
     if (!supabase) throw new Error('Supabase is not configured.')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    if (error) {
+      const rateLimited = error.status === 429 || error.message.toLowerCase().includes('rate limit')
+      void recordAuthAttempt(rateLimited ? 'login_blocked_rate_limit' : 'login_failed', email, 'failed', rateLimited ? 'rate_limit' : 'invalid_credentials').catch(() => undefined)
+      throw error
+    }
+    void recordSignInOutcome('password').catch(() => undefined)
   }, [])
 
   const signUpWithPassword = useCallback(async (email: string, password: string) => {
@@ -166,9 +204,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
   }, [])
 
+  const requestPasswordReset = useCallback(async (email: string) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: authRedirectUrl() })
+    if (error) {
+      void recordAuthAttempt('password_reset_failed', email, 'failed', error.status === 429 ? 'rate_limit' : 'provider_error').catch(() => undefined)
+      throw error
+    }
+    void recordAuthAttempt('password_reset_requested', email, 'requested').catch(() => undefined)
+  }, [])
+
+  const updateRecoveredPassword = useCallback(async (password: string) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) {
+      void recordAuthenticatedEvent('password_reset_failed', 'failed', { error_category: 'password_update_rejected' }).catch(() => undefined)
+      throw error
+    }
+    void recordAuthenticatedEvent('password_reset_completed', 'succeeded').catch(() => undefined)
+    setPasswordRecovery(false)
+  }, [])
+
   const signOut = useCallback(async () => {
     if (isDemo) return
     if (!supabase) return
+    void recordAuthenticatedEvent('logout_all_devices', 'succeeded').catch(() => undefined)
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }, [isDemo])
@@ -232,18 +292,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     accountState,
     loading,
+    passwordRecovery,
     isAdmin,
     isDemo,
     configurationMissing: !isSupabaseConfigured && !isDemo,
     signInWithGoogle,
     signInWithPassword,
     signUpWithPassword,
+    requestPasswordReset,
+    updateRecoveredPassword,
     signOut,
     completeOnboarding,
     updateProfile,
     markStudentsVisited,
     refreshProfile,
-  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, markStudentsVisited, profile, refreshProfile, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, user])
+  }), [accountState, completeOnboarding, isAdmin, isDemo, loading, markStudentsVisited, passwordRecovery, profile, refreshProfile, requestPasswordReset, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword, updateProfile, updateRecoveredPassword, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
