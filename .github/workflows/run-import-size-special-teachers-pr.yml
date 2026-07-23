@@ -15,6 +15,7 @@ env:
 
 jobs:
   apply-and-test:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,13 +34,12 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import textwrap
 
           source = Path('.github/workflows/apply-import-size-special-teachers-once.yml').read_text()
           marker = "python - <<'PY'\n"
           block = source.split(marker, 1)[1].split("\n          PY", 1)[0]
-          script = textwrap.dedent(block)
-          Path('/tmp/apply_changes.py').write_text(script)
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+          Path('/tmp/apply_changes.py').write_text(script + '\n')
           PY
           python /tmp/apply_changes.py
       - run: pnpm install --frozen-lockfile
@@ -59,6 +59,7 @@ jobs:
         run: |
           rm .github/workflows/apply-import-size-special-teachers-once.yml
           rm .github/workflows/run-import-size-special-teachers-pr.yml
+          rm -f .github/workflows/diagnose-import-size-special-teachers.yml patch-error.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
