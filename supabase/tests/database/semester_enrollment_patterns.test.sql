@@ -144,14 +144,14 @@ select throws_ok(
       jsonb_build_object(
         'existing_class_id', '96000000-0000-4000-8000-000000000031',
         'course_name_id', (select course_name_id from public.classes where id = '96000000-0000-4000-8000-000000000031'),
-        'teacher_last_name', 'Cafe',
+        'teacher_last_name', 'N/A',
         'academic_term', 'semester_1',
         'meeting_slots', jsonb_build_array(jsonb_build_object('day_type', 'A', 'period_number', 7), jsonb_build_object('day_type', 'B', 'period_number', 7))
       ),
       jsonb_build_object(
         'existing_class_id', '96000000-0000-4000-8000-000000000032',
         'course_name_id', (select course_name_id from public.classes where id = '96000000-0000-4000-8000-000000000032'),
-        'teacher_last_name', 'Cafe',
+        'teacher_last_name', 'N/A',
         'academic_term', 'semester_1',
         'meeting_slots', jsonb_build_array(jsonb_build_object('day_type', 'A', 'period_number', 8), jsonb_build_object('day_type', 'B', 'period_number', 8))
       )
@@ -168,14 +168,14 @@ select lives_ok(
       jsonb_build_object(
         'existing_class_id', '96000000-0000-4000-8000-000000000031',
         'course_name_id', (select course_name_id from public.classes where id = '96000000-0000-4000-8000-000000000031'),
-        'teacher_last_name', 'Cafe',
+        'teacher_last_name', 'N/A',
         'academic_term', 'semester_1',
         'meeting_slots', jsonb_build_array(jsonb_build_object('day_type', 'A', 'period_number', 7), jsonb_build_object('day_type', 'B', 'period_number', 7))
       ),
       jsonb_build_object(
         'existing_class_id', '96000000-0000-4000-8000-000000000031',
         'course_name_id', (select course_name_id from public.classes where id = '96000000-0000-4000-8000-000000000031'),
-        'teacher_last_name', 'Cafe',
+        'teacher_last_name', 'N/A',
         'academic_term', 'semester_2',
         'meeting_slots', jsonb_build_array(jsonb_build_object('day_type', 'A', 'period_number', 7), jsonb_build_object('day_type', 'B', 'period_number', 7))
       )

@@ -93,7 +93,7 @@ For UI-only development without Supabase, set `VITE_ENABLE_DEMO_MODE=true` and l
 
 ## Screenshot importer
 
-The importer accepts up to three PNG, JPEG, or WebP screenshots, no larger than 5 MB each, through file selection, drag-and-drop, or clipboard paste. Extracted classes are shown in an editable review screen before anything is saved.
+The importer accepts up to three PNG, JPEG, or WebP screenshots, no larger than 10 MB each, through file selection, drag-and-drop, or clipboard paste. Extracted classes are shown in an editable review screen before anything is saved.
 
 The browser invokes the `schedule-import` Supabase Edge Function, which sends the images to Gemini and resolves the result against the approved course catalogue. It never creates course names. When the first reading is incomplete or conflicts, the function continues the same Gemini conversation once with the first result and asks it to correct the questionable rows. A clean first reading makes only one Gemini call. Images are processed in request memory and are not stored by ScheduleShare.
 

@@ -31,6 +31,7 @@ const catalog: CourseNameSearchResult[] = [
   { id: 'course-writing', course_name: 'Creative Writing', course_term_policy: 'semester', score: 99 },
   { id: 'course-gym', course_name: 'Gym', course_term_policy: 'flexible_attendance', score: 98 },
   { id: 'course-lunch', course_name: 'Lunch - NASH', course_term_policy: 'lunch', score: 97 },
+  { id: 'course-study-hall', course_name: 'Study Hall - NASH', course_term_policy: 'flexible_attendance', score: 96 },
 ]
 
 function renderDialog(replacing?: ScheduleEnrollment) {
@@ -103,11 +104,13 @@ describe('AddClassDialog semester formats', () => {
     await user.click(screen.getByRole('button', { name: 'Lunch - NASH' }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Academic term' }), 'semester_2')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Period' }), '8')
-    await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Cafe')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toHaveValue('N/A')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Create and add class' }))
 
     await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
       courseNameId: 'course-lunch',
+      teacherLastName: 'N/A',
       term: 'semester_2',
       meetingSlots: [{ day_type: 'A', period_number: 8 }, { day_type: 'B', period_number: 8 }],
     })))
@@ -121,13 +124,32 @@ describe('AddClassDialog semester formats', () => {
     expect(screen.getByText('Full Year adds matching Semester 1 and Semester 2 lunch entries at this period.')).toBeInTheDocument()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Academic term' }), 'full_year')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Period' }), '8')
-    await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Cafe')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toHaveValue('N/A')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Create and add class' }))
 
     await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
       courseNameId: 'course-lunch',
+      teacherLastName: 'N/A',
       term: 'full_year',
       meetingSlots: [{ day_type: 'A', period_number: 8 }, { day_type: 'B', period_number: 8 }],
+    })))
+  })
+
+
+  it('automatically uses N/A for Study Hall teachers', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Study Hall - NASH' }))
+
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toHaveValue('N/A')
+    expect(screen.getByRole('textbox', { name: /^Teacher Last Name/ })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Create and add class' }))
+
+    await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
+      courseNameId: 'course-study-hall',
+      teacherLastName: 'N/A',
     })))
   })
 

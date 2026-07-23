@@ -581,7 +581,7 @@ describe('authentication, CORS, files, and rate limiting', () => {
     expect(unsupported.status).toBe(415)
     const fakePng = await handleScheduleImportRequest(request([new File(['not png'], 'bad.png', { type: 'image/png' })]), dependencies())
     expect(fakePng.status).toBe(415)
-    const large = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })
+    const large = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })
     const oversized = await handleScheduleImportRequest(request([large]), dependencies())
     expect(oversized.status).toBe(413)
   })

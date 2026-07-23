@@ -84,6 +84,16 @@ function semesterEveryDaySlots(period: number): MeetingSlot[] {
   return [{ day_type: 'A', period_number: period }, { day_type: 'B', period_number: period }]
 }
 
+function teacherNotApplicable(courseName?: string): boolean {
+  const normalized = courseName?.trim().toLocaleLowerCase().replace(/\s*-\s*/g, ' ').replace(/\s+/g, ' ')
+  return normalized === 'lunch'
+    || normalized === 'lunch nai'
+    || normalized === 'lunch nash'
+    || normalized === 'study hall'
+    || normalized === 'study hall nai'
+    || normalized === 'study hall nash'
+}
+
 function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meetingSlots: MeetingSlot[], isDoublePeriod: boolean): string | null {
   const slotError = validateMeetingSlots(meetingSlots, isDoublePeriod)
   if (slotError) return slotError
@@ -179,10 +189,13 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const newCourseName = courseQuery.trim().replace(/\s+/g, ' ')
   const creatingPolicy = policyOf(selectedCourseName)
   const activePolicy = mode === 'search' ? selectedPolicy : creatingPolicy
+  const activeCourseName = mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName
+  const teacherIsNotApplicable = teacherNotApplicable(activeCourseName)
+  const effectiveTeacherLastName = teacherIsNotApplicable ? 'N/A' : teacherLastName
   const meetingSlotError = scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
-  const teacherError = teacherLastName ? teacherLastNameError(teacherLastName) : null
+  const teacherError = teacherIsNotApplicable || !teacherLastName ? null : teacherLastNameError(teacherLastName)
   const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
-    && !teacherLastNameError(teacherLastName)
+    && (teacherIsNotApplicable || !teacherLastNameError(teacherLastName))
     && !meetingSlotError
 
   function selectClass(result: ClassSearchResult) {
@@ -206,6 +219,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
     const policy = policyOf(courseName)
     setSelectedCourseName(courseName)
     setCourseQuery(courseName.course_name)
+    setTeacherLastName(teacherNotApplicable(courseName.course_name) ? 'N/A' : '')
     setConfirmedNoCourseMatch(false)
     setTerm(termForPolicy(policy, semester))
     setIsDoublePeriod(false)
@@ -256,7 +270,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
         course_name_id: selectedCourseName?.id ?? crypto.randomUUID(),
         course_name: selectedCourseName?.course_name ?? newCourseName,
         course_term_policy: creatingPolicy,
-        teacher_last_name: normalizeTeacherLastName(teacherLastName),
+        teacher_last_name: normalizeTeacherLastName(effectiveTeacherLastName),
         default_academic_term: term,
         is_double_period: isDoublePeriod,
         meeting_slots: meetingSlots,
@@ -264,7 +278,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
       const createInput = {
         courseNameId: selectedCourseName?.id,
         newCourseName: selectedCourseName ? undefined : newCourseName,
-        teacherLastName,
+        teacherLastName: effectiveTeacherLastName,
         term,
         isDoublePeriod,
         meetingSlots,
@@ -325,6 +339,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
                     setCourseQuery(event.target.value)
                     setSelectedCourseName(null)
                     setConfirmedNoCourseMatch(false)
+                    setTeacherLastName(teacherNotApplicable(event.target.value) ? 'N/A' : '')
                     setTerm('full_year')
                     setIsDoublePeriod(false)
                     setMeetingSlots(defaultMeetingSlots(dayType, period))
@@ -341,8 +356,8 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
               ) : null}
             </div>
             <label>Teacher Last Name
-              <input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />
-              <small id="teacher-last-name-help" className="field-help">Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.</small>
+              <input required={!teacherIsNotApplicable} disabled={teacherIsNotApplicable} maxLength={120} value={effectiveTeacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} aria-describedby="teacher-last-name-help" />
+              <small id="teacher-last-name-help" className="field-help">{teacherIsNotApplicable ? 'Lunch and Study Hall always use N/A for the teacher.' : 'Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.'}</small>
             </label>
             {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
             <NewCourseFormatControls policy={creatingPolicy} term={term} meetingSlots={meetingSlots} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />

@@ -1,5 +1,5 @@
 export const DEFAULT_GEMINI_TIMEOUT_MS = 45_000
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const MAX_IMAGES = 3
 
 const PRODUCTION_ORIGIN = 'https://schedule.naclubs.net'
@@ -593,7 +593,7 @@ async function validateAndEncodeImage(file: File, index: number): Promise<Encode
   }
   if (file.size <= 0) throw new HttpError(400, 'empty_file', 'One of the screenshots is empty.')
   if (file.size > MAX_IMAGE_BYTES) {
-    throw new HttpError(413, 'image_too_large', 'Each screenshot must be 5 MB or smaller.')
+    throw new HttpError(413, 'image_too_large', 'Each screenshot must be 10 MB or smaller.')
   }
   const bytes = new Uint8Array(await file.arrayBuffer())
   if (!matchesImageSignature(bytes, mimeType)) {
