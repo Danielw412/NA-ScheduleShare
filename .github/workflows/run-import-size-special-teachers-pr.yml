@@ -96,11 +96,11 @@ jobs:
       - name: Commit tested changes
         shell: bash
         run: |
-          rm .github/workflows/apply-import-size-special-teachers-once.yml
-          rm .github/workflows/run-import-size-special-teachers-pr.yml
+          rm -f .github/workflows/apply-import-size-special-teachers-once.yml
+          rm -f .github/workflows/run-import-size-special-teachers-pr.yml
           rm -f .github/workflows/diagnose-import-size-special-teachers.yml .github/workflows/diagnose-import-size-special-teachers-v2.yml .github/workflows/diagnose-function-tests.yml .github/workflows/diagnose-database-tests.yml patch-error.txt patch-error-v2.txt function-test-error.txt database-test-error.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Increase import size and normalize special course teachers"
-          git push origin HEAD:fix/import-size-special-teachers
+          git push --force origin HEAD:fix/import-size-special-teachers
