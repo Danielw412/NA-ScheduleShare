@@ -39,11 +39,8 @@ jobs:
           marker = "python - <<'PY'\n"
           block = source.split(marker, 1)[1].split("\n          PY", 1)[0]
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
-          strict = """if text.count(old) != 1:
-    raise SystemExit('Could not update teacher input')
-text = text.replace(old, new)"""
-          tolerant = """if text.count(old) == 1:
-    text = text.replace(old, new)"""
+          strict = "if text.count(old) != 1:\n    raise SystemExit('Could not update teacher input')\ntext = text.replace(old, new)"
+          tolerant = "if text.count(old) == 1:\n    text = text.replace(old, new)"
           if strict not in script:
               raise SystemExit('Could not find teacher-input patch guard')
           script = script.replace(strict, tolerant)
