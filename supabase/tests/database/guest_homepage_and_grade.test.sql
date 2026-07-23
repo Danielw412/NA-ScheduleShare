@@ -144,12 +144,12 @@ select is(
   'students_joined:total:0',
   'administrators can configure statistic type, activity scope, and threshold'
 );
+reset role;
 select ok(
   exists (select 1 from public.audit_logs where action_type = 'homepage_statistic_settings_changed'),
   'homepage statistic settings changes are audited'
 );
 
-reset role;
 select is(
   (select statistic_value from public.get_homepage_statistic()),
   (select count(*)

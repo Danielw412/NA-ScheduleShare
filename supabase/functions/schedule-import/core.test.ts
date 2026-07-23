@@ -22,12 +22,14 @@ const TOKEN = 'header.payload.signature-sensitive-token'
 const API_KEY = 'gemini-api-key-sensitive'
 
 const catalog: CourseRecord[] = [
-  { id: COURSE_ID, name: 'AP Biology' },
-  { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch - NASH' },
-  { id: '44444444-4444-4444-9444-444444444444', name: 'Lunch - NAI' },
-  { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall - NASH' },
-  { id: '88888888-8888-4888-8888-888888888888', name: 'Gym' },
-  { id: '99999999-9999-4999-8999-999999999999', name: 'English 2' },
+  { id: COURSE_ID, name: 'AP Biology', term_policy: 'full_year' },
+  { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch - NASH', term_policy: 'lunch' },
+  { id: '44444444-4444-4444-9444-444444444444', name: 'Lunch - NAI', term_policy: 'lunch' },
+  { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall - NASH', term_policy: 'flexible_attendance' },
+  { id: '88888888-8888-4888-8888-888888888888', name: 'Gym', term_policy: 'flexible_attendance' },
+  { id: '99999999-9999-4999-8999-999999999999', name: 'English 2', term_policy: 'full_year' },
+  { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', name: 'Business Communications', term_policy: 'semester' },
+  { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', name: 'Business Management', term_policy: 'semester' },
 ]
 
 const transcription = {
@@ -145,8 +147,10 @@ describe('Gemini request and response handling', () => {
     expect(response.status).toBe(200)
     const body = await responseBody(response)
     expect(body.image_count).toBe(1)
+    expect(body).toMatchObject({ retry_count: 0, retry_reasons: [] })
+    expect(providerFetch).toHaveBeenCalledTimes(1)
     expect(body.rows).toEqual([expect.objectContaining({
-      course: { id: COURSE_ID, name: 'AP Biology', confidence: 1 },
+      course: expect.objectContaining({ id: COURSE_ID, name: 'AP Biology', confidence: 1, term_policy: 'full_year' }),
       teacher_last_name: 'Spak',
       term: 'full_year',
       meeting_slots: [
@@ -156,6 +160,67 @@ describe('Gemini request and response handling', () => {
       ],
       resolution: 'new_class',
     })])
+  })
+
+  it('continues the Gemini conversation once when the first read conflicts', async () => {
+    const firstRead = {
+      schedule: true,
+      issue: '',
+      rows: [
+        { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A1'] },
+        { course: 'English 2', teacher: 'Jones, Alex', term: 'FY', slots: ['A1'] },
+      ],
+    }
+    const correctedRead = {
+      ...firstRead,
+      rows: [firstRead.rows[0], { ...firstRead.rows[1], slots: ['A2'] }],
+    }
+    const providerFetch = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { contents: Array<{ role: string; parts: Array<{ text?: string }> }> }
+      if (providerFetch.mock.calls.length === 1) {
+        expect(body.contents).toHaveLength(1)
+        return geminiResponse(firstRead)
+      }
+      expect(body.contents).toHaveLength(3)
+      expect(body.contents[1]).toEqual({ role: 'model', parts: [{ text: JSON.stringify(firstRead) }] })
+      expect(body.contents[2].parts[0].text).toContain('conflict remains')
+      return geminiResponse(correctedRead)
+    })
+    const deps = dependencies({ fetch: providerFetch })
+
+    const response = await handleScheduleImportRequest(request([png()]), deps)
+    const body = await responseBody(response)
+
+    expect(response.status).toBe(200)
+    expect(providerFetch).toHaveBeenCalledTimes(2)
+    expect(body).toMatchObject({ retry_count: 1, retry_reasons: [expect.stringContaining('conflict remains')] })
+    expect(body.rows).toEqual([
+      expect.objectContaining({ source_course_name: 'AP Biology (CHS)', meeting_slots: [{ day_type: 'A', period_number: 1 }] }),
+      expect.objectContaining({ source_course_name: 'English 2', meeting_slots: [{ day_type: 'A', period_number: 2 }] }),
+    ])
+    expect(deps.loadClasses).toHaveBeenCalledWith(TOKEN, expect.any(Object), expect.arrayContaining([COURSE_ID, '99999999-9999-4999-8999-999999999999']))
+  })
+
+  it('asks Gemini to fill an unresolved half-credit term, but never retries a clean result', async () => {
+    const firstRead = {
+      schedule: true,
+      issue: '',
+      rows: [{ course: 'Business Communications', teacher: 'Sestili', term: 'unknown', slots: ['A5', 'B5'] }],
+    }
+    const correctedRead = {
+      ...firstRead,
+      rows: [{ ...firstRead.rows[0], term: 'S1' }],
+    }
+    const providerFetch = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(geminiResponse(firstRead))
+      .mockResolvedValueOnce(geminiResponse(correctedRead))
+
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({ fetch: providerFetch }))
+    const body = await responseBody(response)
+
+    expect(providerFetch).toHaveBeenCalledTimes(2)
+    expect(body).toMatchObject({ retry_count: 1, retry_reasons: [expect.stringContaining('incomplete')] })
+    expect(body.rows).toEqual([expect.objectContaining({ term: 'semester_1', flags: [] })])
   })
 
   it('passes three images in one Gemini request', async () => {
@@ -278,7 +343,7 @@ describe('normalization and backend catalogue matching', () => {
     expect((await responseBody(defaulted)).rows).toEqual([
       expect.objectContaining({
         term: 'full_year',
-        warnings: [expect.stringContaining('Full Year')],
+        warnings: [expect.stringContaining('full-year course')],
       }),
     ])
 
@@ -298,7 +363,7 @@ describe('normalization and backend catalogue matching', () => {
     ])
   })
 
-  it('uses the authenticated grade for campus and splits full-year lunch into both semesters', async () => {
+  it('uses the authenticated grade and keeps same-period full-year lunch as one entry', async () => {
     const response = await handleScheduleImportRequest(request([png()]), dependencies({
       config: config({ grade: 10 }),
       output: {
@@ -309,8 +374,7 @@ describe('normalization and backend catalogue matching', () => {
     }))
     expect(response.status).toBe(200)
     expect((await responseBody(response)).rows).toEqual([
-      expect.objectContaining({ course: expect.objectContaining({ name: 'Lunch - NAI' }), term: 'semester_1', teacher_last_name: 'N/A' }),
-      expect.objectContaining({ course: expect.objectContaining({ name: 'Lunch - NAI' }), term: 'semester_2', teacher_last_name: 'N/A' }),
+      expect.objectContaining({ course: expect.objectContaining({ name: 'Lunch - NAI', term_policy: 'lunch' }), term: 'full_year', teacher_last_name: 'N/A' }),
     ])
   })
 
@@ -338,8 +402,8 @@ describe('normalization and backend catalogue matching', () => {
     const response = await handleScheduleImportRequest(request([png()]), guestDependencies)
     const body = await responseBody(response)
     expect(body).toMatchObject({ estimated_grade: 10, shared_student_count: 7 })
-    expect((body.rows as Array<{ course: { name: string } }>).filter((row) => row.course.name === 'Lunch')).toHaveLength(2)
-    expect(guestDependencies.countGuestMatches).toHaveBeenCalledWith([semesterOneClassId, semesterTwoClassId])
+    expect((body.rows as Array<{ course: { name: string } }>).filter((row) => row.course.name === 'Lunch')).toHaveLength(1)
+    expect(guestDependencies.countGuestMatches).toHaveBeenCalledWith([semesterOneClassId])
   })
 
   it('infers grade 12 from AP English Literature for guest campus matching', async () => {
@@ -395,7 +459,7 @@ describe('normalization and backend catalogue matching', () => {
     }))
     expect((await responseBody(response)).rows).toEqual([
       expect.objectContaining({
-        course: { id: '88888888-8888-4888-8888-888888888888', name: 'Gym', confidence: 1 },
+        course: expect.objectContaining({ id: '88888888-8888-4888-8888-888888888888', name: 'Gym', confidence: 1, term_policy: 'flexible_attendance' }),
         teacher_last_name: 'Winters',
         term: 'full_year',
       }),

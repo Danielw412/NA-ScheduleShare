@@ -27,7 +27,7 @@ export function HomePage() {
   const completion = scheduleCompletion(enrollments)
   const hasCompleteSchedule = Boolean(user) && !scheduleLoading && completion === 100
   const scheduleStatus = completion === 0
-    ? { title: 'Start your schedule', description: 'Add your classes to find classmates and compare schedules.', action: 'Add classes' }
+    ? { title: 'Start your schedule', description: 'Add your classes to find classmates and share schedules.', action: 'Add classes' }
     : completion < 100
       ? { title: 'Keep building your schedule', description: 'Add the remaining periods to get better classmate matches.', action: 'Continue' }
       : { title: 'Share your schedule with friends', description: 'Send a link that shows your full schedule.', action: 'Share schedule' }
@@ -76,7 +76,7 @@ export function HomePage() {
       <section className="home-hero">
         <div>
           <h1>Find out who’s in your classes.</h1>
-          <p>Upload a picture of your schedule, find classmates, and compare schedules with friends.</p>
+          <p>Upload a picture of your schedule, find classmates, and share schedules with friends.</p>
           <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
           <div className="hero-actions">
             {user && scheduleLoading

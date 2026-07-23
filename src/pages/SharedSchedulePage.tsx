@@ -6,7 +6,7 @@ import { TermSelector } from '../components/schedule/TermSelector'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import { useNoIndex } from '../hooks/useNoIndex'
-import type { AcademicTerm } from '../lib/domain'
+import type { SemesterTerm } from '../lib/domain'
 import { scheduleCompletion } from '../lib/schedule'
 import { fetchPublicScheduleShare, publicRowsToEnrollments, type PublicScheduleShare } from '../lib/scheduleShare'
 
@@ -19,7 +19,7 @@ export function SharedSchedulePage() {
   const { token = '' } = useParams()
   const { user } = useAuth()
   const schedule = useSchedule()
-  const [term, setTerm] = useState<AcademicTerm>('semester_1')
+  const [term, setTerm] = useState<SemesterTerm>('semester_1')
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' })
   useNoIndex(true)
 
@@ -60,7 +60,6 @@ export function SharedSchedulePage() {
           onAdd={() => undefined}
           onRemove={() => undefined}
           onReplace={() => undefined}
-          onTermChange={() => undefined}
           readOnly
         />
       </div>

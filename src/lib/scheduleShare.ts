@@ -73,6 +73,7 @@ export function publicRowsToEnrollments(rows: PublicScheduleRow[]): ScheduleEnro
       active: true,
       created_at: '',
       updated_at: '',
+      meeting_slots: meetingSlots,
       class: {
         id: syntheticId,
         course_name_id: syntheticId,

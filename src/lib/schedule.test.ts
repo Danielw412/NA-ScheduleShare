@@ -69,6 +69,23 @@ describe('schedule conflicts', () => {
       enrollment('b', 'semester_2', [{ day_type: 'A', period_number: 2 }]),
     ])).toHaveLength(0)
   })
+
+  it('rejects two lunches in the same semester even when their periods differ', () => {
+    const firstLunch = enrollment('lunch-1', 'semester_1', [
+      { day_type: 'A', period_number: 5 },
+      { day_type: 'B', period_number: 5 },
+    ])
+    const secondLunch = enrollment('lunch-2', 'semester_1', [
+      { day_type: 'A', period_number: 6 },
+      { day_type: 'B', period_number: 6 },
+    ])
+    firstLunch.class.course_name = 'Lunch - NASH'
+    secondLunch.class.course_name = 'Lunch - NASH'
+    firstLunch.class.course_term_policy = 'lunch'
+    secondLunch.class.course_term_policy = 'lunch'
+
+    expect(findScheduleConflicts([firstLunch, secondLunch])).toHaveLength(1)
+  })
 })
 
 describe('explicit meeting-slot selections', () => {

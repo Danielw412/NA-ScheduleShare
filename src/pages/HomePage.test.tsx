@@ -57,7 +57,7 @@ describe('HomePage hero', () => {
   it('takes a guest directly to the Schedule tab', () => {
     renderPage()
     expect(screen.getByRole('heading', { name: 'Find out who’s in your classes.' })).toBeInTheDocument()
-    expect(screen.getByText('Upload a picture of your schedule, find classmates, and compare schedules with friends.')).toBeInTheDocument()
+    expect(screen.getByText('Upload a picture of your schedule, find classmates, and share schedules with friends.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
   })
 

@@ -1,4 +1,4 @@
-import type { AcademicTerm, DayType, MeetingSlot, ScheduleEnrollment } from './domain'
+import type { AcademicTerm, ClassDefinition, CourseTermPolicy, DayType, MeetingSlot, ScheduleEnrollment } from './domain'
 
 function normalizedCourseName(courseName: string): string {
   return courseName.trim().toLocaleLowerCase().replace(/\s+/g, ' ')
@@ -14,6 +14,14 @@ export function isTermFlexibleCourse(courseName?: string): boolean {
   return /(?:^|[\s-])gym(?:[\s-]|$)/.test(normalized)
     || /^study hall(?:\s*-|$)/.test(normalized)
     || normalized === 'wellness for life'
+}
+
+export function courseTermPolicy(course: Pick<ClassDefinition, 'course_term_policy'>): CourseTermPolicy {
+  return course.course_term_policy ?? 'full_year'
+}
+
+export function enrollmentMeetingSlots(enrollment: Pick<ScheduleEnrollment, 'meeting_slots' | 'class'>): MeetingSlot[] {
+  return enrollment.meeting_slots ?? enrollment.class.meeting_slots
 }
 
 export const PERIOD_NUMBERS = Array.from({ length: 9 }, (_, index) => index + 1)
@@ -40,7 +48,15 @@ export function findScheduleConflicts(enrollments: ScheduleEnrollment[]): Array<
     for (let rightIndex = leftIndex + 1; rightIndex < enrollments.length; rightIndex += 1) {
       const right = enrollments[rightIndex]
       if (!right.active || !termsOverlap(left.academic_term, right.academic_term)) continue
-      if (left.class.meeting_slots.some((slot) => right.class.meeting_slots.some((candidate) => sameSlot(slot, candidate)))) {
+      const bothLunch = (courseTermPolicy(left.class) === 'lunch' || isLunchCourse(left.class.course_name))
+        && (courseTermPolicy(right.class) === 'lunch' || isLunchCourse(right.class.course_name))
+      if (bothLunch) {
+        conflicts.push([left, right])
+        continue
+      }
+      const leftSlots = enrollmentMeetingSlots(left)
+      const rightSlots = enrollmentMeetingSlots(right)
+      if (leftSlots.some((slot) => rightSlots.some((candidate) => sameSlot(slot, candidate)))) {
         conflicts.push([left, right])
       }
     }
@@ -58,7 +74,7 @@ export function enrollmentAtSlot(
     (enrollment) =>
       enrollment.active &&
       termIncludes(enrollment.academic_term, selectedTerm) &&
-      enrollment.class.meeting_slots.some((slot) => slot.day_type === dayType && slot.period_number === period),
+      enrollmentMeetingSlots(enrollment).some((slot) => slot.day_type === dayType && slot.period_number === period),
   )
 }
 
@@ -180,7 +196,7 @@ export function scheduleCompletion(enrollments: ScheduleEnrollment[]): number {
   const slots = new Set<string>()
   for (const enrollment of enrollments) {
     if (!enrollment.active) continue
-    for (const slot of enrollment.class.meeting_slots) slots.add(`${slot.day_type}-${slot.period_number}`)
+    for (const slot of enrollmentMeetingSlots(enrollment)) slots.add(`${slot.day_type}-${slot.period_number}`)
   }
   return Math.min(100, Math.round((slots.size / (PERIOD_NUMBERS.length * 2)) * 100))
 }

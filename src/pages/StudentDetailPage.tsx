@@ -8,7 +8,7 @@ import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useNoIndex } from '../hooks/useNoIndex'
 import { demoEnrollments } from '../lib/demo-data'
-import type { AcademicTerm, ReportableUser, ScheduleEnrollment } from '../lib/domain'
+import type { ReportableUser, ScheduleEnrollment, SemesterTerm } from '../lib/domain'
 import { getVisibleSchedule, searchReportableUsers } from '../lib/supabase/data'
 
 export function StudentDetailPage() {
@@ -19,7 +19,7 @@ export function StudentDetailPage() {
   useNoIndex(!user)
   const navigationUser = (location.state as { reportedUser?: ReportableUser } | null)?.reportedUser
   const [student, setStudent] = useState<ReportableUser | null>(navigationUser ?? null)
-  const [term, setTerm] = useState<AcademicTerm>('full_year')
+  const [term, setTerm] = useState<SemesterTerm>('semester_1')
   const [schedule, setSchedule] = useState<ScheduleEnrollment[]>([])
   const [denied, setDenied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -46,7 +46,7 @@ export function StudentDetailPage() {
       <Link className="back-link" to="/students"><ArrowLeft size={17} /> Student schedules</Link>
       <header className="page-heading"><div className="student-profile-heading" style={student ? { viewTransitionName: `student-${student.student_id}` } : undefined}>{student ? <ProfileAvatar userId={student.student_id} fullName={student.full_name} className="profile-avatar-heading" /> : null}<div><h1>{student ? `${student.full_name}’s Schedule` : 'Student Schedule'}</h1><p>You currently have access to view this schedule.</p></div></div>{student ? <Link className="button button-secondary" to="/report" state={{ reportedUser: student }}><Flag size={17} /> Report user</Link> : null}</header>
       <TermSelector value={term} onChange={setTerm} />
-      {loading ? <p className="muted">Loading schedule…</p> : <div className="schedule-layout"><ScheduleGrid enrollments={schedule} selectedTerm={term} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} readOnly /></div>}
+      {loading ? <p className="muted">Loading schedule…</p> : <div className="schedule-layout"><ScheduleGrid enrollments={schedule} selectedTerm={term} onAdd={() => undefined} onRemove={() => undefined} onReplace={() => undefined} readOnly /></div>}
     </div>
   )
 }

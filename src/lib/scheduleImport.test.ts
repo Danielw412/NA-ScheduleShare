@@ -73,10 +73,19 @@ describe('schedule import replacement', () => {
     expect(() => validateScheduleImageCount(4)).toThrow('between 1 and 3')
   })
 
-  it('defaults blank, missing, unknown, and not-visible review terms to Full Year', () => {
+  it('preserves blank, missing, unknown, and not-visible terms for policy-aware review', () => {
     expect([undefined, null, '', 'unknown', 'not visible', 'not-visible', 'unexpected'].map(normalizeReviewTerm)).toEqual([
-      'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year', 'full_year',
+      'unknown', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown',
     ])
+  })
+
+  it('defaults only catalogue full-year courses while preserving an unknown half-credit term', () => {
+    const result = { image_count: 1, warnings: [], rows: [{ ...row, term: 'unknown' as const }] }
+    expect(editableRowsFromImportResult(result)[0].term).toBe('full_year')
+    expect(editableRowsFromImportResult({
+      ...result,
+      rows: [{ ...result.rows[0], course: { ...row.course!, term_policy: 'semester' as const } }],
+    })[0].term).toBe('unknown')
   })
 
   it('preserves explicit semester terms and common PowerSchool spellings', () => {
@@ -124,18 +133,15 @@ describe('schedule import replacement', () => {
     await expect(confirmScheduleImport([row])).rejects.toThrow('reported 0 of 1 reviewed classes')
   })
 
-  it('sends full-year Lunch as both semesters with teacher N/A', async () => {
-    mocks.rpc.mockResolvedValue({ data: [{ added_count: 2, removed_count: 2 }], error: null })
+  it('sends same-period full-year Lunch as one entry with teacher N/A', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ added_count: 1, removed_count: 2 }], error: null })
     await confirmScheduleImport([{
       ...row,
-      course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch - NASH', confidence: 1 },
+      course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch - NASH', confidence: 1, term_policy: 'lunch' },
       teacher_last_name: 'Staff',
     }])
     expect(mocks.rpc).toHaveBeenCalledWith('replace_schedule_from_import', {
-      p_rows: [
-        expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'semester_1' }),
-        expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'semester_2' }),
-      ],
+      p_rows: [expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'full_year' })],
     })
   })
 

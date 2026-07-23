@@ -1,16 +1,15 @@
 import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { termLabels, type AcademicTerm, type DayType, type ScheduleEnrollment } from '../../lib/domain'
-import { enrollmentAtSlot, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, isTermFlexibleCourse, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
+import { termLabels, type DayType, type ScheduleEnrollment, type SemesterTerm } from '../../lib/domain'
+import { enrollmentAtSlot, enrollmentMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
 
 interface ScheduleGridProps {
   enrollments: ScheduleEnrollment[]
-  selectedTerm: AcademicTerm
+  selectedTerm: SemesterTerm
   onAdd: (dayType: DayType, period: number) => void
   onRemove: (enrollment: ScheduleEnrollment) => void
   onReplace: (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => void
-  onTermChange: (enrollment: ScheduleEnrollment, term: AcademicTerm) => void
   readOnly?: boolean
 }
 
@@ -22,7 +21,7 @@ interface CellMenuState {
   style: CSSProperties
 }
 
-export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, onTermChange, readOnly = false }: ScheduleGridProps) {
+export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, readOnly = false }: ScheduleGridProps) {
   const conflicts = findScheduleConflicts(enrollments)
   const conflictedIds = new Set(conflicts.flatMap((pair) => pair.map((enrollment) => enrollment.id)))
   const [openMenu, setOpenMenu] = useState<CellMenuState | null>(null)
@@ -97,10 +96,11 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
                   </button>
                 )
               }
-              const daySlots = meetingSlotsForDay(enrollment.class.meeting_slots, dayType)
+              const attendanceSlots = enrollmentMeetingSlots(enrollment)
+              const daySlots = meetingSlotsForDay(attendanceSlots, dayType)
               const hasMultiplePeriods = daySlots.length > 1
-              const isDoublePeriod = enrollment.class.is_double_period || hasMultiplePeriodsOnAnyDay(enrollment.class.meeting_slots)
-              const continuation = isMeetingSlotContinuation(enrollment.class.meeting_slots, { day_type: dayType, period_number: period })
+              const isDoublePeriod = enrollment.class.is_double_period || hasMultiplePeriodsOnAnyDay(attendanceSlots)
+              const continuation = isMeetingSlotContinuation(attendanceSlots, { day_type: dayType, period_number: period })
               const conflicted = conflictedIds.has(enrollment.id)
               return (
                 <div className={`schedule-cell filled-cell ${isDoublePeriod ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
@@ -127,20 +127,11 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
       </div>
       {openMenu ? createPortal(
         <div className="cell-menu-popover" ref={menuRef} role="menu" style={openMenu.style}>
-          {isTermFlexibleCourse(openMenu.enrollment.class.course_name) ? <label>Academic term
-            <select value={openMenu.enrollment.academic_term} onChange={(event) => {
-              onTermChange(openMenu.enrollment, event.target.value as AcademicTerm)
-              setOpenMenu(null)
-            }}>
-              <option value="full_year">Full Year</option>
-              <option value="semester_1">Semester 1</option>
-              <option value="semester_2">Semester 2</option>
-            </select>
-          </label> : <div className="cell-menu-term"><span>Academic term</span><strong>{termLabels[openMenu.enrollment.academic_term]}</strong></div>}
+          <div className="cell-menu-term"><span>Academic term</span><strong>{termLabels[openMenu.enrollment.academic_term]}</strong></div>
           <button type="button" role="menuitem" onClick={() => {
             onReplace(openMenu.enrollment, openMenu.dayType, openMenu.period)
             setOpenMenu(null)
-          }}>Replace class</button>
+          }}>Edit or replace class</button>
           <button className="danger-text" type="button" role="menuitem" onClick={() => {
             onRemove(openMenu.enrollment)
             setOpenMenu(null)

@@ -94,7 +94,7 @@ describe('ScheduleImportDialog image input', () => {
     renderDialog()
     const picker = screen.getByLabelText('Choose schedule screenshots')
     expect(picker).toHaveAttribute('multiple')
-    expect(screen.getByText('PNG, JPEG, or WebP · 10 MB maximum each')).toBeInTheDocument()
+    expect(screen.getByText('PNG, JPEG, or WebP · 5 MB maximum each')).toBeInTheDocument()
     expect(screen.queryByText('0 of 3')).not.toBeInTheDocument()
 
     await user.upload(picker, [scheduleFile('one.png'), scheduleFile('two.png'), scheduleFile('three.png')])
@@ -311,7 +311,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
 
   it('requires manual catalogue selection for unresolved courses and submits edited new-class details only on confirmation', async () => {
     const user = userEvent.setup()
-    const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100 }
+    const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100, course_term_policy: 'full_year' }
     const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
     renderDialog({
       importScreenshots: vi.fn(async () => importResult({
@@ -332,7 +332,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.click(await screen.findByRole('button', { name: 'AP Statistics' }))
     await user.clear(screen.getByLabelText('Teacher last name'))
     await user.type(screen.getByLabelText('Teacher last name'), 'Lester')
-    await user.selectOptions(screen.getByLabelText('Academic term'), 'full_year')
+    expect(screen.getByText('Full-credit and unlisted courses are full year.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
     expect(screen.getByText(/Will propose a new class for existing course “AP Statistics”/)).toBeInTheDocument()
 

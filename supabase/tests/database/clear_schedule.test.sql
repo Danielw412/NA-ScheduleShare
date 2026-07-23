@@ -71,6 +71,7 @@ select is(
   2,
   'cleared enrollments remain as inactive history'
 );
+reset role;
 select is(
   (select count(*)::integer from public.class_enrollments where student_id = '98000000-0000-4000-8000-000000000002' and active),
   1,
@@ -86,6 +87,7 @@ select is(
   2,
   'each cleared class receives an audit-history entry'
 );
+set local role authenticated;
 select is(public.clear_my_schedule(), 0, 'clearing an already empty schedule is safe');
 
 reset role;

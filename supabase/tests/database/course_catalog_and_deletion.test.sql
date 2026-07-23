@@ -3,12 +3,12 @@ select plan(32);
 
 select is(
   (select count(*) from public.course_names where source = 'approved'),
-  304::bigint,
-  'the authoritative TXT catalog imports all 304 unique nonblank names'
+  308::bigint,
+  'the authoritative catalog plus four campus schedule entries imports 308 approved names'
 );
 select is(
   (select count(distinct normalized_name) from public.course_names where source = 'approved'),
-  304::bigint,
+  308::bigint,
   'approved course names are unique after case-insensitive normalization'
 );
 select is(
@@ -44,7 +44,7 @@ values ('94000000-0000-4000-8000-000000000010', 'Course Catalog Regression', 'co
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
 values
   ('94000000-0000-4000-8000-000000000001', '94000000-0000-4000-8000-000000000010', 'De la Cruz', 'full_year', false, '10000000-0000-4000-8000-000000000001'),
-  ('94000000-0000-4000-8000-000000000002', '94000000-0000-4000-8000-000000000010', 'Morgan', 'semester_1', false, '10000000-0000-4000-8000-000000000001');
+  ('94000000-0000-4000-8000-000000000002', '94000000-0000-4000-8000-000000000010', 'Morgan', 'full_year', false, '10000000-0000-4000-8000-000000000001');
 
 insert into public.class_meeting_slots (class_id, day_type, period_number)
 values
@@ -70,7 +70,7 @@ select throws_ok(
 );
 
 insert into public.class_enrollments (student_id, class_id, academic_term)
-values ('10000000-0000-4000-8000-000000000003', '94000000-0000-4000-8000-000000000002', 'semester_1');
+values ('10000000-0000-4000-8000-000000000003', '94000000-0000-4000-8000-000000000002', 'full_year');
 
 insert into public.reports (id, reporter_id, reported_class_id, reason_category, explanation)
 values ('94000000-0000-4000-8000-000000000030', '10000000-0000-4000-8000-000000000002', '94000000-0000-4000-8000-000000000002', 'duplicate_class', 'Delete regression report');
@@ -130,12 +130,12 @@ select is(
   'Course Catalog Regression',
   'related reports preserve a readable linked course-name snapshot'
 );
+reset role;
 select ok(
   exists (select 1 from public.audit_logs where action_type = 'class_permanently_deleted' and target_id = '94000000-0000-4000-8000-000000000002'),
   'permanent deletion records an immutable audit entry'
 );
 
-reset role;
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
 values ('94000000-0000-4000-8000-000000000004', '94000000-0000-4000-8000-000000000010', 'Double Delete', 'full_year', true, '10000000-0000-4000-8000-000000000001');
 insert into public.class_meeting_slots (class_id, day_type, period_number)
@@ -179,6 +179,7 @@ select is(
   'Course Catalog Regression',
   'double-period deletion preserves report snapshots'
 );
+reset role;
 select ok(
   exists (select 1 from public.audit_logs where action_type = 'class_permanently_deleted' and target_id = '94000000-0000-4000-8000-000000000004'),
   'double-period deletion records an immutable audit entry'
@@ -192,7 +193,6 @@ select ok(
   ),
   'double-period deletion preserves immutable schedule history'
 );
-reset role;
 select is(
   private.normalize_course_match('Honors English III'),
   'honors english 3',

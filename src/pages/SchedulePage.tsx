@@ -9,7 +9,7 @@ import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
-import type { AcademicTerm, ClassDefinition, DayType, ScheduleEnrollment } from '../lib/domain'
+import type { ClassDefinition, DayType, ScheduleEnrollment, SemesterTerm } from '../lib/domain'
 import {
   clearGuestScheduleImportDraft,
   confirmScheduleImport,
@@ -22,7 +22,7 @@ import {
   type ScheduleImportResult,
 } from '../lib/scheduleImport'
 import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
-import { clearSchedule, removeEnrollment, searchGuestCourseNames, updateEnrollmentTerm } from '../lib/supabase/data'
+import { clearSchedule, removeEnrollment, searchGuestCourseNames } from '../lib/supabase/data'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
@@ -79,7 +79,7 @@ export function SchedulePage() {
   const schedule = useSchedule()
   const reloadSchedule = schedule.reload
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selectedTerm, setSelectedTerm] = useState<AcademicTerm>('full_year')
+  const [selectedTerm, setSelectedTerm] = useState<SemesterTerm>('semester_1')
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
@@ -187,16 +187,6 @@ export function SchedulePage() {
     setShowSavedCheck(false)
   }
 
-  async function changeTerm(enrollment: ScheduleEnrollment, term: AcademicTerm) {
-    if (isDemo) schedule.updateDemoTerm(enrollment.id, term)
-    else {
-      await updateEnrollmentTerm(enrollment.id, term)
-      await schedule.reload()
-    }
-    setMessage('Academic term updated.')
-    setShowSavedCheck(false)
-  }
-
   async function clearAllClasses() {
     if (clearingSchedule) return
     setClearingSchedule(true)
@@ -297,7 +287,7 @@ export function SchedulePage() {
         </section>}
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
         <div className="schedule-layout">
-          <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} onTermChange={() => undefined} />
+          <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} />
         </div>
         {importOpen ? <ScheduleImportDialog
           open
@@ -352,17 +342,17 @@ export function SchedulePage() {
           onAdd={(dayType, period) => setActiveCell({ dayType, period })}
           onRemove={(enrollment) => void remove(enrollment)}
           onReplace={(enrollment, dayType, period) => setActiveCell({ dayType, period, replacing: enrollment })}
-          onTermChange={(enrollment, term) => void changeTerm(enrollment, term)}
         />
       </div>
       {activeCell ? <AddClassDialog
         open
         dayType={activeCell.dayType}
         period={activeCell.period}
+        semester={selectedTerm}
         replacing={activeCell.replacing}
         onClose={() => setActiveCell(null)}
         onChanged={schedule.reload}
-        onDemoAdd={(classDefinition: ClassDefinition, term) => schedule.addDemoEnrollment(classDefinition, term)}
+        onDemoAdd={(classDefinition: ClassDefinition, term, replacingEnrollmentId) => schedule.addDemoEnrollment(classDefinition, term, replacingEnrollmentId)}
       /> : null}
       {importOpen ? <ScheduleImportDialog
         open

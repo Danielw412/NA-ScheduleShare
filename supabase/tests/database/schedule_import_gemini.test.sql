@@ -144,6 +144,7 @@ select is(
   'medium',
   'the production model change takes effect immediately'
 );
+reset role;
 select is(
   (select count(*) from public.audit_logs
    where action_type = 'schedule_import_model_configuration_changed'
@@ -151,6 +152,7 @@ select is(
   1::bigint,
   'production model changes are audited'
 );
+set local role authenticated;
 select isnt(
   public.record_schedule_import_diagnostic(
     'success',
@@ -234,12 +236,14 @@ select is(
   0::bigint,
   'expired diagnostic logs are removed before admin inspection'
 );
+reset role;
 select ok(
   (select count(*) > 0 from public.audit_logs
    where action_type = 'schedule_import_diagnostic_logs_accessed'
      and administrator_id = '10000000-0000-4000-8000-000000000001'),
   'sensitive diagnostic-log access is audited'
 );
+set local role authenticated;
 select lives_ok(
   $$select public.admin_delete_schedule_import_diagnostic(
     (select diagnostic_id from public.admin_list_schedule_import_diagnostics()
@@ -253,6 +257,7 @@ select is(
   0::bigint,
   'deleted diagnostic contents are no longer available'
 );
+reset role;
 select is(
   (select count(*) from public.audit_logs
    where action_type = 'schedule_import_diagnostic_log_deleted'
@@ -261,7 +266,6 @@ select is(
   'diagnostic deletion is audited without retaining the contents'
 );
 
-reset role;
 set local role anon;
 select throws_ok(
   $$select * from public.schedule_import_prepare(false, null, null)$$,

@@ -1,5 +1,5 @@
-import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, Grade, MeetingSlot, ScheduleEnrollment } from './domain'
-import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
+import type { AcademicTerm, ClassSearchResult, CourseNameSearchResult, CourseTermPolicy, Grade, MeetingSlot, ScheduleEnrollment } from './domain'
+import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from './schedule'
 import { recordAuthenticatedEvent, recordScheduleImportEvent, searchClasses, searchCourseNames, searchGuestClasses } from './supabase/data'
 import { supabase } from './supabase/client'
 import type { Json } from './supabase/database.types'
@@ -14,12 +14,13 @@ export interface ImportClassOption {
   teacher_last_name: string
   term: AcademicTerm
   meeting_slots: MeetingSlot[]
+  course_term_policy?: CourseTermPolicy
 }
 
 export interface ScheduleImportRow {
   id: string
   source_course_name: string
-  course: { id: string; name: string; confidence: number } | null
+  course: { id: string; name: string; confidence: number; term_policy?: CourseTermPolicy } | null
   teacher_last_name: string
   term: ImportTerm
   meeting_slots: MeetingSlot[]
@@ -36,6 +37,8 @@ export interface ScheduleImportResult {
   import_id?: string
   model?: string
   processing_duration_ms?: number
+  retry_count?: number
+  retry_reasons?: string[]
   rows: ScheduleImportRow[]
   warnings: string[]
   image_count: number
@@ -79,12 +82,13 @@ export interface ScheduleImportErrorBody {
   developer?: ScheduleImportDeveloperDiagnostics
 }
 
-export function normalizeReviewTerm(value: unknown): AcademicTerm {
-  if (typeof value !== 'string') return 'full_year'
+export function normalizeReviewTerm(value: unknown): ImportTerm {
+  if (typeof value !== 'string') return 'unknown'
   const normalized = value.trim().toLocaleLowerCase().replace(/[._]/g, ' ').replace(/\s+/g, ' ')
   if (/^(?:s1|sem(?:ester)?\s*1|first\s+semester|1st\s+semester)$/.test(normalized)) return 'semester_1'
   if (/^(?:s2|sem(?:ester)?\s*2|second\s+semester|2nd\s+semester)$/.test(normalized)) return 'semester_2'
-  return 'full_year'
+  if (/^(?:fy|full\s*year|year|all\s*year)$/.test(normalized)) return 'full_year'
+  return 'unknown'
 }
 
 export class ScheduleImportRequestError extends Error {
@@ -98,7 +102,7 @@ export class ScheduleImportRequestError extends Error {
   }
 }
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 export const MAX_SCHEDULE_IMAGES = 3
 const RESIZE_THRESHOLD_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 2200
@@ -107,7 +111,7 @@ export async function prepareScheduleImage(file: File): Promise<File> {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
     throw new Error('Use a PNG, JPEG, or WebP image.')
   }
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('Each screenshot must be 10 MB or smaller.')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('Each screenshot must be 5 MB or smaller.')
   if (file.size === 0) throw new Error('The selected screenshot is empty.')
   if (file.size < RESIZE_THRESHOLD_BYTES || typeof createImageBitmap !== 'function') return file
 
@@ -231,7 +235,7 @@ function importErrorMessage(code: string | undefined, status: number): string {
 }
 
 export async function findClassesForCourse(course: CourseNameSearchResult): Promise<ImportClassOption[]> {
-  const results = await searchClasses({ query: course.course_name })
+  const results = await searchClasses({ query: course.course_name, limit: 100 })
   return results
     .filter((result) => result.course_name_id === course.id)
     .map(classOptionFromSearch)
@@ -244,18 +248,31 @@ function classOptionFromSearch(result: ClassSearchResult): ImportClassOption {
     teacher_last_name: result.teacher_last_name,
     term: result.default_academic_term,
     meeting_slots: sortMeetingSlots(result.meeting_slots),
+    course_term_policy: result.course_term_policy,
   }
+}
+
+function importCoursePolicy(row: Pick<ScheduleImportRow, 'course'>): CourseTermPolicy {
+  return row.course?.term_policy ?? 'full_year'
+}
+
+function periodsKey(meetingSlots: MeetingSlot[]): string {
+  return [...new Set(meetingSlots.map((slot) => slot.period_number))].sort((left, right) => left - right).join(',')
 }
 
 export function exactClassOption(row: EditableScheduleImportRow, options = row.class_options): ImportClassOption | null {
   if (row.term === 'unknown') return null
   const slots = slotsKey(row.meeting_slots)
   const teacher = teacherForImportedCourse(row.teacher_last_name, row.course?.name).toLocaleLowerCase()
+  const policy = importCoursePolicy(row)
   return options.find((option) => (
     option.course_id === row.course?.id
-    && option.term === row.term
     && normalizeTeacherLastName(option.teacher_last_name).toLocaleLowerCase() === teacher
-    && slotsKey(option.meeting_slots) === slots
+    && (policy === 'flexible_attendance'
+      ? periodsKey(option.meeting_slots) === periodsKey(row.meeting_slots)
+      : policy === 'lunch'
+        ? slotsKey(option.meeting_slots) === slots
+        : option.term === row.term && slotsKey(option.meeting_slots) === slots)
   )) ?? null
 }
 
@@ -297,12 +314,64 @@ export function importRowError(row: EditableScheduleImportRow): string | null {
   if (row.term === 'unknown') return 'Choose the academic term.'
   const teacherError = teacherLastNameError(teacherForImportedCourse(row.teacher_last_name, row.course.name))
   if (teacherError) return teacherError
-  return validateMeetingSlots(row.meeting_slots, hasMultiplePeriodsOnAnyDay(row.meeting_slots))
+  const policy = importCoursePolicy(row)
+  const isDoublePeriod = hasMultiplePeriodsOnAnyDay(row.meeting_slots)
+  const slotError = validateMeetingSlots(row.meeting_slots, isDoublePeriod)
+  if (slotError) return slotError
+  if (policy === 'full_year' && row.term !== 'full_year') return 'This unlisted or full-credit course must be Full Year.'
+  if (policy === 'semester' && row.term === 'full_year') return 'Choose Semester 1 or Semester 2 for this half-credit course.'
+  const aSlots = meetingSlotsForDay(row.meeting_slots, 'A')
+  const bSlots = meetingSlotsForDay(row.meeting_slots, 'B')
+  if (policy === 'flexible_attendance') {
+    if (row.term === 'full_year' && row.meeting_slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
+    if (row.term !== 'full_year' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) return 'Semester Gym, Wellness, or Study Hall must meet every day.'
+  }
+  if (policy === 'lunch' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
+    return 'Lunch must use the same period on every A and B day.'
+  }
+  return null
 }
 
 interface ScheduleReplacementResult {
   added_count: number
   removed_count: number
+}
+
+export function collapseMatchingLunchRows(rows: EditableScheduleImportRow[]): EditableScheduleImportRow[] {
+  const collapsed: EditableScheduleImportRow[] = []
+  for (const row of rows) {
+    const isLunch = importCoursePolicy(row) === 'lunch' || specialCourseKind(row.course?.name) === 'Lunch'
+    if (!isLunch || (row.term !== 'semester_1' && row.term !== 'semester_2')) {
+      collapsed.push(row)
+      continue
+    }
+    const teacher = teacherForImportedCourse(row.teacher_last_name, row.course?.name).toLocaleLowerCase()
+    const matchIndex = collapsed.findIndex((candidate) => (
+      candidate.include === row.include
+      && candidate.course?.id === row.course?.id
+      && (candidate.term === 'semester_1' || candidate.term === 'semester_2')
+      && candidate.term !== row.term
+      && teacherForImportedCourse(candidate.teacher_last_name, candidate.course?.name).toLocaleLowerCase() === teacher
+      && slotsKey(candidate.meeting_slots) === slotsKey(row.meeting_slots)
+    ))
+    if (matchIndex < 0) {
+      collapsed.push(row)
+      continue
+    }
+
+    const existing = collapsed[matchIndex]
+    collapsed[matchIndex] = reconcileExactClassSelection({
+      ...existing,
+      term: 'full_year',
+      warnings: [...new Set([...existing.warnings, ...row.warnings])],
+      flags: [...new Set([...existing.flags, ...row.flags])],
+      class_options: [...new Map([...existing.class_options, ...row.class_options].map((option) => [option.id, option])).values()],
+      selected_existing_class_id: existing.selected_existing_class_id === row.selected_existing_class_id
+        ? existing.selected_existing_class_id
+        : null,
+    })
+  }
+  return collapsed
 }
 
 function scheduleReplacementErrorMessage(error: { message?: string; details?: string; hint?: string }): string {
@@ -320,10 +389,7 @@ export async function confirmScheduleImport(rows: EditableScheduleImportRow[]): 
   const includedRows = rows.filter((row) => row.include)
   if (includedRows.length === 0) throw new Error('Select at least one class before replacing your schedule.')
 
-  const semesterRows = includedRows.flatMap((row) => {
-    if (specialCourseKind(row.course?.name) !== 'Lunch' || row.term !== 'full_year') return [row]
-    return (['semester_1', 'semester_2'] as const).map((term) => reconcileExactClassSelection({ ...row, term }))
-  })
+  const semesterRows = collapseMatchingLunchRows(includedRows)
 
   const replacementRows = semesterRows.map((row) => {
     const validationError = importRowError(row)
@@ -375,9 +441,12 @@ export function teacherForImportedCourse(teacherLastName: string, courseName?: s
 export function editableRowsFromImportResult(result: ScheduleImportResult): EditableScheduleImportRow[] {
   return result.rows.map((row) => {
     const savedReview = row as ScheduleImportRow & Partial<Pick<EditableScheduleImportRow, 'include' | 'selected_existing_class_id'>>
+    const normalizedTerm = normalizeReviewTerm(row.term)
     return reconcileExactClassSelection({
       ...row,
-      term: normalizeReviewTerm(row.term),
+      term: normalizedTerm === 'unknown' && (row.course?.term_policy ?? 'full_year') === 'full_year'
+        ? 'full_year'
+        : normalizedTerm,
       selected_existing_class_id: savedReview.selected_existing_class_id ?? row.existing_class_id,
       include: savedReview.include ?? true,
     })
@@ -397,10 +466,12 @@ export function scheduleImportPreviewEnrollments(result: ScheduleImportResult): 
       active: true,
       created_at: timestamp,
       updated_at: timestamp,
+      meeting_slots: sortMeetingSlots(row.meeting_slots),
       class: {
         id: classId,
         course_name_id: row.course.id,
         course_name: row.course.name,
+        course_term_policy: row.course.term_policy,
         teacher_last_name: teacherForImportedCourse(row.teacher_last_name, row.course.name),
         default_academic_term: row.term,
         is_double_period: hasMultiplePeriodsOnAnyDay(row.meeting_slots),
@@ -411,7 +482,7 @@ export function scheduleImportPreviewEnrollments(result: ScheduleImportResult): 
 }
 
 export async function findGuestClassesForCourse(course: CourseNameSearchResult): Promise<ImportClassOption[]> {
-  const results = await searchGuestClasses({ query: course.course_name, limit: 1000 })
+  const results = await searchGuestClasses({ query: course.course_name, limit: 100 })
   return results
     .filter((result) => result.course_name_id === course.id)
     .map(classOptionFromSearch)
@@ -440,7 +511,7 @@ export async function normalizeImportedResultForGrade(result: ScheduleImportResu
     const reconciled = reconcileExactClassSelection({
       ...row,
       source_course_name: targetName,
-      course: { id: course.id, name: course.course_name, confidence: 1 },
+      course: { id: course.id, name: course.course_name, confidence: 1, term_policy: course.course_term_policy },
       teacher_last_name: 'N/A',
       class_options: classOptions,
       existing_class_id: null,

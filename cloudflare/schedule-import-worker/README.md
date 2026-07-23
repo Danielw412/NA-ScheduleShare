@@ -1,6 +1,6 @@
-# Schedule import and share Worker
+# Schedule share and legacy import Worker
 
-This Worker accepts one to three PowerSchool schedule screenshots, validates the signed-in Supabase user, asks Cloudflare Workers AI to transcribe the visible schedule, validates the response, and resolves every extracted row against the active Supabase course catalogue and class list. It never stores images or writes schedule data.
+This Worker serves private schedule-share previews and retains the previous Cloudflare-AI import endpoint for backward compatibility. The website's active screenshot importer now invokes the Supabase `schedule-import` Edge Function and Gemini directly; new importer behavior belongs there.
 
 ## Configure Cloudflare
 
@@ -40,7 +40,6 @@ pnpm dev
 Set the following in the frontend `.env.local`:
 
 ```dotenv
-VITE_SCHEDULE_IMPORT_API_URL=http://127.0.0.1:8787
 VITE_SCHEDULE_SHARE_BASE_URL=http://127.0.0.1:8787
 ```
 
@@ -64,7 +63,7 @@ The manually triggered `deploy-worker.yml` workflow expects these GitHub product
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 
-After the Worker is deployed, add `VITE_SCHEDULE_IMPORT_API_URL` and `VITE_SCHEDULE_SHARE_BASE_URL` to the repository Actions secrets with the Worker origin, such as `https://na-scheduleshare-import.YOUR_SUBDOMAIN.workers.dev`. The Pages workflow injects them into the Vite build.
+After the Worker is deployed, configure `VITE_SCHEDULE_SHARE_BASE_URL` with its origin, such as `https://na-scheduleshare-import.YOUR_SUBDOMAIN.workers.dev`. It is used only for schedule-share links and previews.
 
 ## Privacy and operational behavior
 

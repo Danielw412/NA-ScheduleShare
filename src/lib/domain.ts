@@ -1,5 +1,7 @@
 export type DayType = 'A' | 'B'
 export type AcademicTerm = 'full_year' | 'semester_1' | 'semester_2'
+export type SemesterTerm = Exclude<AcademicTerm, 'full_year'>
+export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'lunch' | 'variable_credit' | 'versioned'
 export type PrivacySetting = 'private' | 'classmates' | 'school'
 export type Grade = 9 | 10 | 11 | 12
 
@@ -14,6 +16,8 @@ export interface ClassDefinition {
   course_name: string
   teacher_last_name: string
   default_academic_term: AcademicTerm
+  /** Defaults to full_year for legacy/local fixtures that predate course policy metadata. */
+  course_term_policy?: CourseTermPolicy
   /** Legacy compatibility metadata; meeting_slots is the schedule source of truth. */
   is_double_period: boolean
   meeting_slots: MeetingSlot[]
@@ -27,6 +31,8 @@ export interface ScheduleEnrollment {
   active: boolean
   created_at: string
   updated_at: string
+  /** The student's actual attendance pattern; legacy payloads fall back to class.meeting_slots. */
+  meeting_slots?: MeetingSlot[]
   class: ClassDefinition
 }
 
@@ -47,15 +53,6 @@ export interface AccountState {
   deleted: boolean
 }
 
-export interface HistoryRecord {
-  id: string
-  action: 'class_added' | 'class_removed' | 'class_replaced' | 'term_changed' | 'meeting_slots_changed' | 'admin_schedule_change'
-  previous_value: Record<string, unknown> | null
-  new_value: Record<string, unknown> | null
-  changed_by: string | null
-  created_at: string
-}
-
 export interface ClassSearchResult extends ClassDefinition {
   score: number
 }
@@ -63,6 +60,7 @@ export interface ClassSearchResult extends ClassDefinition {
 export interface CourseNameSearchResult {
   id: string
   course_name: string
+  course_term_policy?: CourseTermPolicy
   score: number
 }
 

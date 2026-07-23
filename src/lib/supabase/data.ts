@@ -9,11 +9,11 @@ import type {
   ClassMemberResult,
   ClassSearchResult,
   CourseNameSearchResult,
+  CourseTermPolicy,
   DayType,
   EventLogCategory,
   EventLogRecord,
   GuestStudentResult,
-  HistoryRecord,
   HomepageStatistic,
   HomepageStatisticSettings,
   MeetingSlot,
@@ -49,6 +49,7 @@ export interface ClassSearchInput {
   dayType?: DayType
   period?: number
   limit?: number
+  academicTerm?: AcademicTerm
 }
 
 function safeClassSearchError(error: { code?: string; message?: string }) {
@@ -59,48 +60,7 @@ function safeClassSearchError(error: { code?: string; message?: string }) {
 }
 
 export async function fetchSchedule(studentId: string): Promise<ScheduleEnrollment[]> {
-  const client = requireClient()
-  const { data, error } = await client
-    .from('class_enrollments')
-    .select('id, student_id, class_id, academic_term, active, created_at, updated_at, classes!inner(id, course_name_id, teacher_last_name, default_academic_term, is_double_period, course_names!inner(id, name), class_meeting_slots(day_type, period_number))')
-    .eq('student_id', studentId)
-    .eq('active', true)
-    .order('created_at')
-  if (error) throw error
-  return (data as unknown as Array<Record<string, unknown>>).map((row) => {
-    const classRow = row.classes as Record<string, unknown>
-    const courseNameRow = classRow.course_names as Record<string, unknown>
-    return {
-      id: row.id as string,
-      student_id: row.student_id as string,
-      class_id: row.class_id as string,
-      academic_term: row.academic_term as AcademicTerm,
-      active: Boolean(row.active),
-      created_at: row.created_at as string,
-      updated_at: row.updated_at as string,
-      class: {
-        id: classRow.id as string,
-        course_name_id: courseNameRow.id as string,
-        course_name: courseNameRow.name as string,
-        teacher_last_name: classRow.teacher_last_name as string,
-        default_academic_term: classRow.default_academic_term as AcademicTerm,
-        is_double_period: Boolean(classRow.is_double_period),
-        meeting_slots: slotsFrom(classRow.class_meeting_slots),
-      },
-    }
-  })
-}
-
-export async function fetchHistory(studentId: string, limit = 10): Promise<HistoryRecord[]> {
-  const client = requireClient()
-  const { data, error } = await client
-    .from('schedule_change_history')
-    .select('id, action, previous_value, new_value, changed_by, created_at')
-    .eq('student_id', studentId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw error
-  return data as unknown as HistoryRecord[]
+  return getVisibleSchedule(studentId)
 }
 
 export async function searchClasses(input: ClassSearchInput, signal?: AbortSignal): Promise<ClassSearchResult[]> {
@@ -110,6 +70,7 @@ export async function searchClasses(input: ClassSearchInput, signal?: AbortSigna
     p_day_type: input.dayType,
     p_period_number: input.period,
     p_limit: input.limit ?? 20,
+    p_academic_term: input.academicTerm,
   })
   const { data, error } = await (signal ? request.abortSignal(signal) : request)
   if (error) {
@@ -120,6 +81,7 @@ export async function searchClasses(input: ClassSearchInput, signal?: AbortSigna
     id: row.class_id as string,
     course_name_id: row.course_name_id as string,
     course_name: row.course_name as string,
+    course_term_policy: row.course_term_policy as CourseTermPolicy,
     teacher_last_name: row.teacher_last_name as string,
     default_academic_term: row.default_academic_term as AcademicTerm,
     is_double_period: Boolean(row.is_double_period),
@@ -136,16 +98,18 @@ export async function searchCourseNames(query: string, signal?: AbortSignal): Pr
   return (data as unknown as Array<Record<string, unknown>>).map((row) => ({
     id: row.course_name_id as string,
     course_name: row.course_name as string,
+    course_term_policy: row.course_term_policy as CourseTermPolicy,
     score: Number(row.score),
   }))
 }
 
-export async function enrollInClass(classId: string, term: AcademicTerm, allowConflict = false): Promise<string> {
+export async function enrollInClass(classId: string, term: AcademicTerm, meetingSlots?: MeetingSlot[]): Promise<string> {
   const client = requireClient()
   const { data, error } = await client.rpc('enroll_in_class', {
     p_class_id: classId,
     p_academic_term: term,
-    p_allow_conflict: allowConflict,
+    p_allow_conflict: false,
+    p_meeting_slots: meetingSlots as unknown as Json | undefined,
   })
   if (error) throw error
   return data as string
@@ -174,6 +138,30 @@ export async function createClassAndEnroll(input: {
   return data as string
 }
 
+export async function createClassAndReplaceEnrollment(enrollmentId: string, input: {
+  courseNameId?: string
+  newCourseName?: string
+  teacherLastName: string
+  term: AcademicTerm
+  isDoublePeriod: boolean
+  meetingSlots: MeetingSlot[]
+  confirmedNoCourseMatch: boolean
+}): Promise<string> {
+  const client = requireClient()
+  const { data, error } = await client.rpc('create_class_and_replace_enrollment', {
+    p_enrollment_id: enrollmentId,
+    p_course_name_id: (input.courseNameId ?? null) as unknown as string,
+    p_new_course_name: (input.newCourseName ?? null) as unknown as string,
+    p_teacher_last_name: input.teacherLastName,
+    p_academic_term: input.term,
+    p_is_double_period: input.isDoublePeriod,
+    p_meeting_slots: input.meetingSlots as unknown as Json,
+    p_confirmed_no_course_match: input.confirmedNoCourseMatch,
+  })
+  if (error) throw error
+  return data as string
+}
+
 export async function removeEnrollment(enrollmentId: string): Promise<void> {
   const client = requireClient()
   const { error } = await client.rpc('remove_enrollment', { p_enrollment_id: enrollmentId })
@@ -189,22 +177,17 @@ export async function clearSchedule(): Promise<number> {
   return removed
 }
 
-export async function replaceEnrollment(enrollmentId: string, nextClassId: string, term: AcademicTerm, allowConflict = false): Promise<string> {
+export async function replaceEnrollment(enrollmentId: string, nextClassId: string, term: AcademicTerm, meetingSlots?: MeetingSlot[]): Promise<string> {
   const client = requireClient()
   const { data, error } = await client.rpc('replace_enrollment', {
     p_enrollment_id: enrollmentId,
     p_new_class_id: nextClassId,
     p_academic_term: term,
-    p_allow_conflict: allowConflict,
+    p_allow_conflict: false,
+    p_meeting_slots: meetingSlots as unknown as Json | undefined,
   })
   if (error) throw error
   return data as string
-}
-
-export async function updateEnrollmentTerm(enrollmentId: string, term: AcademicTerm): Promise<void> {
-  const client = requireClient()
-  const { error } = await client.rpc('update_enrollment_term', { p_enrollment_id: enrollmentId, p_academic_term: term })
-  if (error) throw error
 }
 
 export async function searchStudentDirectory(filters: { query?: string; grade?: number; courseName?: string; teacherLastName?: string }): Promise<StudentDirectoryResult[]> {
@@ -321,11 +304,13 @@ export async function getVisibleSchedule(studentId: string): Promise<ScheduleEnr
     active: true,
     created_at: row.created_at as string,
     updated_at: row.created_at as string,
+    meeting_slots: slotsFrom(row.meeting_slots),
     class: {
       id: row.class_id as string,
       course_name_id: row.course_name_id as string,
       course_name: row.course_name as string,
       teacher_last_name: row.teacher_last_name as string,
+      course_term_policy: row.course_term_policy as CourseTermPolicy,
       default_academic_term: row.academic_term as AcademicTerm,
       is_double_period: Boolean(row.is_double_period),
       meeting_slots: slotsFrom(row.meeting_slots),
@@ -397,6 +382,16 @@ export async function adminListUsers(query = '', grade?: number, status?: string
     last_login_at: row.last_login_at ? String(row.last_login_at) : null,
     last_active_at: row.last_active_at ? String(row.last_active_at) : null,
   }))
+}
+
+export async function updateEnrollmentSchedule(enrollmentId: string, term: AcademicTerm, meetingSlots: MeetingSlot[]): Promise<void> {
+  const client = requireClient()
+  const { error } = await client.rpc('update_enrollment_schedule', {
+    p_enrollment_id: enrollmentId,
+    p_academic_term: term,
+    p_meeting_slots: meetingSlots as unknown as Json,
+  })
+  if (error) throw error
 }
 
 export async function adminListReports(): Promise<AdminReportRecord[]> {
@@ -472,11 +467,13 @@ export async function searchGuestClasses(input: ClassSearchInput): Promise<Class
     p_day_type: input.dayType,
     p_period_number: input.period,
     p_limit: input.limit ?? 20,
+    p_academic_term: input.academicTerm,
   })
   return (data as Array<Record<string, unknown>>).map((row) => ({
     id: row.class_id as string,
     course_name_id: row.course_name_id as string,
     course_name: row.course_name as string,
+    course_term_policy: row.course_term_policy as CourseTermPolicy,
     teacher_last_name: row.teacher_last_name as string,
     default_academic_term: row.default_academic_term as AcademicTerm,
     is_double_period: Boolean(row.is_double_period),
@@ -493,6 +490,7 @@ export async function searchGuestCourseNames(query: string): Promise<CourseNameS
   return (data as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.course_name_id),
     course_name: String(row.course_name),
+    course_term_policy: row.course_term_policy as CourseTermPolicy,
     score: Number(row.score),
   }))
 }
@@ -790,6 +788,7 @@ export function classFromSearch(result: ClassSearchResult): ClassDefinition {
     course_name: result.course_name,
     teacher_last_name: result.teacher_last_name,
     default_academic_term: result.default_academic_term,
+    course_term_policy: result.course_term_policy,
     is_double_period: result.is_double_period,
     meeting_slots: result.meeting_slots,
   }

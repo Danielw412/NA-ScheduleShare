@@ -18,6 +18,7 @@ const SENSITIVE_KEY_PATTERN = /(?:authorization|token|secret|api.?key|image.?byt
 
 export type DayType = 'A' | 'B'
 export type ImportTerm = 'full_year' | 'semester_1' | 'semester_2' | 'unknown'
+export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'lunch' | 'variable_credit' | 'versioned'
 export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
 export type Grade = 9 | 10 | 11 | 12
 
@@ -29,6 +30,7 @@ export interface MeetingSlot {
 export interface CourseRecord {
   id: string
   name: string
+  term_policy?: CourseTermPolicy
 }
 
 export interface ExistingClassRecord {
@@ -56,12 +58,13 @@ export interface ImportClassOption {
   teacher_last_name: string
   term: Exclude<ImportTerm, 'unknown'>
   meeting_slots: MeetingSlot[]
+  course_term_policy?: CourseTermPolicy
 }
 
 export interface ImportReviewRow {
   id: string
   source_course_name: string
-  course: { id: string; name: string; confidence: number } | null
+  course: { id: string; name: string; confidence: number; term_policy?: CourseTermPolicy } | null
   teacher_last_name: string
   term: ImportTerm
   meeting_slots: MeetingSlot[]
@@ -103,6 +106,8 @@ export interface ScheduleImportResponse {
   image_count: number
   estimated_grade?: Grade
   shared_student_count?: number
+  retry_count?: number
+  retry_reasons?: string[]
   developer?: DeveloperDiagnostics
 }
 
@@ -129,7 +134,7 @@ export interface ScheduleImportDependencies {
     requester: { userId: string | null; guestKey: string | null },
   ) => Promise<ImportConfiguration>
   loadCatalog: (token: string, config: ImportConfiguration) => Promise<CourseRecord[]>
-  loadClasses: (token: string, config: ImportConfiguration) => Promise<ExistingClassRecord[]>
+  loadClasses: (token: string, config: ImportConfiguration, courseIds: string[]) => Promise<ExistingClassRecord[]>
   countGuestMatches: (classIds: string[]) => Promise<number>
   recordDiagnostic: (token: string, payload: DiagnosticPayload) => Promise<string>
   fetch?: typeof fetch
@@ -159,7 +164,6 @@ interface NormalizedGeminiRow {
   duplicate: boolean
   term_defaulted: boolean
   term_inferred: boolean
-  lunch_semester_split?: boolean
 }
 
 interface EncodedImage {
@@ -208,7 +212,7 @@ Extraction rules:
 - "Health & PE" and variations should be canonicalized to "Gym"
 - Ignore grade-level, counselor, case-manager, attendance, and other administrative rows.
 - Preserve visible course and teacher names exactly. Do not invent, correct, expand, rename, or canonicalize them.
-- Return unknown when the term is not visible. The application will default an unknown term to Full Year during review.
+- Return unknown when the term is not visible. Never guess Full Year, Semester 1, or Semester 2 from the course name.
 - Resolve semester terms as a schedule constraint, not from row order: two distinct courses cannot occupy the same A/B day and period during the same semester.
 - When exactly two distinct rows have the same complete set of meeting slots, one row explicitly says semester 1 or semester 2, and the other row has no visible term, assign the other row to the complementary semester. Lunch follows the same rule as every other course; do not special-case a course name.
 - Apply that complementary-semester inference only when it is uniquely determined. If several rows conflict, both terms are unknown, a row explicitly says full year, or the meeting slots are not identical, leave the uncertain term as unknown.
@@ -265,15 +269,24 @@ export function buildGeminiRequest(
   prompt: string,
   images: EncodedImage[],
   config: Pick<ImportConfiguration, 'thinking_level' | 'output_token_limit'>,
+  retry?: { previousOutput: string; reasons: string[] },
 ): Record<string, unknown> {
+  const initialUserContent = {
+    role: 'user',
+    parts: [
+      { text: prompt },
+      ...images.map((image) => ({ inlineData: { mimeType: image.mimeType, data: image.base64 } })),
+    ],
+  }
   return {
-    contents: [{
-      role: 'user',
-      parts: [
-        { text: prompt },
-        ...images.map((image) => ({ inlineData: { mimeType: image.mimeType, data: image.base64 } })),
-      ],
-    }],
+    contents: retry ? [
+      initialUserContent,
+      { role: 'model', parts: [{ text: retry.previousOutput }] },
+      {
+        role: 'user',
+        parts: [{ text: `Re-read the screenshots and correct the structured result. The first pass needs another check because: ${retry.reasons.join('; ')}. Return a complete replacement JSON object in the exact required schema. Preserve correct rows, recover any missed visible classes or fields, and resolve only terms that are explicitly visible or uniquely determined by the schedule constraints.` }],
+      },
+    ] : [initialUserContent],
     generationConfig: {
       temperature: 0,
       maxOutputTokens: config.output_token_limit,
@@ -325,20 +338,46 @@ export async function handleScheduleImportRequest(
     }, requester)
     validateImportConfiguration(config, requester.userId, upload.developerMode)
 
-    const [catalog, classes] = await Promise.all([
-      dependencies.loadCatalog(token, config),
-      dependencies.loadClasses(token, config),
-    ])
-    validateBackendData(catalog, classes)
-
     const prompt = buildPrompt()
+    const catalog = await dependencies.loadCatalog(token, config)
+    validateBackendData(catalog, [])
     rawOutput = await invokeGemini(images, config, dependencies)
-    const parsed = parseGeminiSchedule(rawOutput)
-    parsedOutput = parsed
-    const normalizedRows = normalizeGeminiRows(parsed)
-    const estimatedGrade = config.grade ?? inferGradeFromEnglish(normalizedRows)
-    const campusRows = normalizeCampusSpecialCourses(normalizedRows, estimatedGrade)
-    const matchedRows = buildReviewRows(campusRows, catalog, classes, dependencies.randomUUID)
+    const firstPass = await buildImportPass(rawOutput, token, config, catalog, dependencies)
+    let selectedPass = firstPass
+    let retryCount = 0
+    const retryReasons = reviewIssueReasons(firstPass.rows)
+    const responseWarnings: string[] = []
+    parsedOutput = firstPass.parsed
+
+    if (retryReasons.length > 0) {
+      retryCount = 1
+      try {
+        const retryOutput = await invokeGemini(images, config, dependencies, {
+          previousOutput: rawOutput,
+          reasons: retryReasons,
+        })
+        const retryPass = await buildImportPass(retryOutput, token, config, catalog, dependencies)
+        const useRetry = importPassIsBetter(retryPass, firstPass)
+        selectedPass = useRetry ? retryPass : firstPass
+        rawOutput = useRetry ? retryOutput : rawOutput
+        parsedOutput = {
+          initial: firstPass.parsed,
+          retry: retryPass.parsed,
+          selected: useRetry ? 'retry' : 'initial',
+        }
+        if (!useRetry) responseWarnings.push('Gemini checked the screenshots again, but the first reading remained the safer result.')
+      } catch (caught) {
+        parsedOutput = {
+          initial: firstPass.parsed,
+          retry_error: safeErrorMessage(caught),
+          selected: 'initial',
+        }
+        responseWarnings.push('Gemini could not complete the automatic second check, so the first reading was kept for review.')
+      }
+    }
+
+    const estimatedGrade = selectedPass.estimatedGrade
+    const matchedRows = selectedPass.rows
     const sharedStudentCount = config.is_guest
       ? await dependencies.countGuestMatches(matchedRows.flatMap((row) => row.existing_class_id ? [row.existing_class_id] : []))
       : undefined
@@ -381,8 +420,10 @@ export async function handleScheduleImportRequest(
       model: config.model_id,
       processing_duration_ms: elapsedMs,
       rows,
-      warnings: [],
+      warnings: responseWarnings,
       image_count: images.length,
+      retry_count: retryCount,
+      retry_reasons: retryReasons,
       ...(config.is_guest ? { estimated_grade: estimatedGrade, shared_student_count: sharedStudentCount ?? 0 } : {}),
       ...(developer ? { developer } : {}),
     } satisfies ScheduleImportResponse)
@@ -484,7 +525,10 @@ function validateImportConfiguration(config: ImportConfiguration, userId: string
 
 function validateBackendData(catalog: CourseRecord[], classes: ExistingClassRecord[]): void {
   if (!Array.isArray(catalog) || catalog.length === 0 || catalog.some((course) => (
-    !UUID_PATTERN.test(course.id) || typeof course.name !== 'string' || course.name.trim().length < 2
+    !UUID_PATTERN.test(course.id)
+    || typeof course.name !== 'string'
+    || course.name.trim().length < 2
+    || (course.term_policy !== undefined && !isCourseTermPolicy(course.term_policy))
   ))) {
     throw new HttpError(503, 'catalog_unavailable', 'The course catalogue is temporarily unavailable.')
   }
@@ -588,6 +632,7 @@ export async function invokeGemini(
   images: EncodedImage[],
   config: ImportConfiguration,
   dependencies: Pick<ScheduleImportDependencies, 'geminiApiKey' | 'fetch' | 'timeoutMs'>,
+  retry?: { previousOutput: string; reasons: string[] },
 ): Promise<string> {
   const apiKey = dependencies.geminiApiKey?.trim()
   if (!apiKey) {
@@ -606,7 +651,7 @@ export async function invokeGemini(
           'Content-Type': 'application/json',
           'x-goog-api-key': apiKey,
         },
-        body: JSON.stringify(buildGeminiRequest(buildPrompt(), images, config)),
+        body: JSON.stringify(buildGeminiRequest(buildPrompt(), images, config, retry)),
         signal: controller.signal,
       },
     )
@@ -815,19 +860,16 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
 
   const merged = new Map<string, NormalizedGeminiRow>()
   for (const row of preparedRows) {
-    const visibleTerm = row.term
-    const termDefaulted = visibleTerm === 'unknown'
-    const term: ImportTerm = termDefaulted ? 'full_year' : visibleTerm
-    const key = `${normalizeCourseName(row.source_course_name)}|${row.teacher_raw.toLowerCase()}|${term}|${slotsKey(row.meeting_slots)}`
+    const key = `${normalizeCourseName(row.source_course_name)}|${row.teacher_raw.toLowerCase()}|${row.term}|${slotsKey(row.meeting_slots)}`
     const current = merged.get(key)
     if (!current) {
       merged.set(key, {
         source_course_name: row.source_course_name,
         teacher_raw: row.teacher_raw,
-        term,
+        term: row.term,
         meeting_slots: row.meeting_slots,
         duplicate: false,
-        term_defaulted: termDefaulted,
+        term_defaulted: false,
         term_inferred: row.term_inferred,
       })
       continue
@@ -835,7 +877,6 @@ function normalizeGeminiRows(schedule: GeminiSchedule): NormalizedGeminiRow[] {
     merged.set(key, {
       ...current,
       duplicate: true,
-      term_defaulted: current.term_defaulted && termDefaulted,
       term_inferred: current.term_inferred || row.term_inferred,
     })
   }
@@ -864,16 +905,91 @@ function specialCourseKind(value: string): 'Lunch' | 'Study Hall' | null {
 
 export function normalizeCampusSpecialCourses(entries: NormalizedGeminiRow[], grade: Grade): NormalizedGeminiRow[] {
   const campus = grade <= 10 ? 'NAI' : 'NASH'
-  return entries.flatMap((entry) => {
+  return entries.map((entry) => {
     const kind = specialCourseKind(entry.source_course_name)
-    if (!kind) return [entry]
-    const campusEntry = { ...entry, source_course_name: `${kind} - ${campus}` }
-    if (kind !== 'Lunch' || entry.term !== 'full_year') return [campusEntry]
-    return [
-      { ...campusEntry, term: 'semester_1', term_defaulted: false, lunch_semester_split: true },
-      { ...campusEntry, term: 'semester_2', term_defaulted: false, lunch_semester_split: true },
-    ]
+    return kind ? { ...entry, source_course_name: `${kind} - ${campus}` } : entry
   })
+}
+
+interface ImportPass {
+  parsed: GeminiSchedule
+  estimatedGrade: Grade
+  rows: ImportReviewRow[]
+}
+
+async function buildImportPass(
+  rawOutput: string,
+  token: string,
+  config: ImportConfiguration,
+  catalog: CourseRecord[],
+  dependencies: ScheduleImportDependencies,
+): Promise<ImportPass> {
+  const parsed = parseGeminiSchedule(rawOutput)
+  const normalizedRows = normalizeGeminiRows(parsed)
+  const estimatedGrade = config.grade ?? inferGradeFromEnglish(normalizedRows)
+  const campusRows = normalizeCampusSpecialCourses(normalizedRows, estimatedGrade)
+  const courseIds = [...new Set(campusRows.flatMap((row) => {
+    const match = findCourseMatch(row.source_course_name, catalog)
+    return match.course ? [match.course.id] : []
+  }))]
+  const classes = await dependencies.loadClasses(token, config, courseIds)
+  validateBackendData(catalog, classes)
+  return {
+    parsed,
+    estimatedGrade,
+    rows: buildReviewRows(campusRows, catalog, classes, dependencies.randomUUID),
+  }
+}
+
+function termsOverlap(left: ImportTerm, right: ImportTerm): boolean {
+  if (left === 'unknown' || right === 'unknown') return false
+  return left === 'full_year' || right === 'full_year' || left === right
+}
+
+function rowsConflict(left: ImportReviewRow, right: ImportReviewRow): boolean {
+  if (!termsOverlap(left.term, right.term)) return false
+  if (left.course?.term_policy === 'lunch' && right.course?.term_policy === 'lunch') return true
+  const rightSlots = new Set(right.meeting_slots.map((slot) => `${slot.day_type}:${slot.period_number}`))
+  return left.meeting_slots.some((slot) => rightSlots.has(`${slot.day_type}:${slot.period_number}`))
+}
+
+function reviewConflictCount(rows: ImportReviewRow[]): number {
+  let count = 0
+  for (let leftIndex = 0; leftIndex < rows.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
+      if (rowsConflict(rows[leftIndex], rows[rightIndex])) count += 1
+    }
+  }
+  return count
+}
+
+function rowNeedsCorrection(row: ImportReviewRow): boolean {
+  return row.term === 'unknown'
+    || row.flags.includes('unresolved_course')
+    || row.flags.includes('ambiguous_course')
+    || row.flags.includes('incomplete')
+}
+
+function reviewIssueReasons(rows: ImportReviewRow[]): string[] {
+  const reasons: string[] = []
+  const incompleteCount = rows.filter(rowNeedsCorrection).length
+  const conflictCount = reviewConflictCount(rows)
+  if (incompleteCount > 0) reasons.push(`${incompleteCount} imported ${incompleteCount === 1 ? 'class is' : 'classes are'} unresolved or incomplete`)
+  if (conflictCount > 0) reasons.push(`${conflictCount} semester/day/period ${conflictCount === 1 ? 'conflict remains' : 'conflicts remain'}`)
+  return reasons
+}
+
+function importPassScore(pass: ImportPass): number {
+  return pass.rows.filter(rowNeedsCorrection).length * 10 + reviewConflictCount(pass.rows) * 12
+}
+
+function importPassIsBetter(candidate: ImportPass, baseline: ImportPass): boolean {
+  const candidateScore = importPassScore(candidate)
+  const baselineScore = importPassScore(baseline)
+  if (candidateScore !== baselineScore) return candidateScore < baselineScore
+  if (candidate.rows.length !== baseline.rows.length) return candidate.rows.length > baseline.rows.length
+  const averageConfidence = (pass: ImportPass) => pass.rows.reduce((total, row) => total + row.confidence, 0) / Math.max(1, pass.rows.length)
+  return averageConfidence(candidate) > averageConfidence(baseline)
 }
 
 function concealGuestCampusNames(rows: ImportReviewRow[]): ImportReviewRow[] {
@@ -918,9 +1034,13 @@ function buildReviewRows(
 ): ImportReviewRow[] {
   return entries.map((entry, index) => {
     const match = findCourseMatch(entry.source_course_name, catalog)
-    const options = match.course ? classOptionsFor(match.course.id, classes) : []
+    const policy = match.course?.term_policy ?? 'full_year'
+    const resolvedEntry = match.course && policy === 'full_year' && entry.term === 'unknown'
+      ? { ...entry, term: 'full_year' as const, term_defaulted: true }
+      : entry
+    const options = match.course ? classOptionsFor(match.course, classes) : []
     const teacherLastName = parseTeacherLastName(entry.teacher_raw, match.course?.name ?? entry.source_course_name)
-    const existing = match.course ? exactClassMatch(entry, teacherLastName, options) : null
+    const existing = match.course ? exactClassMatch(resolvedEntry, teacherLastName, options, policy) : null
     const flags: ImportReviewRow['flags'] = []
     const warnings: string[] = []
     if (match.kind === 'unresolved') flags.push('unresolved_course')
@@ -929,26 +1049,40 @@ function buildReviewRows(
       warnings.push(`Catalogue match is ambiguous among: ${match.alternatives.map((course) => course.name).join(', ')}.`)
     }
     if (match.kind !== 'matched' || match.score < 0.9) flags.push('low_confidence')
-    if (entry.duplicate) {
+    if (resolvedEntry.duplicate) {
       flags.push('duplicate')
       warnings.push('An exact duplicate screenshot row was merged.')
     }
-    if (entry.term_defaulted) {
-      warnings.push('Academic term was not visible, so Full Year was selected by default.')
+    if (resolvedEntry.term_defaulted) {
+      warnings.push('The term was not visible; the catalogue identifies this as a full-year course.')
     }
-    if (entry.term_inferred) {
+    if (resolvedEntry.term_inferred) {
       warnings.push('Academic term was inferred from the complementary semester course in the same meeting slot.')
     }
-    if (entry.lunch_semester_split) {
-      warnings.push('Full-year Lunch was separated into semester-based lunch classes in the same period.')
+    const formatError = match.course ? courseFormatError(policy, resolvedEntry.term, resolvedEntry.meeting_slots) : null
+    if (resolvedEntry.term === 'unknown') {
+      if (!flags.includes('incomplete')) flags.push('incomplete')
+      warnings.push('The academic term could not be read confidently.')
+    } else if (formatError) {
+      if (!flags.includes('incomplete')) flags.push('incomplete')
+      warnings.push(formatError)
+    }
+    if (!resolvedEntry.teacher_raw && !specialCourseKind(match.course?.name ?? resolvedEntry.source_course_name)) {
+      if (!flags.includes('incomplete')) flags.push('incomplete')
+      warnings.push('The teacher name could not be read confidently.')
     }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
       source_course_name: entry.source_course_name,
-      course: match.course ? { id: match.course.id, name: match.course.name, confidence: match.score } : null,
+      course: match.course ? {
+        id: match.course.id,
+        name: match.course.name,
+        confidence: match.score,
+        term_policy: policy,
+      } : null,
       teacher_last_name: teacherLastName,
-      term: entry.term,
-      meeting_slots: entry.meeting_slots,
+      term: resolvedEntry.term,
+      meeting_slots: resolvedEntry.meeting_slots,
       confidence: match.kind === 'matched' ? match.score : Math.min(0.74, Math.max(0.25, match.score)),
       warnings,
       flags,
@@ -957,6 +1091,24 @@ function buildReviewRows(
       class_options: options,
     }
   })
+}
+
+function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: MeetingSlot[]): string | null {
+  if (term === 'unknown') return null
+  const aSlots = slots.filter((slot) => slot.day_type === 'A')
+  const bSlots = slots.filter((slot) => slot.day_type === 'B')
+  if (policy === 'full_year' && term !== 'full_year') return 'This catalogue course is full year, but the screenshot was read as semester-only.'
+  if (policy === 'semester' && term === 'full_year') return 'This half-credit course must be assigned to Semester 1 or Semester 2.'
+  if (policy === 'flexible_attendance') {
+    if (term === 'full_year' && slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
+    if (term !== 'full_year' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) {
+      return 'Semester Gym, Wellness, or Study Hall must meet every A and B day.'
+    }
+  }
+  if (policy === 'lunch' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
+    return 'Lunch must use the same period on every A and B day.'
+  }
+  return null
 }
 
 export function parseTeacherLastName(raw: string, courseName = ''): string {
@@ -971,15 +1123,16 @@ export function parseTeacherLastName(raw: string, courseName = ''): string {
   return teacher || 'N/A'
 }
 
-function classOptionsFor(courseId: string, classes: ExistingClassRecord[]): ImportClassOption[] {
+function classOptionsFor(course: CourseRecord, classes: ExistingClassRecord[]): ImportClassOption[] {
   return classes
-    .filter((classRecord) => classRecord.course_name_id === courseId)
+    .filter((classRecord) => classRecord.course_name_id === course.id)
     .map((classRecord) => ({
       id: classRecord.id,
       course_id: classRecord.course_name_id,
       teacher_last_name: classRecord.teacher_last_name,
       term: classRecord.default_academic_term,
       meeting_slots: sortSlots(classRecord.meeting_slots),
+      course_term_policy: course.term_policy ?? 'full_year',
     }))
 }
 
@@ -987,14 +1140,22 @@ function exactClassMatch(
   entry: NormalizedGeminiRow,
   teacherLastName: string,
   options: ImportClassOption[],
+  policy: CourseTermPolicy,
 ): ImportClassOption | null {
   if (entry.term === 'unknown') return null
   const key = slotsKey(entry.meeting_slots)
   return options.find((option) => (
-    option.term === entry.term
-    && collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
-    && slotsKey(option.meeting_slots) === key
+    collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
+    && (policy === 'flexible_attendance'
+      ? periodsKey(option.meeting_slots) === periodsKey(entry.meeting_slots)
+      : policy === 'lunch'
+        ? slotsKey(option.meeting_slots) === key
+        : option.term === entry.term && slotsKey(option.meeting_slots) === key)
   )) ?? null
+}
+
+function periodsKey(slots: MeetingSlot[]): string {
+  return [...new Set(slots.map((slot) => slot.period_number))].sort((left, right) => left - right).join(',')
 }
 
 function normalizeCourseName(value: string): string {
@@ -1166,6 +1327,15 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 
 function isAcademicTerm(value: unknown): value is Exclude<ImportTerm, 'unknown'> {
   return value === 'full_year' || value === 'semester_1' || value === 'semester_2'
+}
+
+function isCourseTermPolicy(value: unknown): value is CourseTermPolicy {
+  return value === 'full_year'
+    || value === 'semester'
+    || value === 'flexible_attendance'
+    || value === 'lunch'
+    || value === 'variable_credit'
+    || value === 'versioned'
 }
 
 function collapseWhitespace(value: string): string {

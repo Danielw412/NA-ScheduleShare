@@ -32,7 +32,6 @@ const callbacks = {
   onAdd: vi.fn(),
   onRemove: vi.fn(),
   onReplace: vi.fn(),
-  onTermChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -42,7 +41,7 @@ afterEach(() => {
 
 describe('ScheduleGrid borders', () => {
   it('renders an explicit boundary structure for every period and both day columns', () => {
-    const { container, rerender } = render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="full_year" {...callbacks} />)
+    const { container, rerender } = render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
 
     const rows = screen.getAllByRole('row')
     expect(rows).toHaveLength(9)
@@ -93,7 +92,7 @@ describe('ScheduleGrid borders', () => {
         ],
       },
     }
-    const { container } = render(<ScheduleGrid enrollments={[asymmetric]} selectedTerm="full_year" {...callbacks} />)
+    const { container } = render(<ScheduleGrid enrollments={[asymmetric]} selectedTerm="semester_1" {...callbacks} />)
 
     expect(container.querySelector('[data-day="A"][data-period="4"]')).not.toHaveAttribute('data-continuation')
     expect(container.querySelector('[data-day="B"][data-period="3"]')).not.toHaveAttribute('data-continuation')
@@ -134,7 +133,7 @@ describe('ScheduleGrid borders', () => {
         ],
       },
     }
-    const { container } = render(<ScheduleGrid enrollments={[derivedDouble, normal]} selectedTerm="full_year" {...callbacks} />)
+    const { container } = render(<ScheduleGrid enrollments={[derivedDouble, normal]} selectedTerm="semester_1" {...callbacks} />)
 
     expect(container.querySelector('[data-day="A"][data-period="2"]')).toHaveClass('is-multi-period')
     expect(container.querySelector('[data-day="A"][data-period="3"]')).toHaveClass('is-multi-period')
@@ -144,7 +143,7 @@ describe('ScheduleGrid borders', () => {
 
   it('keeps only one action menu open and closes it when clicking elsewhere', async () => {
     const user = userEvent.setup()
-    render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="full_year" {...callbacks} />)
+    render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
     const triggers = screen.getAllByRole('button', { name: 'Actions for AP Physics 1&2' })
 
     await user.click(triggers[0])
@@ -159,7 +158,7 @@ describe('ScheduleGrid borders', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('allows term changes only for the approved flexible special courses', async () => {
+  it('opens the editor for flexible special-course attendance changes', async () => {
     const user = userEvent.setup()
     const gymEnrollment: ScheduleEnrollment = {
       ...doublePeriod,
@@ -167,11 +166,10 @@ describe('ScheduleGrid borders', () => {
       class_id: 'gym-class',
       class: { ...doublePeriod.class, id: 'gym-class', course_name: 'Unified Gym - Senior' },
     }
-    render(<ScheduleGrid enrollments={[gymEnrollment]} selectedTerm="full_year" {...callbacks} />)
+    render(<ScheduleGrid enrollments={[gymEnrollment]} selectedTerm="semester_1" {...callbacks} />)
 
     await user.click(screen.getAllByRole('button', { name: 'Actions for Unified Gym - Senior' })[0])
-    const termSelect = screen.getByRole('combobox', { name: 'Academic term' })
-    await user.selectOptions(termSelect, 'semester_1')
-    expect(callbacks.onTermChange).toHaveBeenCalledWith(gymEnrollment, 'semester_1')
+    await user.click(screen.getByRole('menuitem', { name: 'Edit or replace class' }))
+    expect(callbacks.onReplace).toHaveBeenCalledWith(gymEnrollment, 'A', 7)
   })
 })

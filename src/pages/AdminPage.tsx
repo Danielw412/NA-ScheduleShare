@@ -5,7 +5,7 @@ import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
 import { adminRemoveProfilePicture } from '../lib/profile'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingDaySelectionFromSlots, meetingPeriodFromSlots, type MeetingDaySelection, validateMeetingSlots } from '../lib/schedule'
+import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
 import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogs, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
@@ -573,43 +573,30 @@ function AdminClassEditDialog({
   const [teacherLastName, setTeacherLastName] = useState(course.teacher_last_name)
   const term = course.default_academic_term
   const [isDoublePeriod, setIsDoublePeriod] = useState(course.is_double_period || hasMultiplePeriodsOnAnyDay(course.meeting_slots))
-  const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>(meetingDaySelectionFromSlots(course.meeting_slots))
-  const [meetingPeriod, setMeetingPeriod] = useState(meetingPeriodFromSlots(course.meeting_slots))
   const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(course.meeting_slots)
   const [reason, setReason] = useState('Corrected from admin class management')
-  const normalMeetingSlots = buildNormalMeetingSlots(meetingDays, meetingPeriod)
-  const activeMeetingSlots = isDoublePeriod ? meetingSlots : normalMeetingSlots
-  const slotError = validateMeetingSlots(activeMeetingSlots, isDoublePeriod)
+  const slotError = validateMeetingSlots(meetingSlots, isDoublePeriod)
   const teacherError = teacherLastNameError(teacherLastName)
   const canSave = Boolean(courseNameId) && !teacherError && reason.trim().length >= 3 && !slotError
 
   function changeDoublePeriod(nextIsDoublePeriod: boolean) {
     setIsDoublePeriod(nextIsDoublePeriod)
     if (!nextIsDoublePeriod) {
-      setMeetingSlots(normalMeetingSlots)
+      const normalSlots = (['A', 'B'] as const).flatMap((day) => meetingSlotsForDay(meetingSlots, day).slice(0, 1))
+      setMeetingSlots(sortMeetingSlots(normalSlots))
       return
     }
     if (hasMultiplePeriodsOnAnyDay(meetingSlots)) return
-    setMeetingSlots(defaultDoubleMeetingSlots(preferredMeetingDay(meetingSlots), meetingPeriod))
-  }
-
-  function changeMeetingDays(nextMeetingDays: MeetingDaySelection) {
-    setMeetingDays(nextMeetingDays)
-    if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(nextMeetingDays, meetingPeriod))
-  }
-
-  function changeMeetingPeriod(nextMeetingPeriod: number) {
-    setMeetingPeriod(nextMeetingPeriod)
-    if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(meetingDays, nextMeetingPeriod))
+    setMeetingSlots(defaultDoubleMeetingSlots(preferredMeetingDay(meetingSlots), meetingSlots[0]?.period_number ?? 1))
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!canSave) return
-    void onSave({ courseNameId, teacherLastName, term, isDoublePeriod, meetingSlots: activeMeetingSlots, reason })
+    void onSave({ courseNameId, teacherLastName, term, isDoublePeriod, meetingSlots, reason })
   }
 
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<div className="field-readonly"><span>Academic term</span><strong>{termLabels[term]}</strong><small>Class terms are fixed after creation. Create a new section to use a different term.</small></div><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} meetingDays={meetingDays} meetingPeriod={meetingPeriod} onDoublePeriodChange={changeDoublePeriod} onMeetingDaysChange={changeMeetingDays} onMeetingPeriodChange={changeMeetingPeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<div className="field-readonly"><span>Academic term</span><strong>{termLabels[term]}</strong><small>Class terms are fixed after creation. Create a new section to use a different term.</small></div><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} onDoublePeriodChange={changeDoublePeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
 }
 
 const emptyActivitySummary: ActivitySummary = {

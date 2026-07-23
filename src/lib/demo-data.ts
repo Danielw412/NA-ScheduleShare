@@ -1,4 +1,4 @@
-import type { HistoryRecord, Profile, ScheduleEnrollment } from './domain'
+import type { Profile, ScheduleEnrollment } from './domain'
 
 const now = new Date().toISOString()
 
@@ -31,6 +31,7 @@ export const demoEnrollments: ScheduleEnrollment[] = [
   active: true,
   created_at: now,
   updated_at: now,
+  meeting_slots: slots as Array<{ day_type: 'A' | 'B'; period_number: number }>,
   class: {
     id: `20000000-0000-4000-8000-00000000000${id}`,
     course_name_id: `30000000-0000-4000-8000-00000000000${id}`,
@@ -41,9 +42,3 @@ export const demoEnrollments: ScheduleEnrollment[] = [
     meeting_slots: slots as Array<{ day_type: 'A' | 'B'; period_number: number }>,
   },
 }))
-
-export const demoHistory: HistoryRecord[] = [
-  { id: '1', action: 'class_added', previous_value: null, new_value: { course_name: 'Honors Spanish 3', day_type: 'A' }, changed_by: demoProfile.id, created_at: now },
-  { id: '2', action: 'class_added', previous_value: null, new_value: { course_name: 'AP US History', day_type: 'B' }, changed_by: demoProfile.id, created_at: now },
-  { id: '3', action: 'term_changed', previous_value: { academic_term: 'semester_1' }, new_value: { academic_term: 'full_year' }, changed_by: demoProfile.id, created_at: now },
-]

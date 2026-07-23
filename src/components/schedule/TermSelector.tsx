@@ -1,12 +1,11 @@
-import type { AcademicTerm } from '../../lib/domain'
+import type { SemesterTerm } from '../../lib/domain'
 
-const options: Array<{ value: AcademicTerm; label: string; compact: string }> = [
-  { value: 'full_year', label: 'Full Year', compact: 'Full Year' },
+const options: Array<{ value: SemesterTerm; label: string; compact: string }> = [
   { value: 'semester_1', label: 'Semester 1', compact: 'S1' },
   { value: 'semester_2', label: 'Semester 2', compact: 'S2' },
 ]
 
-export function TermSelector({ value, onChange, label = 'View term' }: { value: AcademicTerm; onChange: (term: AcademicTerm) => void; label?: string }) {
+export function TermSelector({ value, onChange, label = 'View semester' }: { value: SemesterTerm; onChange: (term: SemesterTerm) => void; label?: string }) {
   return (
     <div className="term-selector" role="group" aria-label={label}>
       {options.map((option) => (

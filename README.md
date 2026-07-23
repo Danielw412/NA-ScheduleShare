@@ -1,14 +1,15 @@
 # NA ScheduleShare
 
-NA ScheduleShare is a student-built website for creating A/B-day schedules, finding classmates, and comparing schedules with friends. It was created by the **NA Computer and AI Club** and is not an official school website.
+NA ScheduleShare is a student-built website for creating semester-aware A/B-day schedules, finding classmates, and sharing schedules with friends. It was created by the **NA Computer and AI Club** and is not an official school website.
 
 **Live site:** https://danielw412.github.io/NA-ScheduleShare/
 
 ## Main features
 
-- Build an A/B-day class schedule with full-year and semester terms
-- Support normal and double-period classes
-- Import one or two PowerSchool schedule screenshots with AI-assisted review
+- Switch between Semester 1 and Semester 2, each with separate A-day and B-day columns
+- Support full-year, semester, A-only, B-only, different-period A/B, and double-period classes
+- Keep each student's attendance pattern separate while reusing shared class sections
+- Import up to three PowerSchool schedule screenshots with Gemini-assisted review
 - Find classes and classmates based on each student's privacy setting
 - Search student schedules when access is permitted
 - Report inappropriate content or accounts
@@ -23,7 +24,8 @@ NA ScheduleShare is a student-built website for creating A/B-day schedules, find
 - Vite
 - Supabase Auth and PostgreSQL
 - PostgreSQL Row Level Security and RPC functions
-- Cloudflare Workers AI for screenshot extraction
+- Supabase Edge Functions and Google Gemini for screenshot extraction
+- Cloudflare Workers for private schedule-share previews
 - GitHub Pages and GitHub Actions
 
 The frontend uses a hash router so routes work correctly under the GitHub Pages project path.
@@ -39,9 +41,10 @@ src/hooks/                         Shared React hooks
 src/lib/                           Domain logic and Supabase calls
 src/config/brand.ts                Site name, links, and logo settings
 src/styles.css                     Global and responsive styling
-supabase/migrations/               Database schema, RLS, and RPC migrations
+supabase/migrations/               Database schema, RLS, indexes, and RPC migrations
+supabase/functions/schedule-import Gemini screenshot importer
 supabase/tests/database/           Database privacy and authorization tests
-cloudflare/schedule-import-worker/ Screenshot extraction Worker
+cloudflare/schedule-import-worker/ Schedule-share and legacy import Worker
 docs/design/                       Design references
 ```
 
@@ -70,7 +73,6 @@ Add the local Supabase values printed by `pnpm supabase:start` to `.env.local`:
 ```dotenv
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=your-local-public-key
-VITE_SCHEDULE_IMPORT_API_URL=http://127.0.0.1:8787
 VITE_SCHEDULE_SHARE_BASE_URL=http://127.0.0.1:8787
 VITE_ENABLE_DEMO_MODE=false
 ```
@@ -91,11 +93,11 @@ For UI-only development without Supabase, set `VITE_ENABLE_DEMO_MODE=true` and l
 
 ## Screenshot importer
 
-The importer accepts up to two PNG, JPEG, or WebP screenshots through file selection, drag-and-drop, or clipboard paste. Extracted classes are shown in an editable review screen before anything is saved.
+The importer accepts up to three PNG, JPEG, or WebP screenshots, no larger than 5 MB each, through file selection, drag-and-drop, or clipboard paste. Extracted classes are shown in an editable review screen before anything is saved.
 
-The importer may create a new class section, but it must match an existing course in the approved course catalogue. It does not create new course names. Images are processed by the Cloudflare Worker and are not stored in Supabase or persistent Worker storage.
+The browser invokes the `schedule-import` Supabase Edge Function, which sends the images to Gemini and resolves the result against the approved course catalogue. It never creates course names. When the first reading is incomplete or conflicts, the function continues the same Gemini conversation once with the first result and asks it to correct the questionable rows. A clean first reading makes only one Gemini call. Images are processed in request memory and are not stored by ScheduleShare.
 
-See [`cloudflare/schedule-import-worker/README.md`](cloudflare/schedule-import-worker/README.md) for local Worker setup, KV configuration, secrets, and deployment.
+Set `GEMINI_API_KEY` as a Supabase Function secret and deploy with `supabase functions deploy schedule-import`. The function validates signed-in requests and rate-limits guest requests before processing images.
 
 ## Common commands
 
@@ -122,10 +124,12 @@ pnpm types:generate      # Regenerate database TypeScript types
 The main schedule model separates:
 
 - `classes`: shared class sections
-- `class_meeting_slots`: explicit A/B day and period rows
+- `class_meeting_slots`: a section's default A/B day and period rows
 - `class_enrollments`: each student's membership and academic term
+- `class_enrollment_meeting_slots`: the student's actual attendance pattern for that shared section
+- `course_names.term_policy`: the authoritative full-year, half-credit, flexible, lunch, variable-credit, or versioned format
 
-Removing an enrollment does not delete the shared class.
+Full-year enrollments appear in both semesters. Semester enrollments appear only in their selected semester, and conflicts are evaluated independently for Semester 1 A, Semester 1 B, Semester 2 A, and Semester 2 B. Removing an enrollment does not delete the shared class.
 
 Supabase Auth identifies the signed-in user. PostgreSQL RLS and narrowly granted RPC functions enforce privacy, permissions, suspension rules, and administrative access. Frontend route guards only control the interface and are not treated as security boundaries.
 
@@ -142,13 +146,13 @@ Required GitHub Actions secrets:
 ```text
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
-VITE_SCHEDULE_IMPORT_API_URL
-VITE_SCHEDULE_SHARE_BASE_URL
 ```
+
+The schedule-share Worker origin is configured in the workflow. The Gemini API key belongs in Supabase Function secrets, never in a frontend or GitHub Pages `VITE_*` variable.
 
 GitHub Pages must use **GitHub Actions** as its deployment source. Pushing to `main` runs the frontend validation and deployment workflow.
 
-The screenshot Worker uses the separate manual workflow at `.github/workflows/deploy-worker.yml`. Deploy and configure the Worker before setting its URL for the frontend build.
+The share and legacy-import Worker uses the separate manual workflow at `.github/workflows/deploy-worker.yml`.
 
 ## Brand changes
 

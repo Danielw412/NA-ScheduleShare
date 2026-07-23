@@ -51,14 +51,16 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
 
     const handleAccessChange = () => void refresh()
     const handleFocus = () => void refresh()
-    const interval = window.setInterval(handleFocus, 30_000)
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') handleFocus()
+    }, 5 * 60_000)
     window.addEventListener(scheduleAccessChangedEvent, handleAccessChange)
     window.addEventListener('focus', handleFocus)
 
     const channel = supabase
       ?.channel(`schedule-access-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_access_requests' }, announceScheduleAccessChanged)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_access_grants' }, announceScheduleAccessChanged)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_access_requests', filter: `owner_id=eq.${userId}` }, announceScheduleAccessChanged)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_access_requests', filter: `requester_id=eq.${userId}` }, announceScheduleAccessChanged)
       .subscribe()
 
     return () => {

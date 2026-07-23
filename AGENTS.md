@@ -17,7 +17,7 @@ Make the smallest change that solves the request if its a simple request. Do not
 - Supabase calls: `src/lib/supabase/data.ts`
 - Authentication and profile state: `src/features/auth/AuthProvider.tsx`
 - Database schema, RLS, and RPCs: `supabase/migrations/`
-- Screenshot importer: `src/lib/scheduleImport.ts`, `src/components/schedule/ScheduleImportDialog.tsx`, and `cloudflare/schedule-import-worker/`
+- Screenshot importer: `src/lib/scheduleImport.ts`, `src/components/schedule/ScheduleImportDialog.tsx`, and `supabase/functions/schedule-import/`
 
 Use search to find the exact text, component, or function named in the request. Read that file and only its direct dependencies before editing.
 
@@ -41,6 +41,7 @@ Do not run `pnpm install`, regenerate database types, or run the full test suite
 - Build, environment, or deployment changes: run `pnpm build`.
 - Worker changes: run `pnpm worker:typecheck` and `pnpm test:worker`.
 - Auth, privacy, admin permissions, Supabase queries, RLS, RPCs, or migrations: inspect the full data flow and run the relevant frontend and database tests.
+- Importer changes: run `pnpm test:function`; only run Worker checks when `cloudflare/schedule-import-worker/` changes.
 
 Useful commands:
 
@@ -59,6 +60,7 @@ pnpm test:privacy
 - Frontend guards are not security boundaries. Authorization and privacy must remain enforced by Supabase RLS and RPCs.
 - Do not trust user IDs or admin roles supplied by the browser.
 - Removing a student's enrollment must not delete the shared class.
+- Treat `course_names.term_policy` as the course-format authority. Personal attendance belongs in `class_enrollment_meeting_slots`, not duplicate class sections.
 - Do not edit a migration already applied to production. Add a new migration.
 - Do not weaken schedule privacy, roster visibility, suspension enforcement, or admin auditing.
 - Preserve unrelated work and avoid broad rewrites for small requests.

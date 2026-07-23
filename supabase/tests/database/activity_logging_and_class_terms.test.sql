@@ -20,11 +20,11 @@ where id::text like '98000000-%';
 insert into private.user_roles (user_id, role, granted_by)
 values ('98000000-0000-4000-8000-000000000001', 'administrator', '98000000-0000-4000-8000-000000000001');
 
-insert into public.course_names (id, name, normalized_name, source)
+insert into public.course_names (id, name, normalized_name, source, term_policy)
 values
-  ('98100000-0000-4000-8000-000000000001', 'Term Locked Physics', 'term locked physics', 'admin'),
-  ('98100000-0000-4000-8000-000000000002', 'Migration Check Gym', 'migration check gym', 'admin'),
-  ('98100000-0000-4000-8000-000000000003', 'Lunch - Migration Check', 'lunch - migration check', 'admin');
+  ('98100000-0000-4000-8000-000000000001', 'Term Locked Physics', 'term locked physics', 'admin', 'full_year'),
+  ('98100000-0000-4000-8000-000000000002', 'Migration Check Gym', 'migration check gym', 'admin', 'flexible_attendance'),
+  ('98100000-0000-4000-8000-000000000003', 'Lunch - Migration Check', 'lunch - migration check', 'admin', 'lunch');
 
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
 values
@@ -67,29 +67,32 @@ select is(
 select throws_ok(
   $$insert into public.class_enrollments (student_id, class_id, academic_term)
     values ('98000000-0000-4000-8000-000000000001', '98200000-0000-4000-8000-000000000001', 'semester_1')$$,
-  '23514', 'class_term_locked',
+  '23514', 'full_year_course_requires_full_year',
   'ordinary classes use one shared term for every student'
 );
 select lives_ok(
-  $$insert into public.class_enrollments (student_id, class_id, academic_term)
-    values ('98000000-0000-4000-8000-000000000001', '98200000-0000-4000-8000-000000000002', 'semester_1')$$,
-  'Gym may keep a student-specific semester term'
+  $$select public.enroll_in_class(
+      '98200000-0000-4000-8000-000000000002',
+      'semester_1',
+      false,
+      '[{"day_type":"A","period_number":3},{"day_type":"B","period_number":3}]'::jsonb
+    )$$,
+  'Gym may keep a student-specific semester and everyday pattern'
 );
 select throws_ok(
   $$update public.classes set default_academic_term = 'semester_1' where id = '98200000-0000-4000-8000-000000000001'$$,
   '23514', 'class_term_locked',
   'a class term cannot be changed after creation'
 );
-select throws_ok(
+select lives_ok(
   $$insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
     values ('98200000-0000-4000-8000-000000000003', '98100000-0000-4000-8000-000000000003', 'Cafe', 'full_year', false, '98000000-0000-4000-8000-000000000001')$$,
-  '23514', 'lunch_requires_semester',
-  'Lunch cannot be created as full year'
+  'Lunch can be created as one full-year entry'
 );
 select lives_ok(
   $$insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
     values ('98200000-0000-4000-8000-000000000004', '98100000-0000-4000-8000-000000000003', 'Cafe', 'semester_1', false, '98000000-0000-4000-8000-000000000001')$$,
-  'Lunch can be created for a semester'
+  'Lunch can also be created for one semester'
 );
 
 insert into public.schedule_access_requests (id, requester_id, owner_id)

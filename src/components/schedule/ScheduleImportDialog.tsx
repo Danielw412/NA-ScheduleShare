@@ -2,7 +2,7 @@ import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ClipboardPaste, FileImag
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
-import type { CourseNameSearchResult, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
+import type { CourseNameSearchResult, CourseTermPolicy, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
 import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
@@ -11,7 +11,6 @@ import {
   importClassOptionLabel,
   importRowError,
   MAX_SCHEDULE_IMAGES,
-  normalizeReviewTerm,
   prepareScheduleImage,
   reconcileExactClassSelection,
   ScheduleImportRequestError,
@@ -156,7 +155,8 @@ function conflictingImportIndexes(rows: EditableScheduleImportRow[]): Set<number
     const leftTerm = left.term
     rows.slice(leftIndex + 1).forEach((right, offset) => {
       if (!right.include || right.term === 'unknown' || !termsOverlap(leftTerm, right.term)) return
-      if (left.meeting_slots.some((slot) => right.meeting_slots.some((candidate) => sameSlot(slot, candidate)))) {
+      const lunchOverlap = rowCoursePolicy(left) === 'lunch' && rowCoursePolicy(right) === 'lunch'
+      if (lunchOverlap || left.meeting_slots.some((slot) => right.meeting_slots.some((candidate) => sameSlot(slot, candidate)))) {
         conflicts.add(leftIndex)
         conflicts.add(leftIndex + offset + 1)
       }
@@ -168,7 +168,12 @@ function conflictingImportIndexes(rows: EditableScheduleImportRow[]): Set<number
 function academicTermLabel(term: EditableScheduleImportRow['term']): string {
   if (term === 'semester_1') return 'Semester 1'
   if (term === 'semester_2') return 'Semester 2'
-  return 'Full Year'
+  if (term === 'full_year') return 'Full Year'
+  return 'Choose term'
+}
+
+function rowCoursePolicy(row: Pick<EditableScheduleImportRow, 'course'>): CourseTermPolicy {
+  return row.course?.term_policy ?? 'full_year'
 }
 
 function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
@@ -177,6 +182,29 @@ function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | nu
     || duplicate
     || row.confidence < 0.9
     || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
+}
+
+function ImportedTermField({ row, onChange }: { row: EditableScheduleImportRow; onChange: (term: EditableScheduleImportRow['term']) => void }) {
+  const policy = rowCoursePolicy(row)
+  if (policy === 'full_year') return <div className="field-readonly"><span>Academic term</span><strong>Full Year</strong><small>Full-credit and unlisted courses are full year.</small></div>
+
+  const label = policy === 'semester'
+    ? 'Semester'
+    : policy === 'flexible_attendance'
+      ? 'Attendance format'
+      : policy === 'variable_credit'
+        ? 'Credit and term'
+        : policy === 'versioned'
+          ? 'Course version format'
+          : 'Lunch term'
+  return <label>{label}
+    <select value={row.term} onChange={(event) => onChange(event.target.value as EditableScheduleImportRow['term'])}>
+      <option value="unknown">Choose format</option>
+      {policy === 'semester' ? null : <option value="full_year">{policy === 'flexible_attendance' ? 'Full Year · A or B days only' : policy === 'variable_credit' ? '1.0 credit · Full Year' : policy === 'versioned' ? 'Full-year version' : 'Full Year'}</option>}
+      <option value="semester_1">{policy === 'flexible_attendance' ? 'Semester 1 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 1' : 'Semester 1'}</option>
+      <option value="semester_2">{policy === 'flexible_attendance' ? 'Semester 2 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 2' : 'Semester 2'}</option>
+    </select>
+  </label>
 }
 
 export function ScheduleImportDialog({
@@ -210,6 +238,7 @@ export function ScheduleImportDialog({
   const [developerData, setDeveloperData] = useState<ScheduleImportDeveloperDiagnostics | null>(null)
   const [developerModelError, setDeveloperModelError] = useState<string | null>(null)
   const [progressDurationMs, setProgressDurationMs] = useState(6500)
+  const [checkingAgain, setCheckingAgain] = useState(false)
   const [resultSummary, setResultSummary] = useState<Omit<ScheduleImportResult, 'rows'>>({ warnings: [], image_count: 0 })
   const imagesRef = useRef(images)
   imagesRef.current = images
@@ -230,6 +259,15 @@ export function ScheduleImportDialog({
   }, [loadUiSettings, open])
 
   useEffect(() => {
+    if (phase !== 'processing') {
+      setCheckingAgain(false)
+      return
+    }
+    const timer = window.setTimeout(() => setCheckingAgain(true), progressDurationMs)
+    return () => window.clearTimeout(timer)
+  }, [phase, progressDurationMs])
+
+  useEffect(() => {
     if (!open || !initialResult || rows.length > 0) return
     const editable = editableRowsFromImportResult(initialResult)
     setRows(editable)
@@ -238,6 +276,8 @@ export function ScheduleImportDialog({
       image_count: initialResult.image_count,
       estimated_grade: initialResult.estimated_grade,
       shared_student_count: initialResult.shared_student_count,
+      retry_count: initialResult.retry_count,
+      retry_reasons: initialResult.retry_reasons,
       developer: initialResult.developer,
     })
     setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
@@ -347,6 +387,7 @@ export function ScheduleImportDialog({
     setDeveloperThinkingLevel('low')
     setDeveloperData(null)
     setDeveloperModelError(null)
+    setCheckingAgain(false)
     setResultSummary({ warnings: [], image_count: 0 })
     onClose()
   }
@@ -369,22 +410,22 @@ export function ScheduleImportDialog({
             thinkingLevel: developerThinkingLevel,
           })
         : await importScreenshots(files)
-      const editable = result.rows.map((row) => ({
-        ...row,
-        term: normalizeReviewTerm(row.term),
-        selected_existing_class_id: row.existing_class_id,
-        include: true,
-      })).map(reconcileExactClassSelection)
+      const editable = editableRowsFromImportResult(result)
       setRows(editable)
       setResultSummary({
         warnings: result.warnings,
         image_count: result.image_count,
         estimated_grade: result.estimated_grade,
         shared_student_count: result.shared_student_count,
+        retry_count: result.retry_count,
+        retry_reasons: result.retry_reasons,
         developer: result.developer,
       })
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
-      setMessage(result.warnings.join(' '))
+      setMessage([
+        result.retry_count ? `Gemini tried again to resolve ${result.retry_reasons?.join(' and ') || 'missing or conflicting details'}.` : '',
+        ...result.warnings,
+      ].filter(Boolean).join(' '))
       setDeveloperData(result.developer ?? null)
       const canAutoApply = !developerMode
         && editable.length > 0
@@ -484,7 +525,7 @@ export function ScheduleImportDialog({
               <Upload aria-hidden="true" />
               <strong className="desktop-import-instructions">Drop, paste, or choose schedule screenshots</strong>
               <strong className="mobile-import-instructions">Add a clear screenshot of your schedule</strong>
-              <span>PNG, JPEG, or WebP · 10 MB maximum each</span>
+              <span>PNG, JPEG, or WebP · 5 MB maximum each</span>
               <div className="import-upload-actions">
                 <label className="button button-primary">
                   {images.length > 0 ? 'Add screenshot' : 'Choose screenshot'}
@@ -513,7 +554,7 @@ export function ScheduleImportDialog({
             </div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>AI is analyzing your screenshots…</strong><small>Identifying classes and combining results for review.</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
+            {phase === 'processing' ? <div className="import-progress" role="status" aria-live="polite"><div><strong>{checkingAgain ? 'Checking the schedule again…' : 'AI is analyzing your screenshots…'}</strong><small>{checkingAgain ? 'If Gemini found missing classes or conflicts, it is trying again automatically.' : 'Identifying classes, semesters, and A/B-day periods for review.'}</small></div><div className="import-progress-track" role="progressbar" aria-label="AI screenshot analysis progress" style={{ '--import-progress-duration': `${progressDurationMs}ms` } as CSSProperties}><span /></div></div> : null}
             <div className="import-upload-action-bar"><button className="button button-primary button-block" disabled={phase === 'processing' || images.length === 0 || (developerMode && Boolean(developerModelError))} type="button" onClick={() => void processImages()}>
               {phase === 'processing' ? `Analyzing ${images.length <= 1 ? 'screenshot' : 'screenshots'}…` : `Analyze ${images.length <= 1 ? 'screenshot' : 'screenshots'}`}
             </button></div>
@@ -525,7 +566,7 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>{isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isGuest ? 'Check the classes we found. Create an account only when you are ready to save and compare.' : 'Course names are restricted to the existing catalogue. Only conflicts within this imported schedule block replacement.'}</p></div>
+              <div><h3>{isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
               <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
@@ -582,8 +623,10 @@ export function ScheduleImportDialog({
                       <div className="import-review-fields">
                       <CoursePicker row={row} searchCourses={searchCourses} onSelect={async (course) => {
                         const options = await loadClassOptions(course)
+                        const policy = course.course_term_policy ?? 'full_year'
                         updateRow(index, {
-                          course: { id: course.id, name: course.course_name, confidence: 1 },
+                          course: { id: course.id, name: course.course_name, confidence: 1, term_policy: policy },
+                          term: policy === 'full_year' ? 'full_year' : row.term === 'full_year' ? 'unknown' : row.term,
                           teacher_last_name: teacherForImportedCourse(row.teacher_last_name, course.course_name),
                           class_options: options,
                           flags: row.flags.filter((flag) => flag !== 'unresolved_course'),
@@ -592,14 +635,7 @@ export function ScheduleImportDialog({
                       <label>Teacher last name
                         <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={Boolean(specialCourseKind(row.course?.name))} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
                       </label>
-                      <label>Academic term
-                        <select value={row.term} onChange={(event) => updateRow(index, { term: event.target.value as EditableScheduleImportRow['term'] })}>
-                          <option value="unknown">Choose term</option>
-                          <option value="full_year">{specialCourseKind(row.course?.name) === 'Lunch' ? 'Full Year (saved as both semesters)' : 'Full Year'}</option>
-                          <option value="semester_1">Semester 1</option>
-                          <option value="semester_2">Semester 2</option>
-                        </select>
-                      </label>
+                      <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />
                       <label>Class action
                         <select value={row.selected_existing_class_id ?? ''} disabled={!row.course} onChange={(event) => {
                           const classId = event.target.value || null

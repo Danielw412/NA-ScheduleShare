@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -79,6 +74,38 @@ export type Database = {
             columns: ["administrator_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_enrollment_meeting_slots: {
+        Row: {
+          created_at: string
+          day_type: Database["public"]["Enums"]["day_type"]
+          enrollment_id: string
+          id: string
+          period_number: number
+        }
+        Insert: {
+          created_at?: string
+          day_type: Database["public"]["Enums"]["day_type"]
+          enrollment_id: string
+          id?: string
+          period_number: number
+        }
+        Update: {
+          created_at?: string
+          day_type?: Database["public"]["Enums"]["day_type"]
+          enrollment_id?: string
+          id?: string
+          period_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_enrollment_meeting_slots_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "class_enrollments"
             referencedColumns: ["id"]
           },
         ]
@@ -223,6 +250,7 @@ export type Database = {
           normalized_name: string
           source: string
           status: Database["public"]["Enums"]["course_name_status"]
+          term_policy: Database["public"]["Enums"]["course_term_policy"]
           updated_at: string
         }
         Insert: {
@@ -233,6 +261,7 @@ export type Database = {
           normalized_name: string
           source?: string
           status?: Database["public"]["Enums"]["course_name_status"]
+          term_policy?: Database["public"]["Enums"]["course_term_policy"]
           updated_at?: string
         }
         Update: {
@@ -243,6 +272,7 @@ export type Database = {
           normalized_name?: string
           source?: string
           status?: Database["public"]["Enums"]["course_name_status"]
+          term_policy?: Database["public"]["Enums"]["course_term_policy"]
           updated_at?: string
         }
         Relationships: [
@@ -848,6 +878,19 @@ export type Database = {
         }
         Returns: string
       }
+      create_class_and_replace_enrollment: {
+        Args: {
+          p_academic_term: Database["public"]["Enums"]["academic_term"]
+          p_confirmed_no_course_match: boolean
+          p_course_name_id: string
+          p_enrollment_id: string
+          p_is_double_period: boolean
+          p_meeting_slots: Json
+          p_new_course_name: string
+          p_teacher_last_name: string
+        }
+        Returns: string
+      }
       create_report: {
         Args: {
           p_explanation?: string
@@ -862,6 +905,7 @@ export type Database = {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
           p_allow_conflict?: boolean
           p_class_id: string
+          p_meeting_slots?: Json
         }
         Returns: string
       }
@@ -922,6 +966,7 @@ export type Database = {
           class_id: string
           course_name: string
           course_name_id: string
+          course_term_policy: Database["public"]["Enums"]["course_term_policy"]
           created_at: string
           enrollment_id: string
           is_double_period: boolean
@@ -931,6 +976,7 @@ export type Database = {
       }
       guest_search_classes: {
         Args: {
+          p_academic_term?: Database["public"]["Enums"]["academic_term"]
           p_day_type?: Database["public"]["Enums"]["day_type"]
           p_limit?: number
           p_period_number?: number
@@ -940,6 +986,7 @@ export type Database = {
           class_id: string
           course_name: string
           course_name_id: string
+          course_term_policy: Database["public"]["Enums"]["course_term_policy"]
           default_academic_term: Database["public"]["Enums"]["academic_term"]
           is_double_period: boolean
           meeting_slots: Json
@@ -952,6 +999,7 @@ export type Database = {
         Returns: {
           course_name: string
           course_name_id: string
+          course_term_policy: Database["public"]["Enums"]["course_term_policy"]
           score: number
         }[]
       }
@@ -1022,6 +1070,7 @@ export type Database = {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
           p_allow_conflict?: boolean
           p_enrollment_id: string
+          p_meeting_slots?: Json
           p_new_class_id: string
         }
         Returns: string
@@ -1067,6 +1116,7 @@ export type Database = {
       }
       search_classes: {
         Args: {
+          p_academic_term?: Database["public"]["Enums"]["academic_term"]
           p_day_type?: Database["public"]["Enums"]["day_type"]
           p_limit?: number
           p_period_number?: number
@@ -1076,6 +1126,7 @@ export type Database = {
           class_id: string
           course_name: string
           course_name_id: string
+          course_term_policy: Database["public"]["Enums"]["course_term_policy"]
           default_academic_term: Database["public"]["Enums"]["academic_term"]
           is_double_period: boolean
           meeting_slots: Json
@@ -1088,6 +1139,7 @@ export type Database = {
         Returns: {
           course_name: string
           course_name_id: string
+          course_term_policy: Database["public"]["Enums"]["course_term_policy"]
           score: number
         }[]
       }
@@ -1215,6 +1267,14 @@ export type Database = {
           target_type: string
         }[]
       }
+      update_enrollment_schedule: {
+        Args: {
+          p_academic_term: Database["public"]["Enums"]["academic_term"]
+          p_enrollment_id: string
+          p_meeting_slots: Json
+        }
+        Returns: undefined
+      }
       update_enrollment_term: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -1227,6 +1287,13 @@ export type Database = {
       academic_term: "full_year" | "semester_1" | "semester_2"
       class_status: "active" | "archived" | "merged"
       course_name_status: "active" | "disabled" | "merged"
+      course_term_policy:
+        | "full_year"
+        | "semester"
+        | "flexible_attendance"
+        | "lunch"
+        | "variable_credit"
+        | "versioned"
       day_type: "A" | "B"
       privacy_setting: "private" | "classmates" | "school"
       report_reason:
@@ -1381,6 +1448,14 @@ export const Constants = {
       academic_term: ["full_year", "semester_1", "semester_2"],
       class_status: ["active", "archived", "merged"],
       course_name_status: ["active", "disabled", "merged"],
+      course_term_policy: [
+        "full_year",
+        "semester",
+        "flexible_attendance",
+        "lunch",
+        "variable_credit",
+        "versioned",
+      ],
       day_type: ["A", "B"],
       privacy_setting: ["private", "classmates", "school"],
       report_reason: [
@@ -1408,3 +1483,4 @@ export const Constants = {
     },
   },
 } as const
+

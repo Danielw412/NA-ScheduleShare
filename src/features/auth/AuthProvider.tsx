@@ -156,6 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     const { data: listener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       if (!active) return
+      // getUser() above verifies and hydrates the initial session. Ignoring the
+      // matching SDK event avoids running the account/profile/admin queries twice.
+      if (event === 'INITIAL_SESSION') return
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       if (event === 'SIGNED_IN' && window.sessionStorage.getItem('scheduleshare:oauth-sign-in') === 'pending') {
         window.sessionStorage.removeItem('scheduleshare:oauth-sign-in')

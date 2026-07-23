@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildNormalMeetingSlots, defaultDoubleMeetingSlots, type MeetingDaySelection } from '../../lib/schedule'
-import type { MeetingSlot } from '../../lib/domain'
+import { defaultDoubleMeetingSlots, defaultMeetingSlots, meetingSlotsForDay, sortMeetingSlots } from '../../lib/schedule'
+import type { DayType, MeetingSlot } from '../../lib/domain'
 import { MeetingSlotEditor } from './MeetingSlotEditor'
 
 afterEach(() => {
@@ -12,26 +12,15 @@ afterEach(() => {
 
 function EditorHarness() {
   const [isDoublePeriod, setIsDoublePeriod] = useState(false)
-  const [meetingDays, setMeetingDays] = useState<MeetingDaySelection>('both')
-  const [meetingPeriod, setMeetingPeriod] = useState(4)
-  const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(buildNormalMeetingSlots('both', 4))
+  const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(defaultMeetingSlots('A', 4))
 
   return <MeetingSlotEditor
     isDoublePeriod={isDoublePeriod}
     meetingSlots={meetingSlots}
-    meetingDays={meetingDays}
-    meetingPeriod={meetingPeriod}
     onDoublePeriodChange={(next) => {
       setIsDoublePeriod(next)
-      setMeetingSlots(next ? defaultDoubleMeetingSlots('A', meetingPeriod) : buildNormalMeetingSlots(meetingDays, meetingPeriod))
-    }}
-    onMeetingDaysChange={(next) => {
-      setMeetingDays(next)
-      if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(next, meetingPeriod))
-    }}
-    onMeetingPeriodChange={(next) => {
-      setMeetingPeriod(next)
-      if (!isDoublePeriod) setMeetingSlots(buildNormalMeetingSlots(meetingDays, next))
+      if (next) setMeetingSlots(defaultDoubleMeetingSlots('A', 4))
+      else setMeetingSlots(sortMeetingSlots((['A', 'B'] as DayType[]).flatMap((day) => meetingSlotsForDay(meetingSlots, day).slice(0, 1))))
     }}
     onMeetingSlotsChange={setMeetingSlots}
   />
@@ -42,23 +31,26 @@ describe('MeetingSlotEditor', () => {
     render(<EditorHarness />)
 
     expect(screen.getByRole('combobox', { name: 'Meeting days' })).toHaveValue('both')
-    expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('4')
+    expect(screen.getByRole('combobox', { name: 'A day period' })).toHaveValue('4')
+    expect(screen.getByRole('combobox', { name: 'B day period' })).toHaveValue('4')
     expect(screen.getByText('P4', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader')).not.toBeInTheDocument()
   })
 
-  it('supports A-only and B-only normal selections', async () => {
+  it('supports A-only, B-only, and different A/B periods', async () => {
     const user = userEvent.setup()
     render(<EditorHarness />)
     const days = screen.getByRole('combobox', { name: 'Meeting days' })
 
+    await user.selectOptions(screen.getByRole('combobox', { name: 'B day period' }), '5')
+    expect(screen.getByText('A P4 · B P5', { selector: 'strong' })).toBeInTheDocument()
     await user.selectOptions(days, 'A')
     expect(screen.getByText('A P4', { selector: 'strong' })).toBeInTheDocument()
     await user.selectOptions(days, 'B')
     expect(screen.getByText('B P4', { selector: 'strong' })).toBeInTheDocument()
   })
 
-  it('switches to the independent grid and normalizes back to one period per selected day', async () => {
+  it('switches to the independent double-period grid and normalizes back', async () => {
     const user = userEvent.setup()
     render(<EditorHarness />)
     const toggle = screen.getByRole('checkbox', { name: /Double-period class/ })

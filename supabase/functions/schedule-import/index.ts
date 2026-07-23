@@ -140,19 +140,21 @@ async function loadCatalog(token: string, config: ImportConfiguration): Promise<
   for (let offset = 0; offset < 20_000; offset += 1_000) {
     const { data, error } = await client
       .from('course_names')
-      .select('id, name')
+      .select('id, name, term_policy')
       .eq('status', 'active')
       .order('name')
       .range(offset, offset + 999)
     if (error) throw error
-    const page = (data ?? []) as Array<{ id: string; name: string }>
+    const page = (data ?? []) as CourseRecord[]
     records.push(...page)
     if (page.length < 1_000) return records
   }
   throw new Error('Course catalogue exceeds the safe import limit.')
 }
 
-async function loadClasses(token: string, config: ImportConfiguration): Promise<ExistingClassRecord[]> {
+async function loadClasses(token: string, config: ImportConfiguration, courseIds: string[]): Promise<ExistingClassRecord[]> {
+  const selectedCourseIds = [...new Set(courseIds)]
+  if (selectedCourseIds.length === 0) return []
   const client = config.is_guest ? serviceClient() : callerClient(token)
   const records: ExistingClassRecord[] = []
   for (let offset = 0; offset < 20_000; offset += 1_000) {
@@ -160,6 +162,7 @@ async function loadClasses(token: string, config: ImportConfiguration): Promise<
       .from('classes')
       .select('id, course_name_id, teacher_last_name, default_academic_term, class_meeting_slots(day_type, period_number)')
       .eq('status', 'active')
+      .in('course_name_id', selectedCourseIds)
       .order('id')
       .range(offset, offset + 999)
     if (error) throw error

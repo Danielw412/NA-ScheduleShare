@@ -16,9 +16,9 @@ update public.profiles
 set grade = 11, onboarding_completed = true, privacy_setting = 'private'
 where id = '97000000-0000-4000-8000-000000000001';
 
-insert into public.course_names (id, name, normalized_name, source) values
-  ('97000000-0000-4000-8000-000000000010', 'Import Old Course', 'import old course', 'admin'),
-  ('97000000-0000-4000-8000-000000000011', 'Import New Course', 'import new course', 'admin');
+insert into public.course_names (id, name, normalized_name, source, term_policy) values
+  ('97000000-0000-4000-8000-000000000010', 'Import Old Course', 'import old course', 'admin', 'full_year'),
+  ('97000000-0000-4000-8000-000000000011', 'Import New Course', 'import new course', 'admin', 'variable_credit');
 
 insert into public.classes (
   id, course_name_id, teacher_last_name, normalized_teacher_last_name,

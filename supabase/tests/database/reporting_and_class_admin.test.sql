@@ -16,11 +16,11 @@ update public.profiles
 set grade = 12, onboarding_completed = true, privacy_setting = 'private'
 where id = '93000000-0000-4000-8000-000000000001';
 
-insert into public.course_names (id, name, normalized_name, source)
+insert into public.course_names (id, name, normalized_name, source, term_policy)
 values
-  ('93000000-0000-4000-8000-000000000020', 'Editable Seminar', 'editable seminar', 'admin'),
-  ('93000000-0000-4000-8000-000000000021', 'Conflict Seminar', 'conflict seminar', 'admin'),
-  ('93000000-0000-4000-8000-000000000022', 'Edited Seminar', 'edited seminar', 'admin');
+  ('93000000-0000-4000-8000-000000000020', 'Editable Seminar', 'editable seminar', 'admin', 'full_year'),
+  ('93000000-0000-4000-8000-000000000021', 'Conflict Seminar', 'conflict seminar', 'admin', 'full_year'),
+  ('93000000-0000-4000-8000-000000000022', 'Edited Seminar', 'edited seminar', 'admin', 'variable_credit');
 
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
 values
@@ -189,6 +189,7 @@ select is(
   2::bigint,
   'class editing replaces both A-day and B-day slots'
 );
+reset role;
 select ok(
   exists (select 1 from public.audit_logs where action_type = 'class_edited' and target_id = '93000000-0000-4000-8000-000000000010'),
   'class editing writes the immutable audit log'
@@ -197,6 +198,7 @@ select ok(
   exists (select 1 from public.schedule_change_history where student_id = '10000000-0000-4000-8000-000000000003' and action = 'meeting_slots_changed'),
   'class editing records history for affected active enrollments'
 );
+set local role authenticated;
 select lives_ok(
   $$select public.admin_update_class(
     '93000000-0000-4000-8000-000000000010',
