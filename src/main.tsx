@@ -5,6 +5,7 @@ import { App } from './App'
 import { GuestAccountPromptProvider } from './components/auth/GuestAccountPrompt'
 import { AuthProvider } from './features/auth/AuthProvider'
 import './styles.css'
+import './mobile-layout-fixes.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
