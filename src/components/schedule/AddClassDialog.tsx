@@ -247,7 +247,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const newCourseName = courseQuery.trim().replace(/\s+/g, ' ')
   const creatingPolicy = policyOf(selectedCourseName)
   const activePolicy = mode === 'search' ? selectedPolicy : creatingPolicy
-  const activeCourseName = mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName
+  const activeCourseName = (mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName) ?? ''
   const teacherIsNotApplicable = teacherNotApplicable(activeCourseName)
   const effectiveTeacherLastName = teacherIsNotApplicable ? 'N/A' : teacherLastName
   const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
