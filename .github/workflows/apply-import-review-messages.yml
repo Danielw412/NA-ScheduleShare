@@ -22,6 +22,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          from textwrap import dedent, indent
 
           def replace_once(text: str, old: str, new: str, label: str) -> str:
               count = text.count(old)
@@ -32,15 +33,16 @@ jobs:
           component_path = Path('src/components/schedule/ScheduleImportDialog.tsx')
           component = component_path.read_text(encoding='utf-8')
 
-          attention_block = """function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
-            return Boolean(rowError)
-              || conflict
-              || duplicate
-              || row.confidence < 0.9
-              || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
-          }
-          """
-          message_helper = attention_block + """
+          attention_block = (
+              "function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {\n"
+              "  return Boolean(rowError)\n"
+              "    || conflict\n"
+              "    || duplicate\n"
+              "    || row.confidence < 0.9\n"
+              "    || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))\n"
+              "}\n"
+          )
+          message_helper = attention_block + "\n" + dedent("""\
           function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 'retry_reasons' | 'warnings'>): string | null {
             const retries = result.retry_count ?? 0
             const retryReason = result.retry_reasons?.filter(Boolean).join(' and ')
@@ -50,26 +52,24 @@ jobs:
             const warnings = result.warnings.filter((warning) => !/Gemini checked the screenshots again|first reading remained the safer result/i.test(warning))
             return [retryMessage, ...warnings].filter(Boolean).join(' ') || null
           }
-          """
+          """)
           component = replace_once(component, attention_block, message_helper, 'row attention helper')
           component = replace_once(component, "  currentEnrollments,\n", "", 'currentEnrollments destructuring')
           component = replace_once(component, "    setMessage(initialResult.warnings.join(' '))", "    setMessage(importReviewMessage(initialResult))", 'initial review message')
           component = replace_once(
               component,
-              """  const existingClassCount = currentEnrollments.filter((enrollment) => enrollment.active).length
-            const existingClassNoun = existingClassCount === 1 ? 'class' : 'classes'
-          """,
+              "  const existingClassCount = currentEnrollments.filter((enrollment) => enrollment.active).length\n"
+              "  const existingClassNoun = existingClassCount === 1 ? 'class' : 'classes'\n",
               "",
               'existing schedule count',
           )
           component = replace_once(
               component,
-              """      setMessage([
-                result.retry_count ? `Gemini tried again to resolve ${result.retry_reasons?.join(' and ') || 'missing or conflicting details'}.` : '',
-                ...result.warnings,
-              ].filter(Boolean).join(' '))
-          """,
-              "      setMessage(importReviewMessage(result))\n",
+              "      setMessage([\n"
+              "        result.retry_count ? `Gemini tried again to resolve ${result.retry_reasons?.join(' and ') || 'missing or conflicting details'}.` : '',\n"
+              "        ...result.warnings,\n"
+              "      ].filter(Boolean).join(' '))",
+              "      setMessage(importReviewMessage(result))",
               'processed review message',
           )
           component = replace_once(
@@ -83,7 +83,8 @@ jobs:
           test_path = Path('src/components/schedule/ScheduleImportDialog.test.tsx')
           tests = test_path.read_text(encoding='utf-8')
           marker = "describe('ScheduleImportDialog review and confirmation', () => {\n"
-          new_test = marker + """  it('summarizes retried imports without showing the schedule replacement notice', async () => {
+          test_body = dedent("""\
+          it('summarizes retried imports without showing the schedule replacement notice', async () => {
             const user = userEvent.setup()
             const result = importResult({
               course: null,
@@ -113,9 +114,8 @@ jobs:
             expect(screen.queryByText(/Gemini checked the screenshots again/)).not.toBeInTheDocument()
             expect(screen.queryByText(/Confirming will replace/)).not.toBeInTheDocument()
           })
-
-          """
-          tests = replace_once(tests, marker, new_test, 'review test insertion point')
+          """)
+          tests = replace_once(tests, marker, marker + indent(test_body, '  ') + "\n", 'review test insertion point')
           test_path.write_text(tests, encoding='utf-8')
 
       - name: Commit changes
