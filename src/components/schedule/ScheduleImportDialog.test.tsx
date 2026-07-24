@@ -222,6 +222,37 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
+  it('summarizes retried imports without showing the schedule replacement notice', async () => {
+    const user = userEvent.setup()
+    const result = importResult({
+      course: null,
+      resolution: 'unresolved_course',
+      flags: ['unresolved_course'],
+      teacher_last_name: 'Unknown',
+      term: 'unknown',
+    })
+    result.rows.push({
+      ...result.rows[0],
+      id: 'import-2',
+      source_course_name: 'Mystery Course 2',
+      meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
+    })
+    result.retry_count = 1
+    result.retry_reasons = ['2 imported classes are unresolved or incomplete']
+    result.warnings = ['Gemini checked the screenshots again, but the first reading remained the safer result.']
+    renderDialog({
+      currentEnrollments: [currentEnrollment()],
+      importScreenshots: vi.fn(async () => result),
+    })
+
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
+
+    expect(await screen.findByText('The AI was run twice and 2 imported classes are unresolved or incomplete.')).toBeInTheDocument()
+    expect(screen.queryByText(/Gemini checked the screenshots again/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Confirming will replace/)).not.toBeInTheDocument()
+  })
+
   it('automatically shows a clean guest import without opening review', async () => {
     const user = userEvent.setup()
     const onGuestPreview = vi.fn()

@@ -184,6 +184,16 @@ function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | nu
     || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
 }
 
+function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 'retry_reasons' | 'warnings'>): string | null {
+  const retries = result.retry_count ?? 0
+  const retryReason = result.retry_reasons?.filter(Boolean).join(' and ')
+  const retryMessage = retries > 0
+    ? `The AI was run ${retries === 1 ? 'twice' : `${retries + 1} times`}${retryReason ? ` and ${retryReason}` : ' because some imported details remain unresolved or incomplete'}.`
+    : ''
+  const warnings = result.warnings.filter((warning) => !/Gemini checked the screenshots again|first reading remained the safer result/i.test(warning))
+  return [retryMessage, ...warnings].filter(Boolean).join(' ') || null
+}
+
 function ImportedTermField({ row, onChange }: { row: EditableScheduleImportRow; onChange: (term: EditableScheduleImportRow['term']) => void }) {
   const policy = rowCoursePolicy(row)
   if (policy === 'full_year') return <div className="field-readonly"><span>Academic term</span><strong>Full Year</strong><small>Full-credit and unlisted courses are full year.</small></div>
@@ -213,7 +223,6 @@ export function ScheduleImportDialog({
   isAdmin = false,
   isGuest = false,
   initialResult = null,
-  currentEnrollments,
   onClose,
   onImported,
   onGuestPreview,
@@ -271,7 +280,7 @@ export function ScheduleImportDialog({
       developer: initialResult.developer,
     })
     setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
-    setMessage(initialResult.warnings.join(' '))
+    setMessage(importReviewMessage(initialResult))
     setDeveloperData(initialResult.developer ?? null)
     setPhase('review')
   }, [initialResult, open, rows.length])
@@ -353,8 +362,6 @@ export function ScheduleImportDialog({
 
   const duplicateIndexes = useMemo(() => duplicateImportIndexes(rows), [rows])
   const importedConflictIndexes = useMemo(() => conflictingImportIndexes(rows), [rows])
-  const existingClassCount = currentEnrollments.filter((enrollment) => enrollment.active).length
-  const existingClassNoun = existingClassCount === 1 ? 'class' : 'classes'
   const rowErrors = rows.map(importRowError)
   const canConfirm = rows.some((row) => row.include)
     && rowErrors.every((rowError) => !rowError)
@@ -411,10 +418,7 @@ export function ScheduleImportDialog({
         developer: result.developer,
       })
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
-      setMessage([
-        result.retry_count ? `Gemini tried again to resolve ${result.retry_reasons?.join(' and ') || 'missing or conflicting details'}.` : '',
-        ...result.warnings,
-      ].filter(Boolean).join(' '))
+      setMessage(importReviewMessage(result))
       setDeveloperData(result.developer ?? null)
       const canAutoApply = !developerMode
         && editable.length > 0
@@ -561,7 +565,6 @@ export function ScheduleImportDialog({
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            {!isGuest ? <div className="notice-box"><AlertTriangle aria-hidden="true" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div> : null}
             <div className="import-review-controls" aria-label="Review row display controls">
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse reviewed</button>
