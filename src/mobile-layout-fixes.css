@@ -1,0 +1,141 @@
+/*
+ * Mobile class interfaces are full-height sheets. Keep their scrollports inside
+ * the visual viewport so the sticky site navigation and browser safe areas
+ * cannot cover the sheet controls.
+ */
+@media (max-width: 650px) {
+  html:has(.class-detail-panel.is-open),
+  body:has(.class-detail-panel.is-open) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .mobile-class-detail-backdrop {
+    z-index: 139;
+  }
+
+  .class-detail-panel.is-open {
+    z-index: 140;
+    height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-top: 68px;
+    scroll-padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-class-detail-close {
+    top: 0;
+    z-index: 4;
+    margin-top: -6px;
+    margin-bottom: 12px;
+    box-shadow: 0 8px 14px -14px rgb(0 0 0 / 45%);
+  }
+
+  .mobile-class-detail-close::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: -8px;
+    right: -16px;
+    bottom: -8px;
+    width: 100vw;
+    border-bottom: 1px solid var(--border);
+    background: rgb(255 255 255 / 97%);
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+  }
+
+  .class-detail-heading {
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 18px;
+  }
+
+  .class-detail-heading > div,
+  .class-detail-heading h2,
+  .member-list > div > div {
+    min-width: 0;
+  }
+
+  .class-detail-heading h2,
+  .member-list strong,
+  .member-list small {
+    overflow-wrap: anywhere;
+  }
+
+  .class-detail-heading .status-tag {
+    align-self: flex-start;
+  }
+
+  .member-list > div {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .member-list > div > div {
+    flex: 1 1 140px;
+  }
+
+  .member-list a,
+  .member-list .private-label {
+    flex: 0 0 auto;
+  }
+
+  .dialog-backdrop {
+    z-index: 140;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .class-dialog {
+    height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-top: 82px;
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .class-dialog > header {
+    position: sticky;
+    top: -14px;
+    z-index: 3;
+    margin: -14px -16px 12px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgb(255 255 255 / 97%);
+    box-shadow: 0 8px 14px -14px rgb(0 0 0 / 45%);
+    backdrop-filter: blur(10px);
+  }
+
+  .class-dialog > header > div {
+    min-width: 0;
+  }
+
+  .class-dialog > header h2,
+  .class-dialog > header p {
+    overflow-wrap: anywhere;
+  }
+
+  .dialog-action-bar {
+    bottom: 0;
+  }
+
+  .class-dialog .create-class-form > .form-actions {
+    position: sticky;
+    z-index: 2;
+    bottom: 0;
+    margin: 12px -16px calc(-14px - env(safe-area-inset-bottom));
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: rgb(255 255 255 / 97%);
+    box-shadow: 0 -7px 18px rgb(0 0 0 / 7%);
+  }
+}
