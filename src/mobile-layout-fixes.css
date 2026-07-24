@@ -4,6 +4,24 @@
  * cannot cover the sheet controls.
  */
 @media (max-width: 650px) {
+  /*
+   * page-content-enter ends with translateY(0) and uses fill-mode: both. The
+   * retained transform makes .page-transition a containing/stacking context,
+   * so fixed overlays can be positioned relative to the page and remain below
+   * the root-level sticky header and bottom navigation. Remove those contexts
+   * whenever either class overlay is open.
+   */
+  body:has(.class-detail-panel.is-open) .page-container,
+  body:has(.class-dialog) .page-container {
+    view-transition-name: none;
+  }
+
+  .page-transition:has(.class-detail-panel.is-open),
+  .page-transition:has(.class-dialog) {
+    animation: none;
+    transform: none;
+  }
+
   html:has(.class-detail-panel.is-open),
   body:has(.class-detail-panel.is-open) {
     overflow: hidden;
@@ -126,13 +144,15 @@
 
   .dialog-action-bar {
     bottom: 0;
+    margin: 12px -16px 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   }
 
   .class-dialog .create-class-form > .form-actions {
     position: sticky;
     z-index: 2;
     bottom: 0;
-    margin: 12px -16px calc(-14px - env(safe-area-inset-bottom));
+    margin: 12px -16px 0;
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: rgb(255 255 255 / 97%);
