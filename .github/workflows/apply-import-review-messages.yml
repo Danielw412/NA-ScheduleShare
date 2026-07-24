@@ -3,6 +3,8 @@ name: Apply import review message changes
 on:
   push:
     branches: [fix/import-review-messages]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
