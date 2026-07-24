@@ -192,7 +192,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const activeCourseName = mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName
   const teacherIsNotApplicable = teacherNotApplicable(activeCourseName)
   const effectiveTeacherLastName = teacherIsNotApplicable ? 'N/A' : teacherLastName
-  const meetingSlotError = scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
+  const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
   const teacherError = teacherIsNotApplicable || !teacherLastName ? null : teacherLastNameError(teacherLastName)
   const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
     && (teacherIsNotApplicable || !teacherLastNameError(teacherLastName))
