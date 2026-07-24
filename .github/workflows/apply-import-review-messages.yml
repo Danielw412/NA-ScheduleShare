@@ -1,0 +1,125 @@
+name: Apply import review message changes
+
+on:
+  push:
+    branches: [fix/import-review-messages]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/import-review-messages
+
+      - name: Apply targeted source and test changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected exactly one {label} match, found {count}")
+              return text.replace(old, new, 1)
+
+          component_path = Path('src/components/schedule/ScheduleImportDialog.tsx')
+          component = component_path.read_text(encoding='utf-8')
+
+          attention_block = """function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
+            return Boolean(rowError)
+              || conflict
+              || duplicate
+              || row.confidence < 0.9
+              || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
+          }
+          """
+          message_helper = attention_block + """
+          function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 'retry_reasons' | 'warnings'>): string | null {
+            const retries = result.retry_count ?? 0
+            const retryReason = result.retry_reasons?.filter(Boolean).join(' and ')
+            const retryMessage = retries > 0
+              ? `The AI was run ${retries === 1 ? 'twice' : `${retries + 1} times`}${retryReason ? ` and ${retryReason}` : ' because some imported details remain unresolved or incomplete'}.`
+              : ''
+            const warnings = result.warnings.filter((warning) => !/Gemini checked the screenshots again|first reading remained the safer result/i.test(warning))
+            return [retryMessage, ...warnings].filter(Boolean).join(' ') || null
+          }
+          """
+          component = replace_once(component, attention_block, message_helper, 'row attention helper')
+          component = replace_once(component, "  currentEnrollments,\n", "", 'currentEnrollments destructuring')
+          component = replace_once(component, "    setMessage(initialResult.warnings.join(' '))", "    setMessage(importReviewMessage(initialResult))", 'initial review message')
+          component = replace_once(
+              component,
+              """  const existingClassCount = currentEnrollments.filter((enrollment) => enrollment.active).length
+            const existingClassNoun = existingClassCount === 1 ? 'class' : 'classes'
+          """,
+              "",
+              'existing schedule count',
+          )
+          component = replace_once(
+              component,
+              """      setMessage([
+                result.retry_count ? `Gemini tried again to resolve ${result.retry_reasons?.join(' and ') || 'missing or conflicting details'}.` : '',
+                ...result.warnings,
+              ].filter(Boolean).join(' '))
+          """,
+              "      setMessage(importReviewMessage(result))\n",
+              'processed review message',
+          )
+          component = replace_once(
+              component,
+              "            {!isGuest ? <div className=\"notice-box\"><AlertTriangle aria-hidden=\"true\" /><span>Confirming will replace the {existingClassCount} {existingClassNoun} currently on your schedule. The replacement is saved atomically.</span></div> : null}\n",
+              "",
+              'schedule replacement notice',
+          )
+          component_path.write_text(component, encoding='utf-8')
+
+          test_path = Path('src/components/schedule/ScheduleImportDialog.test.tsx')
+          tests = test_path.read_text(encoding='utf-8')
+          marker = "describe('ScheduleImportDialog review and confirmation', () => {\n"
+          new_test = marker + """  it('summarizes retried imports without showing the schedule replacement notice', async () => {
+            const user = userEvent.setup()
+            const result = importResult({
+              course: null,
+              resolution: 'unresolved_course',
+              flags: ['unresolved_course'],
+              teacher_last_name: 'Unknown',
+              term: 'unknown',
+            })
+            result.rows.push({
+              ...result.rows[0],
+              id: 'import-2',
+              source_course_name: 'Mystery Course 2',
+              meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
+            })
+            result.retry_count = 1
+            result.retry_reasons = ['2 imported classes are unresolved or incomplete']
+            result.warnings = ['Gemini checked the screenshots again, but the first reading remained the safer result.']
+            renderDialog({
+              currentEnrollments: [currentEnrollment()],
+              importScreenshots: vi.fn(async () => result),
+            })
+
+            await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+            await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
+
+            expect(await screen.findByText('The AI was run twice and 2 imported classes are unresolved or incomplete.')).toBeInTheDocument()
+            expect(screen.queryByText(/Gemini checked the screenshots again/)).not.toBeInTheDocument()
+            expect(screen.queryByText(/Confirming will replace/)).not.toBeInTheDocument()
+          })
+
+          """
+          tests = replace_once(tests, marker, new_test, 'review test insertion point')
+          test_path.write_text(tests, encoding='utf-8')
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/schedule/ScheduleImportDialog.tsx src/components/schedule/ScheduleImportDialog.test.tsx
+          git commit -m "Simplify schedule import review messages"
+          git push origin HEAD:fix/import-review-messages
