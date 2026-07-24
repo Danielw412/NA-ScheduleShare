@@ -2,67 +2,64 @@
 
 ## Project
 
-NA ScheduleShare is a React + TypeScript + Vite website backed by Supabase. It lets students build and share A/B-day schedules with privacy controls. It is not an official school website.
+NA ScheduleShare is a React + TypeScript + Vite website backed by Supabase. It supports semester-aware A/B-day schedules, classmate discovery, access requests, screenshot importing, and secure sharing. It is not an official school website.
 
-Make the smallest change that solves the request if its a simple request. Do not scan the entire repository unless the task genuinely affects multiple systems.
+Make the smallest change that solves the request. Do not scan unrelated systems for a narrow UI or copy change.
 
 ## Start with the likely file
 
 - Page content or layout: `src/pages/`
 - Reusable UI: `src/components/`
-- Global styling and responsive rules: `src/styles.css`
-- Site name, links, and logo configuration: `src/config/brand.ts`
+- Navigation and notifications: `src/components/layout/`
+- Global styling: `src/styles.css`
+- Mobile viewport/safe-area fixes: `src/mobile-layout-fixes.css`
+- Site name, links, production URL, and logo: `src/config/brand.ts`
 - Routes: `src/App.tsx`
 - Schedule behavior: `src/hooks/useSchedule.ts`, `src/lib/schedule.ts`, and `src/components/schedule/`
 - Supabase calls: `src/lib/supabase/data.ts`
-- Authentication and profile state: `src/features/auth/AuthProvider.tsx`
+- Authentication and recovery: `src/features/auth/AuthProvider.tsx` and `src/pages/PasswordResetPage.tsx`
 - Database schema, RLS, and RPCs: `supabase/migrations/`
-- Screenshot importer: `src/lib/scheduleImport.ts`, `src/components/schedule/ScheduleImportDialog.tsx`, and `supabase/functions/schedule-import/`
+- Active Gemini importer: `src/lib/scheduleImport.ts`, `src/components/schedule/ScheduleImportDialog.tsx`, and `supabase/functions/schedule-import/`
+- Share pages/images and legacy importer: `cloudflare/schedule-import-worker/`
 
-Use search to find the exact text, component, or function named in the request. Read that file and only its direct dependencies before editing.
+Use search to find the exact text, component, function, RPC, or migration involved. Read that file and its direct dependencies before editing.
 
 ## Simple website changes
 
-For copy changes, colors, spacing, responsive CSS, icons, static links, or hiding/reordering presentational elements:
+For copy, color, spacing, responsive CSS, icons, static links, or presentational ordering:
 
 1. Find the exact page or component.
-2. Inspect that file and the relevant section of `src/styles.css`.
+2. Inspect the relevant CSS file.
 3. Make a narrow patch without unrelated refactoring.
-4. Preserve existing component patterns and mobile behavior.
-5. Do not inspect database migrations, backend code, or test suites unless the change touches them.
-6. Tests are not required for a clearly presentational change unless the user asks for them. A quick local visual check is enough when available.
+4. Preserve desktop, mobile, safe-area, and existing component behavior.
+5. Do not inspect backend code or migrations unless the change affects stored behavior or authorization.
 
-Do not run `pnpm install`, regenerate database types, or run the full test suite for a small UI or text edit.
+Do not run `pnpm install`, regenerate database types, or run the full suite for a clearly presentational or documentation-only change.
 
-## When validation is needed
+## Validation
 
-- TypeScript logic, state, forms, or routing: run `pnpm typecheck` and the most relevant test.
-- Shared frontend behavior: run `pnpm test`.
-- Build, environment, or deployment changes: run `pnpm build`.
-- Worker changes: run `pnpm worker:typecheck` and `pnpm test:worker`.
-- Auth, privacy, admin permissions, Supabase queries, RLS, RPCs, or migrations: inspect the full data flow and run the relevant frontend and database tests.
-- Importer changes: run `pnpm test:function`; only run Worker checks when `cloudflare/schedule-import-worker/` changes.
-
-Useful commands:
-
-```bash
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm test:privacy
-```
+- TypeScript logic, state, forms, or routing: `pnpm typecheck` plus the most relevant test
+- Shared frontend behavior: `pnpm test`
+- Build, environment, or deployment changes: `pnpm build`
+- Active importer changes: `pnpm test:function`
+- Worker/share changes: `pnpm worker:typecheck` and `pnpm test:worker`
+- Auth, privacy, admin permissions, Supabase queries, RLS, RPCs, or migrations: inspect the full data flow and run relevant frontend and database tests
+- Documentation-only changes: verify the final diff; tests are not required
 
 ## Non-negotiable rules
 
-- Never expose service-role keys, OAuth secrets, or other private credentials in frontend code or `VITE_*` variables.
-- Frontend guards are not security boundaries. Authorization and privacy must remain enforced by Supabase RLS and RPCs.
-- Do not trust user IDs or admin roles supplied by the browser.
-- Removing a student's enrollment must not delete the shared class.
-- Treat `course_names.term_policy` as the course-format authority. Personal attendance belongs in `class_enrollment_meeting_slots`, not duplicate class sections.
-- Do not edit a migration already applied to production. Add a new migration.
-- Do not weaken schedule privacy, roster visibility, suspension enforcement, or admin auditing.
+- Never expose service-role keys, Gemini keys, OAuth secrets, or other private credentials in frontend code or `VITE_*` variables.
+- Frontend guards are not security boundaries. Authorization, privacy, suspension, and admin access must remain enforced by Supabase RLS and RPCs.
+- Do not trust user IDs or roles supplied by the browser.
+- Treat `course_names.term_policy` as the course-format authority.
+- Personal attendance belongs in `class_enrollment_meeting_slots`; do not create duplicate class sections for each student's pattern.
+- Removing an enrollment must not delete the shared class.
+- Lunch and Study Hall teachers must remain `N/A` in both UI and database paths.
+- Full Year Lunch must expand into separate Semester 1 and Semester 2 enrollments at the same period.
+- Preserve automatic Lunch/Study Hall period and attendance inference unless the request explicitly changes it.
+- New screenshot-import behavior belongs in the Supabase Edge Function, not the legacy Cloudflare importer.
+- Do not edit a migration already applied to production. Add a new ordered migration.
+- Do not weaken schedule privacy, roster visibility, share-link privacy, access-request enforcement, suspension checks, or audit logging.
 - Preserve unrelated work and avoid broad rewrites for small requests.
 
-At the end, state which files changed and what validation, if any, was performed.
+At the end, state which files changed and what validation was performed.
