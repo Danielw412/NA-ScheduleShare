@@ -1,9 +1,9 @@
 import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ClipboardPaste, FileImage, Sparkles, Upload, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
 import type { CourseNameSearchResult, CourseTermPolicy, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
-import { formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
+import { formatMeetingSlotSummary, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
   confirmScheduleImport,
   editableRowsFromImportResult,
@@ -124,6 +124,38 @@ function CoursePicker({
       )}
     </div>
   )
+}
+
+function ImportCourseField({
+  row,
+  searchCourses,
+  onSelect,
+}: {
+  row: EditableScheduleImportRow
+  searchCourses?: CourseNameSearchExecutor
+  onSelect: (course: CourseNameSearchResult) => Promise<void>
+}) {
+  const needsCourse = !row.course || row.flags.some((flag) => flag === 'unresolved_course' || flag === 'ambiguous_course')
+  const [editing, setEditing] = useState(needsCourse)
+
+  useEffect(() => {
+    if (needsCourse) setEditing(true)
+  }, [needsCourse])
+
+  if (row.course && !editing) {
+    return <div className="import-course-summary">
+      <span><small>Catalogue course</small><strong>{row.course.name}</strong></span>
+      <button className="text-button" type="button" onClick={() => setEditing(true)}>Change</button>
+    </div>
+  }
+
+  return <div className="import-course-editor">
+    <CoursePicker row={row} searchCourses={searchCourses} onSelect={async (course) => {
+      await onSelect(course)
+      setEditing(false)
+    }} />
+    {row.course && !needsCourse ? <button className="text-button" type="button" onClick={() => setEditing(false)}>Done changing course</button> : null}
+  </div>
 }
 
 function sameSlots(left: MeetingSlot[], right: MeetingSlot[]): boolean {
@@ -363,6 +395,15 @@ export function ScheduleImportDialog({
   const duplicateIndexes = useMemo(() => duplicateImportIndexes(rows), [rows])
   const importedConflictIndexes = useMemo(() => conflictingImportIndexes(rows), [rows])
   const rowErrors = rows.map(importRowError)
+  const reviewEntries = rows.map((row, index) => {
+    const conflict = importedConflictIndexes.has(index)
+    const duplicate = duplicateIndexes.has(index)
+    const attention = rowNeedsAttention(row, rowErrors[index], conflict, duplicate)
+    const priority = conflict ? 0 : duplicate ? 1 : rowErrors[index] ? 2 : attention ? 3 : 4
+    return { row, index, conflict, duplicate, attention, priority }
+  }).sort((left, right) => left.priority - right.priority || left.index - right.index)
+  const attentionCount = reviewEntries.filter((entry) => entry.attention).length
+  const readyCount = reviewEntries.length - attentionCount
   const canConfirm = rows.some((row) => row.include)
     && rowErrors.every((rowError) => !rowError)
     && duplicateIndexes.size === 0
@@ -566,23 +607,23 @@ export function ScheduleImportDialog({
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <div className="import-review-controls" aria-label="Review row display controls">
+              <p><strong>{attentionCount}</strong> need attention <span aria-hidden="true">·</span> <strong>{readyCount}</strong> ready</p>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
-              <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse reviewed</button>
+              <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse all</button>
             </div>
             <div className="import-review-grid">
-              {rows.map((row, index) => {
-                const conflict = importedConflictIndexes.has(index)
-                const duplicate = duplicateIndexes.has(index)
-                const attention = rowNeedsAttention(row, rowErrors[index], conflict, duplicate)
-                const expanded = attention || expandedRowIds.has(row.id)
+              {reviewEntries.map(({ row, index, conflict, duplicate, attention }, displayIndex) => {
+                const expanded = expandedRowIds.has(row.id)
                 return (
-                  <article className={rowErrors[index] || conflict || duplicate ? 'import-review-row has-error' : 'import-review-row'} key={row.id}>
+                  <Fragment key={row.id}>
+                  {displayIndex === 0 && attentionCount > 0 ? <div className="import-review-group-heading"><strong>Needs attention</strong><span>Resolve these first</span></div> : null}
+                  {displayIndex === attentionCount && readyCount > 0 ? <div className="import-review-group-heading is-ready"><strong>Ready</strong><span>Review only if needed</span></div> : null}
+                  <article className={rowErrors[index] || conflict || duplicate ? 'import-review-row has-error' : attention ? 'import-review-row needs-attention' : 'import-review-row'}>
                     <button
                       aria-expanded={expanded}
                       className="import-row-toggle"
                       type="button"
                       onClick={() => {
-                        if (attention) return
                         setExpandedRowIds((current) => {
                           const next = new Set(current)
                           if (next.has(row.id)) next.delete(row.id)
@@ -592,11 +633,11 @@ export function ScheduleImportDialog({
                       }}
                     >
                       <span className="import-row-summary">
-                        <span><small>Course</small><strong>{row.course?.name ?? row.source_course_name}</strong></span>
-                        <span><small>Teacher</small><strong>{teacherForImportedCourse(row.teacher_last_name, row.course?.name) || 'Not resolved'}</strong></span>
-                        <span><small>Term</small><strong>{academicTermLabel(row.term)}</strong></span>
-                        <span><small>Periods</small><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'No periods'}</strong></span>
-                        <span><small>Class action</small><strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong></span>
+                        <span className="is-course"><small>Course</small><strong>{row.course?.name ?? row.source_course_name}</strong></span>
+                        <span className="is-teacher"><small>Teacher</small><strong>{teacherForImportedCourse(row.teacher_last_name, row.course?.name) || 'Not resolved'}</strong></span>
+                        <span className="is-term"><small>Term</small><strong>{academicTermLabel(row.term)}</strong></span>
+                        <span className="is-periods"><small>Periods</small><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'No periods'}</strong></span>
+                        <span className="is-action"><small>Class action</small><strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong></span>
                       </span>
                       <div className="import-flags">
                         {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
@@ -611,9 +652,9 @@ export function ScheduleImportDialog({
                       <ChevronDown aria-hidden="true" className={expanded ? 'is-expanded' : ''} />
                     </button>
                     {expanded ? <div className="import-row-details">
-                      <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>{row.source_course_name}</strong><small>Include this row in the replacement</small></span></label>
+                      <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>Include this class</strong><small>Uncheck to leave it out of the imported schedule</small></span></label>
                       <div className="import-review-fields">
-                      <CoursePicker row={row} searchCourses={searchCourses} onSelect={async (course) => {
+                      <ImportCourseField row={row} searchCourses={searchCourses} onSelect={async (course) => {
                         const options = await loadClassOptions(course)
                         const policy = course.course_term_policy ?? 'full_year'
                         updateRow(index, {
@@ -624,9 +665,9 @@ export function ScheduleImportDialog({
                           flags: row.flags.filter((flag) => flag !== 'unresolved_course'),
                         })
                       }} />
-                      <label>Teacher last name
+                      {specialCourseKind(row.course?.name) ? null : <label>Teacher last name
                         <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={Boolean(specialCourseKind(row.course?.name))} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
-                      </label>
+                      </label>}
                       <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />
                       <label>Class action
                         <select value={row.selected_existing_class_id ?? ''} disabled={!row.course} onChange={(event) => {
@@ -645,22 +686,23 @@ export function ScheduleImportDialog({
                         </select>
                       </label>
                       </div>
-                      <p className="import-resolution">{row.selected_existing_class_id ? 'Will use an existing class.' : row.course ? `Will propose a new class for existing course “${row.course.name}”.` : 'Choose an existing course before this row can be saved.'}</p>
-                      <div className="import-slot-editor">
+                      <details className="import-slot-editor">
+                        <summary><span>Edit meeting slots</span><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'None selected'}</strong></summary>
                         <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots })} />
-                      </div>
+                      </details>
                       {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
                       {conflict ? <p className="form-error">This row conflicts with another included import row in the same semester. Edit its term/slots or exclude it.</p> : null}
                       {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
                       {row.warnings.length ? <p className="import-row-warning">{row.warnings.join(' ')}</p> : null}
-                      <small className="import-confidence">Extraction confidence: {Math.round(row.confidence * 100)}% · {hasMultiplePeriodsOnAnyDay(row.meeting_slots) ? 'Multiple-period class' : 'Single-period class'}</small>
+                      {row.confidence < 0.9 ? <small className="import-confidence">AI confidence: {Math.round(row.confidence * 100)}%</small> : null}
                     </div> : null}
                   </article>
+                  </Fragment>
                 )
               })}
             </div>
             <div className="import-confirm-bar">
-              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected. {isGuest ? 'Continue to place them on your schedule.' : 'This will replace your current schedule.'}</p>
+              <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected.{isGuest ? '' : ' This will replace your current schedule.'}</p>
               <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{isGuest ? 'Show imported schedule' : phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
             </div>
           </div>

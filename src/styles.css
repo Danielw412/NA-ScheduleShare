@@ -2852,14 +2852,45 @@ legend {
 
 .import-review-controls {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
 }
 
+.import-review-controls p {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.import-review-controls p strong:first-child {
+  color: var(--danger);
+}
+
 .import-review-grid {
   display: grid;
-  gap: 14px;
+  gap: 9px;
+}
+
+.import-review-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 3px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.import-review-group-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.import-review-group-heading.is-ready {
+  margin-top: 10px;
+  color: var(--ink-soft);
 }
 
 .import-review-row {
@@ -2873,14 +2904,18 @@ legend {
   border-left-color: var(--danger);
 }
 
+.import-review-row.needs-attention {
+  border-left-color: #d99b20;
+}
+
 .import-row-toggle {
   width: 100%;
-  min-height: 68px;
+  min-height: 60px;
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 14px;
-  padding: 17px 18px;
+  padding: 13px 16px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -2932,8 +2967,8 @@ legend {
 
 .import-row-details {
   display: grid;
-  gap: 15px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px 16px 16px;
   border-top: 1px solid var(--border);
 }
 
@@ -2985,6 +3020,52 @@ legend {
   gap: 7px;
 }
 
+.import-course-editor {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.import-course-editor>.text-button {
+  justify-self: start;
+}
+
+.import-course-summary {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.import-course-summary span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.import-course-summary small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.import-course-summary strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.import-course-summary .text-button {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
 .import-course-results {
   max-height: 120px;
   overflow: auto;
@@ -3011,16 +3092,33 @@ legend {
   margin: 0;
 }
 
-.import-resolution {
-  margin: 0;
+.import-slot-editor {
+  border: 1px solid var(--border);
+}
+
+.import-slot-editor>summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
-  border-left: 4px solid var(--brand-gold);
-  background: var(--surface-subtle);
+  cursor: pointer;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 800;
+}
+
+.import-slot-editor>summary strong {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.import-slot-editor[open]>summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
 }
 
 .import-slot-editor .meeting-slot-picker {
+  border: 0;
   padding: 10px;
 }
 
@@ -3061,6 +3159,13 @@ legend {
 .import-confirm-bar p {
   margin: 0;
   font-size: 13px;
+}
+
+@media (min-width: 651px) {
+  .schedule-import-dialog .import-confirm-bar {
+    margin-inline: -22px;
+    padding-inline: 22px;
+  }
 }
 
 .class-browser {
@@ -5476,13 +5581,48 @@ a.student-access-profile:hover strong {
     flex-direction: column;
   }
 
+  .import-review-controls {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .import-review-controls p {
+    grid-column: 1 / -1;
+  }
+
+  .import-review-controls .button {
+    min-height: 38px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
   .import-row-toggle {
     grid-template-columns: 1fr auto;
     align-items: start;
+    gap: 8px;
+    min-height: 0;
+    padding: 11px 12px;
   }
 
   .import-row-summary {
     grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+
+  .import-row-summary .is-course {
+    grid-column: 1 / -1;
+  }
+
+  .import-row-summary .is-action {
+    display: none;
+  }
+
+  .import-row-summary small {
+    font-size: 9px;
+  }
+
+  .import-row-summary strong {
+    font-size: 12px;
   }
 
   .import-row-toggle .import-flags {
@@ -5492,6 +5632,15 @@ a.student-access-profile:hover strong {
 
   .import-review-fields {
     grid-template-columns: 1fr;
+  }
+
+  .import-row-details {
+    gap: 11px;
+    padding: 12px;
+  }
+
+  .import-slot-editor>summary {
+    padding: 9px 10px;
   }
 
   .import-flags {
@@ -5758,6 +5907,10 @@ a.student-access-profile:hover strong {
 
   .class-list-row:last-child {
     border-bottom: 0;
+  }
+
+  .import-confirm-bar p {
+    font-size: 12px;
   }
 
   .course-class-group-toggle {
