@@ -121,6 +121,19 @@
     scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
+  /*
+   * Import and confirmation dialogs should only become as tall as their
+   * content. The blanket full-height class-dialog rule stretched their grid
+   * rows across the viewport, producing the large empty areas shown on iOS.
+   * They still scroll once their content reaches the visual-viewport limit.
+   */
+  .schedule-import-dialog,
+  .delete-account-dialog {
+    height: auto;
+    min-height: 0;
+    align-content: start;
+  }
+
   .class-dialog > header {
     position: sticky;
     top: -14px;
