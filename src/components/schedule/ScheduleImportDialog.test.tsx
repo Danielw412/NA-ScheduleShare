@@ -369,8 +369,9 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.clear(screen.getByLabelText('Teacher last name'))
     await user.type(screen.getByLabelText('Teacher last name'), 'Lester')
     expect(screen.getByText('Full-credit and unlisted courses are full year.')).toBeInTheDocument()
+    await user.click(screen.getByText('Edit meeting slots'))
     await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
-    expect(screen.getByText(/Will propose a new class for existing course “AP Statistics”/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /AP Statistics.*Create class/i })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Replace schedule' }))
     await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
@@ -408,7 +409,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     })
   })
 
-  it('collapses high-confidence reviewed rows while keeping problematic rows expanded', async () => {
+  it('prioritizes problematic rows and lets users collapse any expanded row', async () => {
     const user = userEvent.setup()
     const result = importResult()
     result.rows.push({
@@ -428,12 +429,23 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.getByRole('button', { name: /AP Statistics.*Full Year.*Create class/i })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
+    expect(screen.getByText('Needs attention')).toBeInTheDocument()
+    expect(screen.getByText('Ready')).toBeInTheDocument()
+    expect(screen.getByText('1', { selector: '.import-review-controls strong:first-child' })).toBeInTheDocument()
+    expect(document.querySelector('.import-row-toggle')).toHaveTextContent('Mystery Course')
+
+    await user.click(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i }))
+    expect(screen.queryByLabelText('Catalogue course for Mystery Course')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i }))
+    expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Expand all' }))
-    expect(screen.getByLabelText('Catalogue course for AP Statistics (CHS)')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Collapse reviewed' }))
     expect(screen.queryByLabelText('Catalogue course for AP Statistics (CHS)')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Change' }))
+    expect(screen.getByLabelText('Catalogue course for AP Statistics (CHS)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Collapse all' }))
+    expect(screen.queryByLabelText('Catalogue course for AP Statistics (CHS)')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Catalogue course for Mystery Course')).not.toBeInTheDocument()
   })
 
   it('keeps an 80%-confidence extraction in review', async () => {
