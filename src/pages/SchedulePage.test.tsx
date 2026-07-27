@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ScheduleImportModule from '../lib/scheduleImport'
+import type { ScheduleImportResult } from '../lib/scheduleImport'
 import { SchedulePage } from './SchedulePage'
 
 const mocks = vi.hoisted(() => ({
@@ -43,7 +44,14 @@ vi.mock('../components/schedule/ScheduleGrid', () => ({ ScheduleGrid: ({ enrollm
 vi.mock('../components/schedule/TermSelector', () => ({ TermSelector: () => <div data-testid="term-selector" /> }))
 vi.mock('../components/schedule/AddClassDialog', () => ({ AddClassDialog: () => <div data-testid="manual-dialog" /> }))
 vi.mock('../components/schedule/ScheduleImportDialog', () => ({
-  ScheduleImportDialog: ({ onboarding, isGuest, onClose, onGuestPreview }: { onboarding?: boolean; isGuest?: boolean; onClose: () => void; onGuestPreview?: (result: unknown) => void }) => (
+  ScheduleImportDialog: ({ onboarding, isGuest, initialResult, clarificationRowIds = [], onClose, onGuestPreview, onNeedsClarification, onClarificationResolved }: { onboarding?: boolean; isGuest?: boolean; initialResult?: ScheduleImportResult | null; clarificationRowIds?: string[]; onClose: () => void; onGuestPreview?: (result: ScheduleImportResult) => void; onNeedsClarification?: (value: { result: ScheduleImportResult; rowIds: string[] }) => void; onClarificationResolved?: () => void }) => clarificationRowIds.length > 0 ? (
+    <div data-testid="clarification-dialog">
+      <h2>{clarificationRowIds.length} {clarificationRowIds.length === 1 ? 'class needs' : 'classes need'} clarification</h2>
+      <span>{initialResult?.rows[0]?.source_course_name}</span>
+      <button type="button" onClick={onClose}>Close clarification</button>
+      <button type="button" onClick={onClarificationResolved}>Resolve clarification</button>
+    </div>
+  ) : (
     <div data-testid="import-dialog" data-onboarding={String(Boolean(onboarding))} data-guest={String(Boolean(isGuest))}>
       <span>{onboarding ? 'Automatic onboarding' : 'Manual import'}</span>
       {isGuest ? <button type="button" onClick={() => {
@@ -69,6 +77,30 @@ vi.mock('../components/schedule/ScheduleImportDialog', () => ({
         })
         onClose()
       }}>Show imported schedule</button> : null}
+      <button type="button" onClick={() => {
+        onNeedsClarification?.({
+          rowIds: ['problem-row'],
+          result: {
+            image_count: 1,
+            warnings: [],
+            rows: [{
+              id: 'problem-row',
+              source_course_name: 'Mystery Course',
+              course: null,
+              teacher_last_name: 'Unknown',
+              term: 'unknown',
+              meeting_slots: [{ day_type: 'A', period_number: 2 }],
+              confidence: 0.4,
+              warnings: [],
+              flags: ['unresolved_course'],
+              resolution: 'unresolved_course',
+              existing_class_id: null,
+              class_options: [],
+            }],
+          },
+        })
+        onClose()
+      }}>Complete analysis with issues</button>
       <button type="button" onClick={onClose}>Dismiss import</button>
     </div>
   ),
@@ -181,6 +213,27 @@ describe('SchedulePage onboarding', () => {
     renderPage('/schedule?import=1')
     expect(await screen.findByText('Manual import')).toBeInTheDocument()
     expect(screen.getByTestId('import-dialog')).toHaveAttribute('data-onboarding', 'false')
+  })
+
+  it('keeps clarification items reopenable until they are resolved', async () => {
+    const user = userEvent.setup()
+    renderPage('/schedule?import=1')
+
+    await user.click(await screen.findByRole('button', { name: 'Complete analysis with issues' }))
+    expect(await screen.findByTestId('clarification-dialog')).toHaveTextContent('1 class needs clarification')
+    expect(screen.getByText('Mystery Course')).toBeInTheDocument()
+    expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).not.toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Close clarification' }))
+    expect(screen.queryByTestId('clarification-dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review classes' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Review classes' }))
+    expect(screen.getByTestId('clarification-dialog')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Resolve clarification' }))
+
+    expect(screen.queryByRole('button', { name: 'Review classes' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
   })
 
   it('lets a logged-out visitor open the importer before creating an account', async () => {

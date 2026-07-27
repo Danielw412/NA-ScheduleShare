@@ -1,10 +1,10 @@
-import { CheckCircle2, ImagePlus, Plus, Share2, Trash2, Users, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, ImagePlus, Plus, Share2, Trash2, Users, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
-import { ScheduleImportDialog } from '../components/schedule/ScheduleImportDialog'
+import { ScheduleImportDialog, type ScheduleImportClarification } from '../components/schedule/ScheduleImportDialog'
 import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -26,8 +26,46 @@ import { clearSchedule, removeEnrollment, searchGuestCourseNames } from '../lib/
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
+function ClarificationCallout({ count, onReview }: { count: number; onReview: () => void }) {
+  return <section className="schedule-clarification-callout" role="status">
+    <AlertTriangle aria-hidden="true" />
+    <div><h2>{count} {count === 1 ? 'class needs' : 'classes need'} clarification</h2><p>Valid classes were imported. Review the specific issue for each remaining class.</p></div>
+    <button className="button button-primary" type="button" onClick={onReview}>Review classes</button>
+  </section>
+}
+
 function onboardingKey(userId: string): string {
   return `scheduleshare:schedule-onboarding:${userId}`
+}
+
+function clarificationKey(ownerId: string): string {
+  return `scheduleshare:schedule-import-clarification:v1:${ownerId}`
+}
+
+function loadClarification(ownerId: string): ScheduleImportClarification | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(clarificationKey(ownerId)) ?? 'null') as Partial<ScheduleImportClarification> | null
+    if (!parsed || !Array.isArray(parsed.rowIds) || !parsed.result || !Array.isArray(parsed.result.rows)) return null
+    return parsed as ScheduleImportClarification
+  } catch {
+    return null
+  }
+}
+
+function saveClarification(ownerId: string, clarification: ScheduleImportClarification): void {
+  try {
+    window.localStorage.setItem(clarificationKey(ownerId), JSON.stringify(clarification))
+  } catch {
+    // The in-memory reminder remains available when optional storage is unavailable.
+  }
+}
+
+function clearClarification(ownerId: string): void {
+  try {
+    window.localStorage.removeItem(clarificationKey(ownerId))
+  } catch {
+    // The in-memory reminder is still cleared.
+  }
 }
 
 function rememberOnboarding(userId: string, state: 'dismissed' | 'completed'): void {
@@ -84,6 +122,9 @@ export function SchedulePage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
   const [guestImportResult, setGuestImportResult] = useState<ScheduleImportResult | null>(null)
+  const clarificationOwnerId = user?.id ?? 'guest'
+  const [clarification, setClarification] = useState<ScheduleImportClarification | null>(() => loadClarification(clarificationOwnerId))
+  const [clarificationOpen, setClarificationOpen] = useState(false)
   const [clearScheduleOpen, setClearScheduleOpen] = useState(false)
   const [clearingSchedule, setClearingSchedule] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -96,6 +137,27 @@ export function SchedulePage() {
     () => guestImportResult ? scheduleImportPreviewEnrollments(guestImportResult) : [],
     [guestImportResult],
   )
+
+  useEffect(() => {
+    setClarification(loadClarification(clarificationOwnerId))
+    setClarificationOpen(false)
+  }, [clarificationOwnerId])
+
+  const updateClarification = useCallback((next: ScheduleImportClarification) => {
+    saveClarification(clarificationOwnerId, next)
+    setClarification(next)
+  }, [clarificationOwnerId])
+
+  const startClarification = useCallback((next: ScheduleImportClarification) => {
+    updateClarification(next)
+    setClarificationOpen(true)
+  }, [updateClarification])
+
+  const finishClarification = useCallback(() => {
+    clearClarification(clarificationOwnerId)
+    setClarification(null)
+    setClarificationOpen(false)
+  }, [clarificationOwnerId])
 
   useEffect(() => {
     setShareCtaDismissed(user ? hasDismissedShareCta(user.id) : true)
@@ -273,6 +335,7 @@ export function SchedulePage() {
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
           </div>
         </header>
+        {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} /> : null}
         {!hasGuestPreview ? <section className="schedule-import-empty-card guest-import-try-card">
           <ImagePlus size={34} aria-hidden="true" />
           <div><h2>Import your schedule</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p></div>
@@ -301,6 +364,24 @@ export function SchedulePage() {
             saveGuestScheduleImportDraft(result)
             setGuestImportResult(result)
           }}
+          onNeedsClarification={startClarification}
+        /> : null}
+        {clarification && clarificationOpen ? <ScheduleImportDialog
+          open
+          isGuest
+          initialResult={clarification.result}
+          clarificationRowIds={clarification.rowIds}
+          currentEnrollments={[]}
+          searchCourses={searchGuestCourseNames}
+          loadClassOptions={findGuestClassesForCourse}
+          onClose={() => setClarificationOpen(false)}
+          onImported={async () => undefined}
+          onGuestPreview={(result) => {
+            saveGuestScheduleImportDraft(result)
+            setGuestImportResult(result)
+          }}
+          onClarificationChange={updateClarification}
+          onClarificationResolved={finishClarification}
         /> : null}
       </div>
     )
@@ -317,6 +398,7 @@ export function SchedulePage() {
           <button className="button button-secondary danger-text" type="button" disabled={!hasSchedule || clearingSchedule} onClick={() => setClearScheduleOpen(true)}><Trash2 size={18} aria-hidden="true" /> Clear schedule</button>
         </div>
       </header>
+      {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} /> : null}
       {message ? <div className={showSavedCheck ? 'toast-message schedule-save-success' : 'toast-message'} role="status">{showSavedCheck ? <CheckCircle2 className="success-checkmark" aria-hidden="true" /> : null}<span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
       {schedule.error ? <div className="notice-box error" role="alert">{schedule.error}</div> : null}
       {!hasSchedule ? <section className="schedule-import-empty-card">
@@ -368,6 +450,24 @@ export function SchedulePage() {
           setShowSavedCheck(true)
           setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
         }}
+        onNeedsClarification={startClarification}
+      /> : null}
+      {clarification && clarificationOpen ? <ScheduleImportDialog
+        open
+        isAdmin={isAdmin}
+        initialResult={clarification.result}
+        clarificationRowIds={clarification.rowIds}
+        currentEnrollments={schedule.enrollments}
+        onClose={() => setClarificationOpen(false)}
+        onImported={async ({ added, removed }) => {
+          await schedule.reload()
+          clearGuestScheduleImportDraft()
+          rememberOnboarding(user.id, 'completed')
+          setShowSavedCheck(true)
+          setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
+        }}
+        onClarificationChange={updateClarification}
+        onClarificationResolved={finishClarification}
       /> : null}
       {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !clearingSchedule) setClearScheduleOpen(false) }}>
         <section className="class-dialog clear-schedule-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description">

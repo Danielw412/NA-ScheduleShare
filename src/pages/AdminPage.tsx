@@ -7,7 +7,7 @@ import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, typ
 import { adminRemoveProfilePicture } from '../lib/profile'
 import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogs, superAdminResetSite } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogs, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
 type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
@@ -391,6 +391,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
   const [thinkingLevel, setThinkingLevel] = useState<GeminiThinkingLevel>('low')
   const [outputTokenLimit, setOutputTokenLimit] = useState(4096)
   const [progressDurationSeconds, setProgressDurationSeconds] = useState(6.5)
+  const [retryIncompleteResults, setRetryIncompleteResults] = useState(true)
   const [loading, setLoading] = useState(!isDemo)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -413,6 +414,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
       setThinkingLevel(active?.production_thinking_level ?? 'low')
       setOutputTokenLimit(active?.production_output_token_limit ?? 4096)
       setProgressDurationSeconds(uiSettings.progress_bar_duration_ms / 1000)
+      setRetryIncompleteResults(uiSettings.retry_incomplete_results)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load AI importer settings.')
     } finally {
@@ -444,8 +446,9 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
       if (!isDemo) await Promise.all([
         adminUpdateScheduleImportSettings({ modelId, thinkingLevel, outputTokenLimit }),
         adminUpdateScheduleImportProgressDuration(Math.round(progressDurationSeconds * 1000)),
+        adminUpdateScheduleImportRetrySetting(retryIncompleteResults),
       ])
-      setMessage('Production Gemini and progress-bar settings updated. New imports will use them immediately.')
+      setMessage('Production Gemini settings updated. New imports will use them immediately.')
       await load()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not update the AI importer settings.')
@@ -481,6 +484,7 @@ function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
       <label>Thinking level<select value={thinkingLevel} disabled={!selectedModel || saving} onChange={(event) => setThinkingLevel(event.target.value as GeminiThinkingLevel)}>{(selectedModel?.supported_thinking_levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
       <label>Output-token limit<input type="number" min={256} max={Math.min(8192, selectedModel?.max_output_tokens ?? 8192)} step={128} value={outputTokenLimit} disabled={saving} onChange={(event) => setOutputTokenLimit(Number(event.target.value))} /></label>
       <label>Progress duration (seconds)<input type="number" min={1} max={30} step={0.5} value={progressDurationSeconds} disabled={saving} onChange={(event) => setProgressDurationSeconds(Number(event.target.value))} /></label>
+      <label className="checkbox-row ai-retry-setting"><input type="checkbox" checked={retryIncompleteResults} disabled={saving} onChange={(event) => setRetryIncompleteResults(event.target.checked)} /><span><strong>Run Gemini a second time when needed</strong><small>When the first pass has conflicts or incomplete details, Gemini rechecks the screenshots once before showing clarification items.</small></span></label>
       <button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Update production configuration'}</button>
     </form>
     <div className="notice-box"><BrainCircuit aria-hidden="true" /><span><strong>Developer mode stays off by default.</strong> An administrator must enable it inside the screenshot importer for the current dialog session. It bypasses only ScheduleShare's database rate limit; authentication, file validation, model allowlisting, Gemini quotas, and all other checks remain enforced.</span></div>

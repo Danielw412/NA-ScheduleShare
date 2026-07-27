@@ -85,6 +85,7 @@ function config(overrides: Partial<ImportConfiguration> = {}): ImportConfigurati
     model_id: 'gemini-3.5-flash-lite',
     thinking_level: 'low',
     output_token_limit: 4096,
+    retry_incomplete_results: true,
     ...overrides,
   }
 }
@@ -199,6 +200,28 @@ describe('Gemini request and response handling', () => {
       expect.objectContaining({ source_course_name: 'English 2', meeting_slots: [{ day_type: 'A', period_number: 2 }] }),
     ])
     expect(deps.loadClasses).toHaveBeenCalledWith(TOKEN, expect.any(Object), expect.arrayContaining([COURSE_ID, '99999999-9999-4999-8999-999999999999']))
+  })
+
+  it('does not run a second Gemini pass when the admin setting is disabled', async () => {
+    const firstRead = {
+      schedule: true,
+      issue: '',
+      rows: [
+        { course: 'AP Biology (CHS)', teacher: 'Spak, Jill', term: 'FY', slots: ['A1'] },
+        { course: 'English 2', teacher: 'Jones, Alex', term: 'FY', slots: ['A1'] },
+      ],
+    }
+    const providerFetch = vi.fn<typeof fetch>(async () => geminiResponse(firstRead))
+
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      fetch: providerFetch,
+      config: config({ retry_incomplete_results: false }),
+    }))
+    const body = await responseBody(response)
+
+    expect(response.status).toBe(200)
+    expect(providerFetch).toHaveBeenCalledTimes(1)
+    expect(body).toMatchObject({ retry_count: 0, retry_reasons: [expect.stringContaining('conflict remains')] })
   })
 
   it('asks Gemini to fill an unresolved half-credit term, but never retries a clean result', async () => {

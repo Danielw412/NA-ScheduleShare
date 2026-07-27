@@ -143,18 +143,21 @@ async function prepareImport(
         p_thinking_level: input.thinkingLevel,
       })
     : client.rpc('schedule_import_prepare_guest', { p_guest_key: requester.guestKey })
-  const [prepared, profile] = await Promise.all([
+  const [prepared, profile, uiSettings] = await Promise.all([
     preparation,
     requester.userId
       ? client.from('profiles').select('grade').eq('id', requester.userId).single()
       : Promise.resolve({ data: null, error: null }),
+    client.rpc('get_schedule_import_ui_settings'),
   ])
   const { data, error } = prepared
   if (error) throw error
   if (profile.error) throw profile.error
+  if (uiSettings.error) throw uiSettings.error
   const row = Array.isArray(data) ? data[0] : data
   if (!row || typeof row !== 'object') throw new Error('Schedule import configuration is missing.')
   const value = row as Record<string, unknown>
+  const uiRow = Array.isArray(uiSettings.data) ? uiSettings.data[0] as Record<string, unknown> | undefined : undefined
   return {
     user_id: requester.userId,
     grade: requester.userId && profile.data && [9, 10, 11, 12].includes(Number(profile.data.grade))
@@ -166,6 +169,7 @@ async function prepareImport(
     model_id: String(value.model_id ?? ''),
     thinking_level: String(value.thinking_level ?? '') as ImportConfiguration['thinking_level'],
     output_token_limit: Number(value.output_token_limit),
+    retry_incomplete_results: uiRow?.retry_incomplete_results === undefined ? true : Boolean(uiRow.retry_incomplete_results),
   }
 }
 

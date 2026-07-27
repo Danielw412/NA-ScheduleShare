@@ -219,6 +219,7 @@ export interface ScheduleImportDiagnosticLog {
 
 export interface ScheduleImportUiSettings {
   progress_bar_duration_ms: number
+  retry_incomplete_results: boolean
 }
 
 export interface AdminUserRecord {

@@ -50,6 +50,7 @@ export interface ImportConfiguration {
   model_id: string
   thinking_level: ThinkingLevel
   output_token_limit: number
+  retry_incomplete_results: boolean
 }
 
 export interface ImportClassOption {
@@ -350,7 +351,7 @@ export async function handleScheduleImportRequest(
     const responseWarnings: string[] = []
     parsedOutput = firstPass.parsed
 
-    if (retryReasons.length > 0) {
+    if (config.retry_incomplete_results && retryReasons.length > 0) {
       retryCount = 1
       try {
         const retryOutput = await invokeGemini(images, config, dependencies, {

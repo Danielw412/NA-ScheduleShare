@@ -839,6 +839,10 @@ export type Database = {
         Args: { p_progress_bar_duration_ms: number }
         Returns: undefined
       }
+      admin_update_schedule_import_retry_setting: {
+        Args: { p_retry_incomplete_results: boolean }
+        Returns: undefined
+      }
       admin_update_schedule_import_settings: {
         Args: {
           p_model_id: string
@@ -957,6 +961,7 @@ export type Database = {
         Args: never
         Returns: {
           progress_bar_duration_ms: number
+          retry_incomplete_results: boolean
         }[]
       }
       get_visible_schedule: {
@@ -1483,4 +1488,3 @@ export const Constants = {
     },
   },
 } as const
-

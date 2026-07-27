@@ -2978,6 +2978,31 @@ legend {
   border-top: 1px solid var(--border);
 }
 
+.import-clarification-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid #e4b35a;
+  background: #fff8e8;
+  color: #674600;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-clarification-issue>svg {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+}
+
+.import-clarification-issue span {
+  display: grid;
+  gap: 2px;
+}
+
 .import-row-details>.checkbox-row {
   padding: 0;
   border: 0;
@@ -3990,7 +4015,8 @@ a.student-access-profile:hover strong {
 
 .schedule-import-empty-card,
 .schedule-discovery-callout,
-.schedule-share-cta {
+.schedule-share-cta,
+.schedule-clarification-callout {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -4004,23 +4030,35 @@ a.student-access-profile:hover strong {
 
 .schedule-import-empty-card>svg,
 .schedule-discovery-callout>svg,
-.schedule-share-cta>svg {
+.schedule-share-cta>svg,
+.schedule-clarification-callout>svg {
   color: var(--brand-gold-dark);
 }
 
 .schedule-import-empty-card h2,
 .schedule-discovery-callout h2,
-.schedule-share-cta h2 {
+.schedule-share-cta h2,
+.schedule-clarification-callout h2 {
   margin: 0 0 5px;
   font-size: 21px;
 }
 
 .schedule-import-empty-card p,
 .schedule-discovery-callout p,
-.schedule-share-cta p {
+.schedule-share-cta p,
+.schedule-clarification-callout p {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.schedule-clarification-callout {
+  border-left-color: #d58b00;
+  background: #fff7e2;
+}
+
+.schedule-clarification-callout>svg {
+  color: #a86800;
 }
 
 .schedule-import-empty-card>div:last-child {
@@ -4706,6 +4744,13 @@ a.student-access-profile:hover strong {
   gap: 6px;
 }
 
+.ai-model-settings .ai-retry-setting {
+  grid-column: 1 / -2;
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+}
+
 .diagnostic-heading {
   align-items: end;
   padding-top: 10px;
@@ -5010,6 +5055,10 @@ a.student-access-profile:hover strong {
 
   .ai-model-settings {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .ai-model-settings .ai-retry-setting {
+    grid-column: 1 / -1;
   }
 }
 
@@ -6011,18 +6060,20 @@ a.student-access-profile:hover strong {
 
   .your-classes-empty,
   .guest-unlock-card,
-  .schedule-import-empty-card,
-  .schedule-discovery-callout,
-  .schedule-share-cta,
-  .shared-schedule-upload {
+    .schedule-import-empty-card,
+    .schedule-discovery-callout,
+    .schedule-share-cta,
+    .schedule-clarification-callout,
+    .shared-schedule-upload {
     grid-template-columns: 1fr;
     align-items: start;
   }
 
   .your-classes-empty .button,
   .guest-unlock-card .button,
-  .schedule-discovery-callout .button,
-  .shared-schedule-upload .button {
+    .schedule-discovery-callout .button,
+    .schedule-clarification-callout .button,
+    .shared-schedule-upload .button {
     width: 100%;
   }
 

@@ -38,10 +38,14 @@ export interface ScheduleImportDialogProps {
   isAdmin?: boolean
   isGuest?: boolean
   initialResult?: ScheduleImportResult | null
+  clarificationRowIds?: string[]
   currentEnrollments: ScheduleEnrollment[]
   onClose: () => void
   onImported: (result: { added: number; removed: number }) => Promise<void>
   onGuestPreview?: (result: ScheduleImportResult) => void
+  onNeedsClarification?: (clarification: ScheduleImportClarification) => void
+  onClarificationChange?: (clarification: ScheduleImportClarification) => void
+  onClarificationResolved?: () => void
   importScreenshots?: (files: File[], developerOptions?: ScheduleImportDeveloperOptions) => Promise<ScheduleImportResult>
   searchCourses?: CourseNameSearchExecutor
   loadClassOptions?: (course: CourseNameSearchResult) => Promise<ImportClassOption[]>
@@ -49,6 +53,11 @@ export interface ScheduleImportDialogProps {
   loadDeveloperModels?: () => Promise<ScheduleImportModelRecord[]>
   loadUiSettings?: () => Promise<{ progress_bar_duration_ms: number }>
   onManualEntry?: () => void
+}
+
+export interface ScheduleImportClarification {
+  result: ScheduleImportResult
+  rowIds: string[]
 }
 
 function DeveloperDiagnosticsPanel({ diagnostics }: { diagnostics: ScheduleImportDeveloperDiagnostics }) {
@@ -216,6 +225,17 @@ function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | nu
     || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
 }
 
+function clarificationIssue(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): string {
+  if (conflict) return 'This class conflicts with another imported class in the same semester and meeting slot. Change its term or period, or leave it out.'
+  if (duplicate) return 'This class duplicates another imported class. Change its details or leave it out.'
+  if (rowError) return rowError
+  if (!row.course || row.flags.includes('unresolved_course')) return 'Choose the matching course from the catalogue.'
+  if (row.flags.includes('ambiguous_course')) return 'Choose the correct catalogue course because the screenshot matched more than one option.'
+  if (row.flags.includes('incomplete')) return 'Complete the missing course, teacher, term, or period information.'
+  if (row.flags.includes('low_confidence') || row.confidence <= 0.8) return 'Confirm that the course, teacher, term, and period match the screenshot.'
+  return row.warnings[0] ?? 'Confirm that the imported class details are correct.'
+}
+
 function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 'retry_reasons' | 'warnings'>): string | null {
   const retries = result.retry_count ?? 0
   const retryReason = result.retry_reasons?.filter(Boolean).join(' and ')
@@ -255,9 +275,13 @@ export function ScheduleImportDialog({
   isAdmin = false,
   isGuest = false,
   initialResult = null,
+  clarificationRowIds = [],
   onClose,
   onImported,
   onGuestPreview,
+  onNeedsClarification,
+  onClarificationChange,
+  onClarificationResolved,
   importScreenshots = submitScheduleScreenshots,
   searchCourses,
   loadClassOptions = findClassesForCourse,
@@ -266,13 +290,13 @@ export function ScheduleImportDialog({
   loadUiSettings = getScheduleImportUiSettings,
   onManualEntry,
 }: ScheduleImportDialogProps) {
+  const isClarification = clarificationRowIds.length > 0
   const [images, setImages] = useState<ImportImage[]>([])
   const [rows, setRows] = useState<EditableScheduleImportRow[]>([])
   const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set())
   const [phase, setPhase] = useState<'upload' | 'processing' | 'review' | 'saving'>('upload')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [repairNotice, setRepairNotice] = useState<string | null>(null)
   const [developerMode, setDeveloperMode] = useState(false)
   const [developerModels, setDeveloperModels] = useState<ScheduleImportModelRecord[]>([])
   const [developerModelId, setDeveloperModelId] = useState('')
@@ -312,11 +336,16 @@ export function ScheduleImportDialog({
       retry_reasons: initialResult.retry_reasons,
       developer: initialResult.developer,
     })
-    setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
+    setExpandedRowIds(new Set(editable.filter((row) => clarificationRowIds.includes(row.id) || rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
     setMessage(importReviewMessage(initialResult))
     setDeveloperData(initialResult.developer ?? null)
     setPhase('review')
-  }, [initialResult, open, rows.length])
+  }, [clarificationRowIds, initialResult, open, rows.length])
+
+  useEffect(() => {
+    if (!open || !isClarification || phase !== 'review' || rows.length === 0) return
+    onClarificationChange?.({ result: { ...resultSummary, rows }, rowIds: clarificationRowIds })
+  }, [clarificationRowIds, isClarification, onClarificationChange, open, phase, resultSummary, rows])
 
   const addFiles = useCallback(async (incoming: File[], preferredIndex?: number) => {
     setError(null)
@@ -403,8 +432,11 @@ export function ScheduleImportDialog({
     const priority = conflict ? 0 : duplicate ? 1 : rowErrors[index] ? 2 : attention ? 3 : 4
     return { row, index, conflict, duplicate, attention, priority }
   }).sort((left, right) => left.priority - right.priority || left.index - right.index)
-  const attentionCount = reviewEntries.filter((entry) => entry.attention).length
-  const readyCount = reviewEntries.length - attentionCount
+  const visibleReviewEntries = isClarification
+    ? reviewEntries.filter(({ row }) => clarificationRowIds.includes(row.id))
+    : reviewEntries
+  const attentionCount = visibleReviewEntries.filter((entry) => entry.attention).length
+  const readyCount = visibleReviewEntries.length - attentionCount
   const canConfirm = rows.some((row) => row.include)
     && rowErrors.every((rowError) => !rowError)
     && duplicateIndexes.size === 0
@@ -420,7 +452,6 @@ export function ScheduleImportDialog({
     setPhase('upload')
     setError(null)
     setMessage(null)
-    setRepairNotice(null)
     setDeveloperMode(false)
     setDeveloperModels([])
     setDeveloperModelId('')
@@ -440,7 +471,6 @@ export function ScheduleImportDialog({
     setPhase('processing')
     setError(null)
     setMessage(null)
-    setRepairNotice(null)
     setDeveloperData(null)
     try {
       const result = isAdmin && developerMode
@@ -507,12 +537,12 @@ export function ScheduleImportDialog({
               await onImported(replacement)
             }
           }
-          const problemCount = problemIndexes.size
-          const problemLabel = `${problemCount} ${problemCount === 1 ? 'class' : 'classes'}`
-          const importedMessage = importedCount > 0
-            ? `The other ${importedCount} ${importedCount === 1 ? 'class was' : 'classes were'} imported automatically, and the highlighted ${problemCount === 1 ? 'slot was' : 'slots were'} left blank.`
-            : `The highlighted ${problemCount === 1 ? 'slot was' : 'slots were'} left blank.`
-          setRepairNotice(`Error importing ${problemLabel}. ${importedMessage} Fix the highlighted details below, then finish the import.`)
+          onNeedsClarification?.({
+            result: { ...result, rows: editable },
+            rowIds: [...problemIndexes].map((index) => editable[index].id),
+          })
+          closeDialog()
+          return
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : 'The valid classes could not be imported automatically.')
         }
@@ -529,6 +559,7 @@ export function ScheduleImportDialog({
     if (!canConfirm) return
     if (isGuest) {
       onGuestPreview?.({ ...resultSummary, rows })
+      onClarificationResolved?.()
       closeDialog()
       return
     }
@@ -537,6 +568,7 @@ export function ScheduleImportDialog({
     try {
       const result = await confirmImport(rows)
       await onImported(result)
+      onClarificationResolved?.()
       closeDialog()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The reviewed schedule could not be saved.')
@@ -564,10 +596,10 @@ export function ScheduleImportDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <h2 id="schedule-import-title">Import your schedule</h2>
-            <p>Choose a screenshot and ScheduleShare will identify your classes.</p>
+            <h2 id="schedule-import-title">{isClarification ? `${clarificationRowIds.length} ${clarificationRowIds.length === 1 ? 'class needs' : 'classes need'} clarification` : 'Import your schedule'}</h2>
+            <p>{isClarification ? 'Valid classes are already in your schedule. Fix or leave out each item below.' : 'Choose a screenshot and ScheduleShare will identify your classes.'}</p>
           </div>
-          <button className="icon-button" type="button" aria-label="Close import dialog" onClick={closeDialog} disabled={phase === 'saving'}><X aria-hidden="true" /></button>
+          <button className="icon-button" type="button" aria-label={isClarification ? 'Close clarification dialog' : 'Close import dialog'} onClick={closeDialog} disabled={phase === 'saving'}><X aria-hidden="true" /></button>
         </header>
 
         {phase === 'upload' || phase === 'processing' ? (
@@ -633,11 +665,10 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>{repairNotice ? 'Fix import errors' : isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{repairNotice ? 'Valid classes are already in place. Correct the highlighted class details to fill the blank schedule slots.' : isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
-              <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>
+              <div><h3>{isClarification ? 'Resolve each class' : isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isClarification ? 'The exact issue is shown under each class. Correct the details or uncheck the class to leave that schedule slot blank.' : isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
+              {isClarification ? null : <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>}
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
-            {repairNotice ? <div className="notice-box error import-repair-notice" role="alert"><AlertTriangle aria-hidden="true" /><span>{repairNotice}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <div className="import-review-controls" aria-label="Review row display controls">
@@ -646,7 +677,7 @@ export function ScheduleImportDialog({
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse all</button>
             </div>
             <div className="import-review-grid">
-              {reviewEntries.map(({ row, index, conflict, duplicate, attention }, displayIndex) => {
+              {visibleReviewEntries.map(({ row, index, conflict, duplicate, attention }, displayIndex) => {
                 const expanded = expandedRowIds.has(row.id)
                 return (
                   <Fragment key={row.id}>
@@ -688,6 +719,7 @@ export function ScheduleImportDialog({
                       </span>
                       <ChevronDown aria-hidden="true" className={expanded ? 'is-expanded' : ''} />
                     </button>
+                    {isClarification ? <div className="import-clarification-issue" role="status"><AlertTriangle aria-hidden="true" /><span><strong>Needs clarification</strong>{clarificationIssue(row, rowErrors[index], conflict, duplicate)}</span></div> : null}
                     {expanded ? <div className="import-row-details">
                       <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>Include this class</strong><small>Uncheck to leave it out of the imported schedule</small></span></label>
                       <div className="import-review-fields">
@@ -740,7 +772,7 @@ export function ScheduleImportDialog({
             </div>
             <div className="import-confirm-bar">
               <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected.{isGuest ? '' : ' This will replace your current schedule.'}</p>
-              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Saving…' : repairNotice ? (isGuest ? 'Show corrected schedule' : 'Finish import') : isGuest ? 'Show imported schedule' : 'Replace schedule'}</button>
+              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Saving…' : isClarification ? (isGuest ? 'Show corrected schedule' : 'Save clarifications') : isGuest ? 'Show imported schedule' : 'Replace schedule'}</button>
             </div>
           </div>
         )}

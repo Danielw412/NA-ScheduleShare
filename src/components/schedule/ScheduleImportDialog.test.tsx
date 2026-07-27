@@ -222,7 +222,7 @@ describe('ScheduleImportDialog image input', () => {
 })
 
 describe('ScheduleImportDialog review and confirmation', () => {
-  it('summarizes retried imports without showing the schedule replacement notice', async () => {
+  it('hands retried problem rows to the separate clarification flow', async () => {
     const user = userEvent.setup()
     const result = importResult({
       course: null,
@@ -240,17 +240,22 @@ describe('ScheduleImportDialog review and confirmation', () => {
     result.retry_count = 1
     result.retry_reasons = ['2 imported classes are unresolved or incomplete']
     result.warnings = ['Gemini checked the screenshots again, but the first reading remained the safer result.']
+    const onNeedsClarification = vi.fn()
     renderDialog({
       currentEnrollments: [currentEnrollment()],
       importScreenshots: vi.fn(async () => result),
+      onNeedsClarification,
     })
 
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
 
-    expect(await screen.findByText('The AI was run twice and 2 imported classes are unresolved or incomplete.')).toBeInTheDocument()
-    expect(screen.queryByText(/Gemini checked the screenshots again/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Confirming will replace/)).not.toBeInTheDocument()
+    await waitFor(() => expect(onNeedsClarification).toHaveBeenCalledTimes(1))
+    expect(onNeedsClarification).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({ retry_count: 1, retry_reasons: ['2 imported classes are unresolved or incomplete'] }),
+      rowIds: ['import-1', 'import-2'],
+    }))
+    expect(screen.queryByText('Review every class')).not.toBeInTheDocument()
   })
 
   it('automatically shows a clean guest import without opening review', async () => {
@@ -350,20 +355,20 @@ describe('ScheduleImportDialog review and confirmation', () => {
     const course: CourseNameSearchResult = { id: COURSE_ID, course_name: 'AP Statistics', score: 100, course_term_policy: 'full_year' }
     const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
     renderDialog({
-      importScreenshots: vi.fn(async () => importResult({
+      initialResult: importResult({
         course: null,
         resolution: 'unresolved_course',
         flags: ['unresolved_course'],
         teacher_last_name: 'Unknown',
         term: 'unknown',
-      })),
+      }),
+      clarificationRowIds: ['import-1'],
       searchCourses: vi.fn(async () => [course]),
       confirmImport,
     })
-    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
-    expect(await screen.findByText('Fix import errors')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Finish import' })).toBeDisabled()
+    expect(await screen.findByRole('heading', { name: '1 class needs clarification' })).toBeInTheDocument()
+    expect(document.querySelector('.import-clarification-issue')).toHaveTextContent(/course from the catalogue/i)
+    expect(screen.getByRole('button', { name: 'Save clarifications' })).toBeDisabled()
 
     await user.click(await screen.findByRole('button', { name: 'AP Statistics' }))
     await user.clear(screen.getByLabelText('Teacher last name'))
@@ -373,7 +378,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
     expect(screen.getByRole('button', { name: /AP Statistics.*Create class/i })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Finish import' }))
+    await user.click(screen.getByRole('button', { name: 'Save clarifications' }))
     await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
     const rows = confirmImport.mock.calls[0][0]
     expect(rows[0]).toMatchObject({
@@ -422,15 +427,11 @@ describe('ScheduleImportDialog review and confirmation', () => {
       flags: ['low_confidence', 'unresolved_course'],
       resolution: 'unresolved_course',
     })
-    renderDialog({ importScreenshots: vi.fn(async () => result) })
-    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
-    await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
+    renderDialog({ initialResult: result, clarificationRowIds: ['import-problem'] })
 
-    expect(screen.getByRole('button', { name: /AP Statistics.*Full Year.*Create class/i })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
-    expect(screen.getByText('Ready')).toBeInTheDocument()
     expect(screen.getByText('1', { selector: '.import-review-controls strong:first-child' })).toBeInTheDocument()
     expect(document.querySelector('.import-row-toggle')).toHaveTextContent('Mystery Course')
 
@@ -440,11 +441,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Expand all' }))
-    expect(screen.queryByLabelText('Catalogue course for AP Statistics (CHS)')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Change' }))
-    expect(screen.getByLabelText('Catalogue course for AP Statistics (CHS)')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Collapse all' }))
-    expect(screen.queryByLabelText('Catalogue course for AP Statistics (CHS)')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Catalogue course for Mystery Course')).not.toBeInTheDocument()
   })
 
@@ -465,7 +462,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
     })
     const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
     const onImported = vi.fn(async () => undefined)
-    renderDialog({ importScreenshots: vi.fn(async () => result), confirmImport, onImported })
+    const onNeedsClarification = vi.fn()
+    renderDialog({ importScreenshots: vi.fn(async () => result), confirmImport, onImported, onNeedsClarification })
 
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
@@ -476,10 +474,13 @@ describe('ScheduleImportDialog review and confirmation', () => {
       expect.objectContaining({ id: 'import-problem', include: false }),
     ])
     expect(onImported).toHaveBeenCalledWith({ added: 1, removed: 0 })
-    expect(await screen.findByText(/Error importing 1 class/)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Fix import errors' })).toBeInTheDocument()
+    expect(onNeedsClarification).toHaveBeenCalledWith(expect.objectContaining({ rowIds: ['import-problem'] }))
+    const clarification = onNeedsClarification.mock.calls[0][0]
+    cleanup()
+    renderDialog({ initialResult: clarification.result, clarificationRowIds: clarification.rowIds })
+    expect(await screen.findByRole('heading', { name: '1 class needs clarification' })).toBeInTheDocument()
+    expect(document.querySelector('.import-clarification-issue')).toHaveTextContent(/course from the catalogue/i)
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Finish import' })).toBeDisabled()
   })
 
   it('labels flexible attendance choices as Full year / Semester', async () => {
@@ -499,14 +500,16 @@ describe('ScheduleImportDialog review and confirmation', () => {
   it('keeps an 80%-confidence extraction in review', async () => {
     const user = userEvent.setup()
     const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
+    const onNeedsClarification = vi.fn()
     renderDialog({
       confirmImport,
       importScreenshots: vi.fn(async () => importResult({ confidence: 0.8 })),
+      onNeedsClarification,
     })
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
 
-    expect(await screen.findByText('Fix import errors')).toBeInTheDocument()
+    await waitFor(() => expect(onNeedsClarification).toHaveBeenCalledWith(expect.objectContaining({ rowIds: ['import-1'] })))
     expect(confirmImport).not.toHaveBeenCalled()
   })
 

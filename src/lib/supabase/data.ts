@@ -609,7 +609,10 @@ export async function adminDeleteScheduleImportDiagnostic(diagnosticId: string):
 export async function getScheduleImportUiSettings(): Promise<ScheduleImportUiSettings> {
   const data = await callUntypedRpc('get_schedule_import_ui_settings')
   const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
-  return { progress_bar_duration_ms: Number(row?.progress_bar_duration_ms ?? 6500) }
+  return {
+    progress_bar_duration_ms: Number(row?.progress_bar_duration_ms ?? 6500),
+    retry_incomplete_results: row?.retry_incomplete_results === undefined ? true : Boolean(row.retry_incomplete_results),
+  }
 }
 
 export async function adminUpdateScheduleImportProgressDuration(progressBarDurationMs: number): Promise<void> {
@@ -623,6 +626,12 @@ export async function callAdminAction(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   return callUntypedRpc(functionName, args)
+}
+
+export async function adminUpdateScheduleImportRetrySetting(retryIncompleteResults: boolean): Promise<void> {
+  await callUntypedRpc('admin_update_schedule_import_retry_setting', {
+    p_retry_incomplete_results: retryIncompleteResults,
+  })
 }
 
 export async function isCurrentUserSuperAdmin(): Promise<boolean> {
