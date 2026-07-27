@@ -128,6 +128,7 @@
    * They still scroll once their content reaches the visual-viewport limit.
    */
   .schedule-import-dialog,
+  .add-class-dialog,
   .delete-account-dialog {
     height: auto;
     min-height: 0;

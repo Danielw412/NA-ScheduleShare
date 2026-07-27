@@ -228,18 +228,18 @@ function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 
 
 function ImportedTermField({ row, onChange }: { row: EditableScheduleImportRow; onChange: (term: EditableScheduleImportRow['term']) => void }) {
   const policy = rowCoursePolicy(row)
-  if (policy === 'full_year') return <div className="field-readonly"><span>Academic term</span><strong>Full Year</strong><small>Full-credit and unlisted courses are full year.</small></div>
+  if (policy === 'full_year') return <div className="field-readonly import-term-field"><span>Academic term</span><strong>Full Year</strong><small>Full-credit and unlisted courses are full year.</small></div>
 
   const label = policy === 'semester'
     ? 'Semester'
     : policy === 'flexible_attendance'
-      ? 'Attendance format'
+      ? 'Full year / Semester'
       : policy === 'variable_credit'
         ? 'Credit and term'
         : policy === 'versioned'
           ? 'Course version format'
           : 'Lunch term'
-  return <label>{label}
+  return <label className="import-term-field">{label}
     <select value={row.term} onChange={(event) => onChange(event.target.value as EditableScheduleImportRow['term'])}>
       <option value="unknown">Choose format</option>
       {policy === 'semester' ? null : <option value="full_year">{policy === 'flexible_attendance' ? 'Full Year · A or B days only' : policy === 'variable_credit' ? '1.0 credit · Full Year' : policy === 'versioned' ? 'Full-year version' : 'Full Year'}</option>}
@@ -272,6 +272,7 @@ export function ScheduleImportDialog({
   const [phase, setPhase] = useState<'upload' | 'processing' | 'review' | 'saving'>('upload')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [repairNotice, setRepairNotice] = useState<string | null>(null)
   const [developerMode, setDeveloperMode] = useState(false)
   const [developerModels, setDeveloperModels] = useState<ScheduleImportModelRecord[]>([])
   const [developerModelId, setDeveloperModelId] = useState('')
@@ -419,6 +420,7 @@ export function ScheduleImportDialog({
     setPhase('upload')
     setError(null)
     setMessage(null)
+    setRepairNotice(null)
     setDeveloperMode(false)
     setDeveloperModels([])
     setDeveloperModelId('')
@@ -438,6 +440,7 @@ export function ScheduleImportDialog({
     setPhase('processing')
     setError(null)
     setMessage(null)
+    setRepairNotice(null)
     setDeveloperData(null)
     try {
       const result = isAdmin && developerMode
@@ -461,12 +464,19 @@ export function ScheduleImportDialog({
       setExpandedRowIds(new Set(editable.filter((row) => rowNeedsAttention(row, importRowError(row), false, false)).map((row) => row.id)))
       setMessage(importReviewMessage(result))
       setDeveloperData(result.developer ?? null)
-      const canAutoApply = !developerMode
-        && editable.length > 0
-        && editable.every((row) => row.confidence > 0.8 && !importRowError(row))
-        && editable.every((row) => !row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag)))
-        && duplicateImportIndexes(editable).size === 0
-        && conflictingImportIndexes(editable).size === 0
+      const duplicates = duplicateImportIndexes(editable)
+      const conflicts = conflictingImportIndexes(editable)
+      const problemIndexes = new Set<number>()
+      editable.forEach((row, index) => {
+        if (row.confidence <= 0.8
+          || importRowError(row)
+          || duplicates.has(index)
+          || conflicts.has(index)
+          || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))) {
+          problemIndexes.add(index)
+        }
+      })
+      const canAutoApply = !developerMode && editable.length > 0 && problemIndexes.size === 0
       if (canAutoApply && isGuest) {
         onGuestPreview?.({ ...result, rows: editable })
         closeDialog()
@@ -483,6 +493,29 @@ export function ScheduleImportDialog({
           setPhase('review')
         }
         return
+      }
+      if (!developerMode && problemIndexes.size > 0) {
+        const partialRows = editable.map((row, index) => problemIndexes.has(index) ? { ...row, include: false } : row)
+        const importedCount = partialRows.filter((row) => row.include).length
+        try {
+          if (importedCount > 0) {
+            if (isGuest) {
+              onGuestPreview?.({ ...result, rows: partialRows })
+            } else {
+              setPhase('saving')
+              const replacement = await confirmImport(partialRows)
+              await onImported(replacement)
+            }
+          }
+          const problemCount = problemIndexes.size
+          const problemLabel = `${problemCount} ${problemCount === 1 ? 'class' : 'classes'}`
+          const importedMessage = importedCount > 0
+            ? `The other ${importedCount} ${importedCount === 1 ? 'class was' : 'classes were'} imported automatically, and the highlighted ${problemCount === 1 ? 'slot was' : 'slots were'} left blank.`
+            : `The highlighted ${problemCount === 1 ? 'slot was' : 'slots were'} left blank.`
+          setRepairNotice(`Error importing ${problemLabel}. ${importedMessage} Fix the highlighted details below, then finish the import.`)
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : 'The valid classes could not be imported automatically.')
+        }
       }
       setPhase('review')
     } catch (caught) {
@@ -600,10 +633,11 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>{isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
+              <div><h3>{repairNotice ? 'Fix import errors' : isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{repairNotice ? 'Valid classes are already in place. Correct the highlighted class details to fill the blank schedule slots.' : isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
               <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
+            {repairNotice ? <div className="notice-box error import-repair-notice" role="alert"><AlertTriangle aria-hidden="true" /><span>{repairNotice}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
             <div className="import-review-controls" aria-label="Review row display controls">
@@ -637,18 +671,21 @@ export function ScheduleImportDialog({
                         <span className="is-teacher"><small>Teacher</small><strong>{teacherForImportedCourse(row.teacher_last_name, row.course?.name) || 'Not resolved'}</strong></span>
                         <span className="is-term"><small>Term</small><strong>{academicTermLabel(row.term)}</strong></span>
                         <span className="is-periods"><small>Periods</small><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'No periods'}</strong></span>
-                        <span className="is-action"><small>Class action</small><strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong></span>
+                        <span className="is-action">
+                          <small>Class action</small>
+                          <strong>{row.selected_existing_class_id ? 'Use existing class' : row.course ? 'Create class' : 'Resolve course'}</strong>
+                          <span className="import-flags">
+                            {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
+                            {row.flags.includes('duplicate') ? <span>Overlap merged</span> : null}
+                            {row.flags.includes('unresolved_course') ? <span>Course unresolved</span> : null}
+                            {row.flags.includes('ambiguous_course') ? <span>Ambiguous match</span> : null}
+                            {row.flags.includes('incomplete') ? <span className="danger">Incomplete</span> : null}
+                            {rowErrors[index] ? <span className="danger">Error</span> : null}
+                            {conflict ? <span className="danger">Schedule conflict</span> : null}
+                            {duplicate ? <span className="danger">Duplicate import row</span> : null}
+                          </span>
+                        </span>
                       </span>
-                      <div className="import-flags">
-                        {row.flags.includes('low_confidence') ? <span>Low confidence</span> : null}
-                        {row.flags.includes('duplicate') ? <span>Overlap merged</span> : null}
-                        {row.flags.includes('unresolved_course') ? <span>Course unresolved</span> : null}
-                        {row.flags.includes('ambiguous_course') ? <span>Ambiguous match</span> : null}
-                        {row.flags.includes('incomplete') ? <span className="danger">Incomplete</span> : null}
-                        {rowErrors[index] ? <span className="danger">Error</span> : null}
-                        {conflict ? <span className="danger">Schedule conflict</span> : null}
-                        {duplicate ? <span className="danger">Duplicate import row</span> : null}
-                      </div>
                       <ChevronDown aria-hidden="true" className={expanded ? 'is-expanded' : ''} />
                     </button>
                     {expanded ? <div className="import-row-details">
@@ -669,7 +706,7 @@ export function ScheduleImportDialog({
                         <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={Boolean(specialCourseKind(row.course?.name))} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
                       </label>}
                       <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />
-                      <label>Class action
+                      <label className="import-action-field">Class action
                         <select value={row.selected_existing_class_id ?? ''} disabled={!row.course} onChange={(event) => {
                           const classId = event.target.value || null
                           const option = row.class_options.find((candidate) => candidate.id === classId)
@@ -703,7 +740,7 @@ export function ScheduleImportDialog({
             </div>
             <div className="import-confirm-bar">
               <p><strong>{rows.filter((row) => row.include).length}</strong> classes selected.{isGuest ? '' : ' This will replace your current schedule.'}</p>
-              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{isGuest ? 'Show imported schedule' : phase === 'saving' ? 'Replacing…' : 'Replace schedule'}</button>
+              <button className="button button-primary" disabled={!canConfirm || phase === 'saving'} type="button" onClick={() => void saveRows()}>{phase === 'saving' ? 'Saving…' : repairNotice ? (isGuest ? 'Show corrected schedule' : 'Finish import') : isGuest ? 'Show imported schedule' : 'Replace schedule'}</button>
             </div>
           </div>
         )}

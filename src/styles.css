@@ -2909,12 +2909,10 @@ legend {
 }
 
 .import-row-toggle {
+  position: relative;
   width: 100%;
   min-height: 60px;
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 14px;
+  display: block;
   padding: 13px 16px;
   border: 0;
   background: transparent;
@@ -2932,16 +2930,20 @@ legend {
 }
 
 .import-row-toggle>svg {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
   transition: transform .16s ease;
 }
 
 .import-row-toggle>svg.is-expanded {
-  transform: rotate(180deg);
+  transform: translateY(-50%) rotate(180deg);
 }
 
 .import-row-summary {
   display: grid;
-  grid-template-columns: minmax(170px, 1.3fr) minmax(110px, .7fr) minmax(110px, .6fr) minmax(150px, .8fr) minmax(140px, .8fr);
+  grid-template-columns: minmax(190px, 1.3fr) minmax(130px, .75fr) minmax(120px, .65fr) minmax(120px, .65fr) minmax(210px, 1.1fr);
   gap: 14px;
 }
 
@@ -2949,6 +2951,10 @@ legend {
   min-width: 0;
   display: grid;
   gap: 3px;
+}
+
+.import-row-summary .is-action {
+  padding-right: 30px;
 }
 
 .import-row-summary small {
@@ -2984,6 +2990,10 @@ legend {
   gap: 5px;
 }
 
+.import-row-summary .import-flags {
+  justify-content: flex-start;
+}
+
 .import-flags span {
   padding: 4px 7px;
   border: 1px solid #dfb04c;
@@ -3002,9 +3012,17 @@ legend {
 
 .import-review-fields {
   display: grid;
-  grid-template-columns: minmax(240px, 1.4fr) minmax(150px, .7fr) minmax(150px, .65fr) minmax(240px, 1fr);
+  grid-template-columns: minmax(190px, 1.3fr) minmax(130px, .75fr) minmax(120px, .65fr) minmax(120px, .65fr) minmax(210px, 1.1fr);
   gap: 11px;
   align-items: start;
+}
+
+.import-review-fields > .import-term-field {
+  grid-column: 3 / 5;
+}
+
+.import-review-fields > .import-action-field {
+  grid-column: 5;
 }
 
 .import-review-fields>label,
@@ -4981,6 +4999,11 @@ a.student-access-profile:hover strong {
     grid-template-columns: 1fr 1fr;
   }
 
+  .import-review-fields > .import-term-field,
+  .import-review-fields > .import-action-field {
+    grid-column: auto;
+  }
+
   .import-developer-summary {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -5597,11 +5620,18 @@ a.student-access-profile:hover strong {
   }
 
   .import-row-toggle {
-    grid-template-columns: 1fr auto;
-    align-items: start;
-    gap: 8px;
     min-height: 0;
     padding: 11px 12px;
+  }
+
+  .import-row-toggle>svg {
+    top: 14px;
+    right: 12px;
+    transform: none;
+  }
+
+  .import-row-toggle>svg.is-expanded {
+    transform: rotate(180deg);
   }
 
   .import-row-summary {
@@ -5614,6 +5644,13 @@ a.student-access-profile:hover strong {
   }
 
   .import-row-summary .is-action {
+    grid-column: 1 / -1;
+    display: block;
+    padding-right: 30px;
+  }
+
+  .import-row-summary .is-action>small,
+  .import-row-summary .is-action>strong {
     display: none;
   }
 
@@ -5623,11 +5660,6 @@ a.student-access-profile:hover strong {
 
   .import-row-summary strong {
     font-size: 12px;
-  }
-
-  .import-row-toggle .import-flags {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 
   .import-review-fields {

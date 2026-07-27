@@ -31,23 +31,25 @@ describe('MeetingSlotEditor', () => {
     render(<EditorHarness />)
 
     expect(screen.getByRole('combobox', { name: 'Meeting days' })).toHaveValue('both')
-    expect(screen.getByRole('combobox', { name: 'A day period' })).toHaveValue('4')
-    expect(screen.getByRole('combobox', { name: 'B day period' })).toHaveValue('4')
+    expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('4')
+    expect(screen.queryByRole('combobox', { name: 'A day period' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'B day period' })).not.toBeInTheDocument()
     expect(screen.getByText('P4', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader')).not.toBeInTheDocument()
   })
 
-  it('supports A-only, B-only, and different A/B periods', async () => {
+  it('uses one shared period for both days and supports A-only or B-only classes', async () => {
     const user = userEvent.setup()
     render(<EditorHarness />)
     const days = screen.getByRole('combobox', { name: 'Meeting days' })
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'B day period' }), '5')
-    expect(screen.getByText('A P4 · B P5', { selector: 'strong' })).toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Period' }), '5')
+    expect(screen.getByText('P5', { selector: 'strong' })).toBeInTheDocument()
     await user.selectOptions(days, 'A')
-    expect(screen.getByText('A P4', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('5')
+    expect(screen.getByText('A P5', { selector: 'strong' })).toBeInTheDocument()
     await user.selectOptions(days, 'B')
-    expect(screen.getByText('B P4', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('B P5', { selector: 'strong' })).toBeInTheDocument()
   })
 
   it('switches to the independent double-period grid and normalizes back', async () => {

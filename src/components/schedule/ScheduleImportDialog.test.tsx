@@ -362,8 +362,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
     })
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
-    expect(await screen.findByText('Review every class')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Replace schedule' })).toBeDisabled()
+    expect(await screen.findByText('Fix import errors')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Finish import' })).toBeDisabled()
 
     await user.click(await screen.findByRole('button', { name: 'AP Statistics' }))
     await user.clear(screen.getByLabelText('Teacher last name'))
@@ -373,7 +373,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.click(screen.getByRole('button', { name: 'A Day, Period 2' }))
     expect(screen.getByRole('button', { name: /AP Statistics.*Create class/i })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Replace schedule' }))
+    await user.click(screen.getByRole('button', { name: 'Finish import' }))
     await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
     const rows = confirmImport.mock.calls[0][0]
     expect(rows[0]).toMatchObject({
@@ -448,6 +448,54 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.queryByLabelText('Catalogue course for Mystery Course')).not.toBeInTheDocument()
   })
 
+  it('imports valid classes first and leaves the problem class open for repair', async () => {
+    const user = userEvent.setup()
+    const result = importResult()
+    result.rows.push({
+      ...result.rows[0],
+      id: 'import-problem',
+      source_course_name: 'Mystery Course',
+      course: null,
+      teacher_last_name: 'Unknown',
+      term: 'unknown',
+      meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
+      confidence: 0.4,
+      flags: ['low_confidence', 'unresolved_course'],
+      resolution: 'unresolved_course',
+    })
+    const confirmImport = vi.fn<(rows: EditableScheduleImportRow[]) => Promise<{ added: number; removed: number }>>(async () => ({ added: 1, removed: 0 }))
+    const onImported = vi.fn(async () => undefined)
+    renderDialog({ importScreenshots: vi.fn(async () => result), confirmImport, onImported })
+
+    await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
+    await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
+
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
+    expect(confirmImport.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ id: 'import-1', include: true }),
+      expect.objectContaining({ id: 'import-problem', include: false }),
+    ])
+    expect(onImported).toHaveBeenCalledWith({ added: 1, removed: 0 })
+    expect(await screen.findByText(/Error importing 1 class/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Fix import errors' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Finish import' })).toBeDisabled()
+  })
+
+  it('labels flexible attendance choices as Full year / Semester', async () => {
+    const user = userEvent.setup()
+    renderDialog({
+      initialResult: importResult({
+        course: { id: COURSE_ID, name: 'Gym', confidence: 1, term_policy: 'flexible_attendance' },
+        meeting_slots: [{ day_type: 'A', period_number: 1 }],
+      }),
+    })
+
+    await user.click(screen.getByRole('button', { name: /CourseGym/ }))
+    expect(screen.getByRole('combobox', { name: 'Full year / Semester' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Attendance format' })).not.toBeInTheDocument()
+  })
+
   it('keeps an 80%-confidence extraction in review', async () => {
     const user = userEvent.setup()
     const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
@@ -458,7 +506,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
 
-    expect(await screen.findByText('Review every class')).toBeInTheDocument()
+    expect(await screen.findByText('Fix import errors')).toBeInTheDocument()
     expect(confirmImport).not.toHaveBeenCalled()
   })
 

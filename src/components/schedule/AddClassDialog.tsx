@@ -361,7 +361,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const context = `${semester === 'semester_1' ? 'Semester 1' : 'Semester 2'} · ${dayType} Day · Period ${period}`
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className="class-dialog" role="dialog" aria-modal="true" aria-labelledby="add-class-title">
+      <section className="class-dialog add-class-dialog" role="dialog" aria-modal="true" aria-labelledby="add-class-title">
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div><h2 id="add-class-title">{replacing ? 'Edit class entry' : mode === 'create' ? 'Create a class' : 'Add a class'}</h2><p>{context}</p></div>

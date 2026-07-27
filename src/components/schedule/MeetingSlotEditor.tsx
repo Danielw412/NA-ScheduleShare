@@ -1,5 +1,6 @@
 import type { DayType, MeetingSlot } from '../../lib/domain'
 import {
+  buildNormalMeetingSlots,
   formatMeetingSlotSummary,
   meetingDaySelectionFromSlots,
   meetingSlotsForDay,
@@ -30,15 +31,17 @@ export function MeetingSlotEditor({
   const fallbackPeriod = meetingSlots[0]?.period_number ?? 1
   const aPeriod = periodForDay(meetingSlots, 'A', fallbackPeriod)
   const bPeriod = periodForDay(meetingSlots, 'B', fallbackPeriod)
+  const selectedPeriod = meetingDays === 'B' ? bPeriod : aPeriod
 
   function changeMeetingDays(nextDays: MeetingDaySelection) {
-    const nextSlots: MeetingSlot[] = []
-    if (nextDays === 'both' || nextDays === 'A') nextSlots.push({ day_type: 'A', period_number: aPeriod })
-    if (nextDays === 'both' || nextDays === 'B') nextSlots.push({ day_type: 'B', period_number: bPeriod })
-    onMeetingSlotsChange(sortMeetingSlots(nextSlots))
+    onMeetingSlotsChange(sortMeetingSlots(buildNormalMeetingSlots(nextDays, selectedPeriod)))
   }
 
   function changePeriod(dayType: DayType, period: number) {
+    if (meetingDays === 'both') {
+      onMeetingSlotsChange(sortMeetingSlots(buildNormalMeetingSlots('both', period)))
+      return
+    }
     onMeetingSlotsChange(sortMeetingSlots([
       ...meetingSlots.filter((slot) => slot.day_type !== dayType),
       { day_type: dayType, period_number: period },
@@ -54,7 +57,7 @@ export function MeetingSlotEditor({
       {isDoublePeriod ? <MeetingSlotGrid meetingSlots={meetingSlots} onChange={onMeetingSlotsChange} /> : (
         <fieldset className="meeting-slot-picker normal-slot-picker">
           <legend>Meeting slots</legend>
-          <p className="meeting-slot-help">Choose the meeting days and the period used on each day.</p>
+          <p className="meeting-slot-help">Choose the meeting days and period for this class.</p>
           <div className="two-field-row">
             <label>Meeting days
               <select value={meetingDays} onChange={(event) => changeMeetingDays(event.target.value as MeetingDaySelection)}>
@@ -66,10 +69,7 @@ export function MeetingSlotEditor({
             {meetingDays === 'A' ? <PeriodSelect dayType="A" value={aPeriod} onChange={changePeriod} compact /> : null}
             {meetingDays === 'B' ? <PeriodSelect dayType="B" value={bPeriod} onChange={changePeriod} compact /> : null}
           </div>
-          {meetingDays === 'both' ? <div className="two-field-row">
-            <PeriodSelect dayType="A" value={aPeriod} onChange={changePeriod} />
-            <PeriodSelect dayType="B" value={bPeriod} onChange={changePeriod} />
-          </div> : null}
+          {meetingDays === 'both' ? <PeriodSelect dayType="A" value={selectedPeriod} onChange={changePeriod} compact /> : null}
           <p className="inferred-slot" aria-live="polite">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
         </fieldset>
       )}

@@ -80,6 +80,25 @@ afterEach(() => {
 })
 
 describe('AddClassDialog semester formats', () => {
+  it('uses the content-height mobile sheet class before a class is selected', () => {
+    renderDialog()
+
+    expect(screen.getByRole('dialog')).toHaveClass('add-class-dialog')
+    expect(screen.getByRole('button', { name: 'Add class' })).toBeDisabled()
+  })
+
+  it('shows one shared period dropdown for a normal class that meets on both days', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Academic Physics' }))
+
+    expect(screen.getByRole('combobox', { name: 'Meeting days' })).toHaveValue('both')
+    expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('3')
+    expect(screen.queryByRole('combobox', { name: 'A day period' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'B day period' })).not.toBeInTheDocument()
+  })
+
   it('shows semester selection only for a listed half-credit course', async () => {
     const user = userEvent.setup()
     renderDialog()
