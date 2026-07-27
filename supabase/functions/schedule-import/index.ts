@@ -9,6 +9,7 @@ import {
   type MeetingSlot,
   type ScheduleImportDependencies,
 } from './core.ts'
+import { defaultUnknownSingleDayTerms } from './single-day-term.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')?.trim().replace(/\/$/, '') ?? ''
 const SUPABASE_PUBLISHABLE_KEYS = readPublishableKeys()
@@ -51,6 +52,40 @@ function readSecretKey(): string {
   return Deno.env.get('SUPABASE_SECRET_KEY')?.trim()
     || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
     || ''
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const fetchGeminiWithTermDefaults: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init)
+  if (!response.ok) return response
+
+  const payload = await response.clone().json().catch(() => null) as unknown
+  if (!isRecord(payload) || !Array.isArray(payload.candidates)) return response
+
+  let changed = false
+  for (const candidate of payload.candidates) {
+    if (!isRecord(candidate) || !isRecord(candidate.content) || !Array.isArray(candidate.content.parts)) continue
+    for (const part of candidate.content.parts) {
+      if (!isRecord(part) || typeof part.text !== 'string') continue
+      const rewritten = defaultUnknownSingleDayTerms(part.text)
+      if (rewritten === part.text) continue
+      part.text = rewritten
+      changed = true
+    }
+  }
+
+  if (!changed) return response
+  const headers = new Headers(response.headers)
+  headers.delete('content-length')
+  headers.delete('content-encoding')
+  return new Response(JSON.stringify(payload), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }
 
 function baseClient(): SupabaseClient {
@@ -222,6 +257,7 @@ function dependencies(): ScheduleImportDependencies {
     loadClasses,
     countGuestMatches,
     recordDiagnostic,
+    fetch: fetchGeminiWithTermDefaults,
   }
 }
 
