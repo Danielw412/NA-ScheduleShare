@@ -220,6 +220,7 @@ Extraction rules:
 - Use slot strings in A1 through A9 or B1 through B9 form. Include every explicitly visible A/B meeting slot and remove duplicate slots.
 - If the images are not a readable student schedule, return {"schedule":false,"issue":"a short, specific explanation of what is wrong and what the user should recapture","rows":[]}.
 - For a readable schedule, issue must be an empty string. For an unreadable, cropped, obstructed, unrelated, or blurry image, issue must explain the visible problem in plain language rather than using a generic failure message.
+- Important: for classes that are either only A or only B, mark the class as full year. 
 - Return only the required structured data.
 
 The following courses normally follow a single/double-period schedule; the course meets for one period on one day of the A/B cycle and two periods on the other day:
