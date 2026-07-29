@@ -650,19 +650,8 @@ export interface EventLogFilters {
   offset?: number
 }
 
-export async function superAdminListLogs(filters: EventLogFilters = {}): Promise<EventLogRecord[]> {
-  const data = await callUntypedRpc('super_admin_list_logs', {
-    p_category: filters.category || undefined,
-    p_event: filters.event || undefined,
-    p_user: filters.user || undefined,
-    p_target: filters.target || undefined,
-    p_created_from: filters.createdFrom || undefined,
-    p_created_to: filters.createdTo || undefined,
-    p_result: filters.result || undefined,
-    p_limit: filters.limit ?? 100,
-    p_offset: filters.offset ?? 0,
-  })
-  return (data as Array<Record<string, unknown>>).map((row) => ({
+function eventLogRecordFromRow(row: Record<string, unknown>): EventLogRecord {
+  return {
     id: String(row.id),
     log_category: String(row.log_category) as EventLogCategory,
     event_type: String(row.event_type),
@@ -675,7 +664,44 @@ export async function superAdminListLogs(filters: EventLogFilters = {}): Promise
     result: row.result ? String(row.result) : null,
     metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {},
     created_at: String(row.created_at),
-  }))
+  }
+}
+
+export async function superAdminListLogs(filters: EventLogFilters = {}): Promise<EventLogRecord[]> {
+  const data = await callUntypedRpc('super_admin_list_logs', {
+    p_category: filters.category || undefined,
+    p_event: filters.event || undefined,
+    p_user: filters.user || undefined,
+    p_target: filters.target || undefined,
+    p_created_from: filters.createdFrom || undefined,
+    p_created_to: filters.createdTo || undefined,
+    p_result: filters.result || undefined,
+    p_limit: filters.limit ?? 100,
+    p_offset: filters.offset ?? 0,
+  })
+  return (data as Array<Record<string, unknown>>).map(eventLogRecordFromRow)
+}
+
+export async function superAdminListLogsPage(filters: EventLogFilters = {}): Promise<{ logs: EventLogRecord[]; total: number }> {
+  const data = await callUntypedRpc('super_admin_list_logs_page', {
+    p_category: filters.category || undefined,
+    p_event: filters.event || undefined,
+    p_user: filters.user || undefined,
+    p_target: filters.target || undefined,
+    p_created_from: filters.createdFrom || undefined,
+    p_created_to: filters.createdTo || undefined,
+    p_result: filters.result || undefined,
+    p_limit: filters.limit ?? 50,
+    p_offset: filters.offset ?? 0,
+  })
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The event log page response was invalid.')
+  const page = data as Record<string, unknown>
+  const total = Number(page.total_count)
+  if (!Number.isSafeInteger(total) || total < 0 || !Array.isArray(page.logs)) throw new Error('The event log page response was invalid.')
+  return {
+    logs: (page.logs as Array<Record<string, unknown>>).map(eventLogRecordFromRow),
+    total,
+  }
 }
 
 export async function superAdminGetActivitySummary(): Promise<ActivitySummary> {

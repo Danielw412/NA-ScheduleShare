@@ -26,6 +26,7 @@ const catalog: CourseRecord[] = [
   { id: '44444444-4444-4444-8444-444444444444', name: 'Lunch - NASH', term_policy: 'lunch' },
   { id: '44444444-4444-4444-9444-444444444444', name: 'Lunch - NAI', term_policy: 'lunch' },
   { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall - NASH', term_policy: 'flexible_attendance' },
+  { id: '77777777-7777-4777-8777-777777777777', name: 'Honors Music Production 3', term_policy: 'semester' },
   { id: '88888888-8888-4888-8888-888888888888', name: 'Gym', term_policy: 'flexible_attendance' },
   { id: '99999999-9999-4999-8999-999999999999', name: 'English 2', term_policy: 'full_year' },
   { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', name: 'Business Communications', term_policy: 'semester' },
@@ -383,6 +384,31 @@ describe('normalization and backend catalogue matching', () => {
     expect((await responseBody(semesters)).rows).toEqual([
       expect.objectContaining({ term: 'semester_1', teacher_last_name: 'N/A' }),
       expect.objectContaining({ term: 'semester_2', teacher_last_name: 'N/A' }),
+    ])
+  })
+
+  it('assigns ordered semesters to two semester-capable classes sharing one A/B period', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [
+          { course: 'Study Hall', teacher: 'Hannan, Nicholas', term: 'unknown', slots: ['P03(A-B)'] },
+          { course: 'Hon Music Production 3', teacher: 'Tozier, Bob', term: 'unknown', slots: ['P03(A-B)'] },
+        ],
+      },
+    }))
+
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        course: expect.objectContaining({ name: 'Study Hall - NASH' }),
+        term: 'semester_1',
+      }),
+      expect.objectContaining({
+        course: expect.objectContaining({ name: 'Honors Music Production 3' }),
+        term: 'semester_2',
+      }),
     ])
   })
 

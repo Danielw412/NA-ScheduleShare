@@ -236,6 +236,70 @@ describe('SchedulePage onboarding', () => {
     expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
   })
 
+  it('lets the student dismiss the clarification reminder', async () => {
+    const user = userEvent.setup()
+    renderPage('/schedule?import=1')
+
+    await user.click(await screen.findByRole('button', { name: 'Complete analysis with issues' }))
+    await user.click(screen.getByRole('button', { name: 'Close clarification' }))
+    await user.click(screen.getByRole('button', { name: 'Dismiss clarification reminder' }))
+
+    expect(screen.queryByRole('button', { name: 'Review classes' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
+  })
+
+  it('clears the reminder after every outstanding class was added manually', async () => {
+    const clarification = {
+      rowIds: ['problem-row'],
+      result: {
+        image_count: 1,
+        warnings: [],
+        rows: [{
+          id: 'problem-row',
+          source_course_name: 'Hon Music Production 3',
+          course: { id: 'course-music-production', name: 'Honors Music Production 3', confidence: 1, term_policy: 'semester' as const },
+          teacher_last_name: 'Tozier',
+          term: 'semester_2' as const,
+          meeting_slots: [{ day_type: 'A' as const, period_number: 3 }, { day_type: 'B' as const, period_number: 3 }],
+          confidence: 1,
+          warnings: [],
+          flags: ['incomplete' as const],
+          resolution: 'new_class' as const,
+          existing_class_id: null,
+          class_options: [],
+        }],
+      },
+    }
+    localStorage.setItem('scheduleshare:schedule-import-clarification:v1:student-1', JSON.stringify(clarification))
+    mocks.useSchedule.mockReturnValue({
+      ...emptySchedule(),
+      enrollments: [{
+        id: 'enrollment-music-production',
+        class_id: 'class-music-production',
+        student_id: 'student-1',
+        academic_term: 'semester_2',
+        active: true,
+        created_at: '2026-07-29T00:00:00Z',
+        updated_at: '2026-07-29T00:00:00Z',
+        meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }],
+        class: {
+          id: 'class-music-production',
+          course_name_id: 'course-music-production',
+          course_name: 'Honors Music Production 3',
+          teacher_last_name: 'Tozier',
+          default_academic_term: 'semester_2',
+          is_double_period: false,
+          meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }],
+        },
+      }],
+    })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Review classes' })).not.toBeInTheDocument())
+    expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
+  })
+
   it('lets a logged-out visitor open the importer before creating an account', async () => {
     mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, isDemo: false })
     renderPage()

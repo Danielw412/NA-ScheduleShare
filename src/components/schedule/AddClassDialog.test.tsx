@@ -87,6 +87,25 @@ describe('AddClassDialog semester formats', () => {
     expect(screen.getByRole('button', { name: 'Add class' })).toBeDisabled()
   })
 
+  it('provides compact semester labels for the fixed-width mobile result metadata column', () => {
+    mocks.useClassSearch.mockReturnValue({
+      error: null,
+      loading: false,
+      results: [
+        specialResult({ id: 'full-year-result', course_name: 'Academic Physics', course_term_policy: 'full_year', default_academic_term: 'full_year' }),
+        specialResult({ id: 'semester-result', course_name: 'Honors Music Production 3', course_term_policy: 'semester', default_academic_term: 'semester_2' }),
+        specialResult({ id: 'study-hall-result', course_name_id: 'course-study-hall', course_name: 'Study Hall - NASH', course_term_policy: 'flexible_attendance', default_academic_term: 'semester_1' }),
+      ],
+    })
+
+    renderDialog()
+
+    expect(screen.getByText('Full Year')).toHaveAttribute('data-mobile-label', 'Full Year')
+    expect(screen.getByText('Semester 2')).toHaveAttribute('data-mobile-label', 'Sem 2')
+    expect(document.querySelectorAll('.class-result>span')).toHaveLength(3)
+    expect(screen.getByText('Study Hall - NASH').closest('.class-result')?.querySelector('.class-result-term')).toBeNull()
+  })
+
   it('shows one shared period dropdown for a normal class that meets on both days', async () => {
     const user = userEvent.setup()
     renderDialog()

@@ -29,6 +29,10 @@ const mobileBottomNavigation = [
   { to: '/students', label: 'Students', Icon: Users },
 ]
 
+export function pageTransitionKey(pathname: string): string {
+  return pathname === '/classes' || pathname.startsWith('/classes/') ? '/classes' : pathname
+}
+
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user, profile, avatarRevision, signOut } = useAuth()
@@ -62,7 +66,7 @@ export function AppShell() {
           </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
         </div>
       </header>
-      <main className="page-container"><div className="page-transition" key={location.pathname}><Outlet /></div></main>
+      <main className="page-container"><div className="page-transition" key={pageTransitionKey(location.pathname)}><Outlet /></div></main>
       <footer className="site-footer">
         <p>{brand.attribution}</p>
         <p className="footer-security"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Security:</strong> Supabase row-level security enforces schedule privacy in the database, authenticated requests are permission-checked, and sensitive credentials stay server-side.</span></p>

@@ -26,11 +26,11 @@ import { clearSchedule, removeEnrollment, searchGuestCourseNames } from '../lib/
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
-function ClarificationCallout({ count, onReview }: { count: number; onReview: () => void }) {
+function ClarificationCallout({ count, onReview, onDismiss }: { count: number; onReview: () => void; onDismiss: () => void }) {
   return <section className="schedule-clarification-callout" role="status">
     <AlertTriangle aria-hidden="true" />
     <div><h2>{count} {count === 1 ? 'class needs' : 'classes need'} clarification</h2><p>Valid classes were imported. Review the specific issue for each remaining class.</p></div>
-    <button className="button button-primary" type="button" onClick={onReview}>Review classes</button>
+    <div className="schedule-clarification-actions"><button className="button button-primary" type="button" onClick={onReview}>Review classes</button><button className="icon-button" type="button" aria-label="Dismiss clarification reminder" onClick={onDismiss}><X aria-hidden="true" /></button></div>
   </section>
 }
 
@@ -66,6 +66,29 @@ function clearClarification(ownerId: string): void {
   } catch {
     // The in-memory reminder is still cleared.
   }
+}
+
+function normalizedImportedCourseName(value: string): string {
+  return value
+    .normalize('NFKD')
+    .toLocaleLowerCase()
+    .replace(/\(\s*chs\s*\)/g, ' ')
+    .replace(/\bhon\b/g, 'honors')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function clarificationRowWasAddedManually(
+  row: ScheduleImportResult['rows'][number],
+  enrollments: ScheduleEnrollment[],
+): boolean {
+  const sourceName = normalizedImportedCourseName(row.course?.name ?? row.source_course_name)
+  return enrollments.some((enrollment) => enrollment.active && (
+    row.course?.id
+      ? enrollment.class.course_name_id === row.course.id
+      : normalizedImportedCourseName(enrollment.class.course_name) === sourceName
+  ))
 }
 
 function rememberOnboarding(userId: string, state: 'dismissed' | 'completed'): void {
@@ -158,6 +181,20 @@ export function SchedulePage() {
     setClarification(null)
     setClarificationOpen(false)
   }, [clarificationOwnerId])
+
+  useEffect(() => {
+    if (!clarification || schedule.loading) return
+    const remainingRowIds = clarification.rowIds.filter((rowId) => {
+      const row = clarification.result.rows.find((candidate) => candidate.id === rowId)
+      return !row || !clarificationRowWasAddedManually(row, schedule.enrollments)
+    })
+    if (remainingRowIds.length === clarification.rowIds.length) return
+    if (remainingRowIds.length === 0) {
+      finishClarification()
+      return
+    }
+    updateClarification({ ...clarification, rowIds: remainingRowIds })
+  }, [clarification, finishClarification, schedule.enrollments, schedule.loading, updateClarification])
 
   useEffect(() => {
     setShareCtaDismissed(user ? hasDismissedShareCta(user.id) : true)
@@ -335,7 +372,7 @@ export function SchedulePage() {
             <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
           </div>
         </header>
-        {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} /> : null}
+        {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} onDismiss={finishClarification} /> : null}
         {!hasGuestPreview ? <section className="schedule-import-empty-card guest-import-try-card">
           <ImagePlus size={34} aria-hidden="true" />
           <div><h2>Import your schedule</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p></div>
@@ -398,7 +435,7 @@ export function SchedulePage() {
           <button className="button button-secondary danger-text" type="button" disabled={!hasSchedule || clearingSchedule} onClick={() => setClearScheduleOpen(true)}><Trash2 size={18} aria-hidden="true" /> Clear schedule</button>
         </div>
       </header>
-      {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} /> : null}
+      {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} onDismiss={finishClarification} /> : null}
       {message ? <div className={showSavedCheck ? 'toast-message schedule-save-success' : 'toast-message'} role="status">{showSavedCheck ? <CheckCircle2 className="success-checkmark" aria-hidden="true" /> : null}<span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
       {schedule.error ? <div className="notice-box error" role="alert">{schedule.error}</div> : null}
       {!hasSchedule ? <section className="schedule-import-empty-card">

@@ -381,7 +381,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
                       {simplifiedSpecial ? null : <small>{result.teacher_last_name}</small>}
                       <em>
                         <span>{simplifiedSpecial ? `P${period}` : formatMeetingSlotSummary(result.meeting_slots)}</span>
-                        {simplifiedSpecial ? null : <><i /><span>{result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</span></>}
+                        {simplifiedSpecial ? null : <><i /><span className="class-result-term" data-mobile-label={result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Sem 1' : 'Sem 2'}>{result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</span></>}
                       </em>
                     </span>
                   </label>

@@ -470,6 +470,55 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.event-log-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.event-log-pagination>label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.event-log-pagination select {
+  min-width: 76px;
+}
+
+.event-log-pagination>div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.event-log-pagination>div>button:not(.icon-button) {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--white);
+  font-weight: 800;
+}
+
+.event-log-pagination>div>button.is-current {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.event-log-page-gap {
+  min-width: 22px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .protected-tools-panel>div>p,
 .site-reset-card p {
   color: var(--muted);
@@ -560,6 +609,16 @@ textarea:focus {
   .event-log-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .event-log-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .event-log-pagination>div {
+    max-width: 100%;
+    overflow-x: auto;
   }
 }
 
@@ -3003,9 +3062,76 @@ legend {
   gap: 2px;
 }
 
-.import-row-details>.checkbox-row {
+.import-row-details>.checkbox-row,
+.import-secondary-editor-content>.checkbox-row {
   padding: 0;
   border: 0;
+}
+
+.import-primary-term-fix {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, .8fr);
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border: 2px solid #d58b00;
+  background: #fff8e8;
+}
+
+.import-primary-term-fix>div {
+  display: grid;
+  gap: 4px;
+}
+
+.import-primary-term-fix>div>strong {
+  font-size: 15px;
+}
+
+.import-primary-term-fix>div>small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.import-primary-term-fix>.import-term-field {
+  margin: 0;
+}
+
+.import-primary-term-fix>.import-term-field select {
+  border-color: #b87300;
+  background: var(--white);
+  font-weight: 800;
+}
+
+.import-secondary-editor {
+  border: 1px solid var(--border);
+}
+
+.import-secondary-editor>summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.import-secondary-editor[open]>summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.import-secondary-editor-content {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.import-secondary-editor.is-open,
+.import-secondary-editor.is-open>.import-secondary-editor-content {
+  display: contents;
+}
+
+.import-secondary-editor.is-open>summary {
+  display: none;
 }
 
 .import-flags {
@@ -4059,6 +4185,17 @@ a.student-access-profile:hover strong {
 
 .schedule-clarification-callout>svg {
   color: #a86800;
+}
+
+.schedule-clarification-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-clarification-actions .icon-button {
+  flex: 0 0 auto;
+  background: var(--white);
 }
 
 .schedule-import-empty-card>div:last-child {
@@ -5715,6 +5852,12 @@ a.student-access-profile:hover strong {
     grid-template-columns: 1fr;
   }
 
+  .import-primary-term-fix {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px;
+  }
+
   .import-row-details {
     gap: 11px;
     padding: 12px;
@@ -5763,7 +5906,7 @@ a.student-access-profile:hover strong {
   }
 
   .class-result>span {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: 86px minmax(0, 1fr);
     gap: 2px 12px;
   }
 
@@ -5791,6 +5934,15 @@ a.student-access-profile:hover strong {
 
   .class-result em i {
     display: none;
+  }
+
+  .class-result-term {
+    font-size: 0;
+  }
+
+  .class-result-term::after {
+    content: attr(data-mobile-label);
+    font-size: 11px;
   }
 
   .term-field label {
@@ -6075,6 +6227,14 @@ a.student-access-profile:hover strong {
     .schedule-clarification-callout .button,
     .shared-schedule-upload .button {
     width: 100%;
+  }
+
+  .schedule-clarification-actions {
+    width: 100%;
+  }
+
+  .schedule-clarification-actions .button {
+    flex: 1;
   }
 
   .shared-schedule-top-upload {

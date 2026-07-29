@@ -196,7 +196,9 @@ export async function submitScheduleScreenshots(
     const rows = received.rows.map((row) => ({ ...row, import_id: resolvedImportId }))
     const found = rows.length
     const matched = rows.filter((row) => row.course !== null).length
-    const reviewRequired = rows.some((row) => row.term === 'unknown' || row.flags.length > 0 || row.warnings.length > 0)
+    const reviewRequired = rows.some((row) => row.term === 'unknown'
+      || !row.course
+      || row.flags.some((flag) => ['unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag)))
     const metadata = {
       classes_found: found,
       classes_matched: matched,

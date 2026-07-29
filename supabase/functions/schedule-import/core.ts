@@ -214,10 +214,12 @@ Extraction rules:
 - Ignore grade-level, counselor, case-manager, attendance, and other administrative rows.
 - Preserve visible course and teacher names exactly. Do not invent, correct, expand, rename, or canonicalize them.
 - Return unknown when the term is not visible. Never guess Full Year, Semester 1, or Semester 2 from the course name.
+- Preserve the visible top-to-bottom row order within each screenshot. When several screenshots are supplied, preserve screenshot upload order.
 - Resolve semester terms as a schedule constraint, not from row order: two distinct courses cannot occupy the same A/B day and period during the same semester.
 - When exactly two distinct rows have the same complete set of meeting slots, one row explicitly says semester 1 or semester 2, and the other row has no visible term, assign the other row to the complementary semester. Lunch follows the same rule as every other course; do not special-case a course name.
-- Apply that complementary-semester inference only when it is uniquely determined. If several rows conflict, both terms are unknown, a row explicitly says full year, or the meeting slots are not identical, leave the uncertain term as unknown.
-- Never infer a semester from vertical proximity, row order, or the mere fact that two rows are near one another.
+- When exactly two distinct rows have the same complete A/B meeting slots and neither term is visible, return unknown for both and preserve their visible order. The application will assign the first row to Semester 1 and the second row to Semester 2 only after the course catalogue confirms that both rows support semester scheduling.
+- Apply complementary-semester inference only when it is uniquely determined. If several rows conflict, a row explicitly says full year, or the meeting slots are not identical, leave the uncertain term as unknown.
+- Never infer a semester from vertical proximity or from two rows merely being near one another.
 - Use slot strings in A1 through A9 or B1 through B9 form. Include every explicitly visible A/B meeting slot and remove duplicate slots.
 - If the images are not a readable student schedule, return {"schedule":false,"issue":"a short, specific explanation of what is wrong and what the user should recapture","rows":[]}.
 - For a readable schedule, issue must be an empty string. For an unreadable, cropped, obstructed, unrelated, or blurry image, issue must explain the visible problem in plain language rather than using a generic failure message.
@@ -1034,14 +1036,44 @@ function buildReviewRows(
   classes: ExistingClassRecord[],
   randomUUID: (() => string) | undefined,
 ): ImportReviewRow[] {
-  return entries.map((entry, index) => {
+  const matchedEntries = entries.map((entry) => {
     const match = findCourseMatch(entry.source_course_name, catalog)
     const policy = match.course?.term_policy ?? 'full_year'
     const resolvedEntry = match.course && policy === 'full_year' && entry.term === 'unknown'
       ? { ...entry, term: 'full_year' as const, term_defaulted: true }
       : entry
+    return { match, policy, resolvedEntry }
+  })
+
+  const entriesBySlots = new Map<string, typeof matchedEntries>()
+  for (const entry of matchedEntries) {
+    const key = slotsKey(entry.resolvedEntry.meeting_slots)
+    entriesBySlots.set(key, [...(entriesBySlots.get(key) ?? []), entry])
+  }
+  for (const sameSlotEntries of entriesBySlots.values()) {
+    if (sameSlotEntries.length !== 2) continue
+    const [first, second] = sameSlotEntries
+    const slots = first.resolvedEntry.meeting_slots
+    const aSlots = slots.filter((slot) => slot.day_type === 'A')
+    const bSlots = slots.filter((slot) => slot.day_type === 'B')
+    const isSameEveryDayPeriod = slots.length === 2
+      && aSlots.length === 1
+      && bSlots.length === 1
+      && aSlots[0].period_number === bSlots[0].period_number
+    const distinctCourses = first.match.course && second.match.course && first.match.course.id !== second.match.course.id
+    const bothSupportSemesters = first.policy !== 'full_year' && second.policy !== 'full_year'
+    if (!isSameEveryDayPeriod
+      || !distinctCourses
+      || !bothSupportSemesters
+      || first.resolvedEntry.term !== 'unknown'
+      || second.resolvedEntry.term !== 'unknown') continue
+    first.resolvedEntry = { ...first.resolvedEntry, term: 'semester_1', term_inferred: true }
+    second.resolvedEntry = { ...second.resolvedEntry, term: 'semester_2', term_inferred: true }
+  }
+
+  return matchedEntries.map(({ match, policy, resolvedEntry }, index) => {
     const options = match.course ? classOptionsFor(match.course, classes) : []
-    const teacherLastName = parseTeacherLastName(entry.teacher_raw, match.course?.name ?? entry.source_course_name)
+    const teacherLastName = parseTeacherLastName(resolvedEntry.teacher_raw, match.course?.name ?? resolvedEntry.source_course_name)
     const existing = match.course ? exactClassMatch(resolvedEntry, teacherLastName, options, policy) : null
     const flags: ImportReviewRow['flags'] = []
     const warnings: string[] = []
@@ -1075,7 +1107,7 @@ function buildReviewRows(
     }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
-      source_course_name: entry.source_course_name,
+      source_course_name: resolvedEntry.source_course_name,
       course: match.course ? {
         id: match.course.id,
         name: match.course.name,

@@ -217,23 +217,25 @@ function rowCoursePolicy(row: Pick<EditableScheduleImportRow, 'course'>): Course
   return row.course?.term_policy ?? 'full_year'
 }
 
-function rowNeedsAttention(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
+function rowNeedsAttention(_row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): boolean {
   return Boolean(rowError)
     || conflict
     || duplicate
-    || row.confidence < 0.9
-    || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))
 }
 
 function clarificationIssue(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean, duplicate: boolean): string {
-  if (conflict) return 'This class conflicts with another imported class in the same semester and meeting slot. Change its term or period, or leave it out.'
+  if (conflict) return 'This class overlaps another imported class in the same term and period. Choose a different academic term below.'
   if (duplicate) return 'This class duplicates another imported class. Change its details or leave it out.'
   if (rowError) return rowError
   if (!row.course || row.flags.includes('unresolved_course')) return 'Choose the matching course from the catalogue.'
   if (row.flags.includes('ambiguous_course')) return 'Choose the correct catalogue course because the screenshot matched more than one option.'
   if (row.flags.includes('incomplete')) return 'Complete the missing course, teacher, term, or period information.'
-  if (row.flags.includes('low_confidence') || row.confidence <= 0.8) return 'Confirm that the course, teacher, term, and period match the screenshot.'
-  return row.warnings[0] ?? 'Confirm that the imported class details are correct.'
+  return 'Correct the highlighted schedule error below.'
+}
+
+function termIsPrimaryFix(row: EditableScheduleImportRow, rowError: string | null, conflict: boolean): boolean {
+  if (rowCoursePolicy(row) === 'full_year') return false
+  return conflict || row.term === 'unknown' || Boolean(rowError && /academic term|semester|full year|half-credit|course version/i.test(rowError))
 }
 
 function importReviewMessage(result: Pick<ScheduleImportResult, 'retry_count' | 'retry_reasons' | 'warnings'>): string | null {
@@ -498,11 +500,9 @@ export function ScheduleImportDialog({
       const conflicts = conflictingImportIndexes(editable)
       const problemIndexes = new Set<number>()
       editable.forEach((row, index) => {
-        if (row.confidence <= 0.8
-          || importRowError(row)
+        if (importRowError(row)
           || duplicates.has(index)
-          || conflicts.has(index)
-          || row.flags.some((flag) => ['low_confidence', 'unresolved_course', 'ambiguous_course', 'incomplete'].includes(flag))) {
+          || conflicts.has(index)) {
           problemIndexes.add(index)
         }
       })
@@ -665,24 +665,25 @@ export function ScheduleImportDialog({
         ) : (
           <div className="import-review-step">
             <div className="import-review-heading">
-              <div><h3>{isClarification ? 'Resolve each class' : isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isClarification ? 'The exact issue is shown under each class. Correct the details or uncheck the class to leave that schedule slot blank.' : isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
+              <div><h3>{isClarification ? 'Fix the highlighted issue' : isGuest ? 'Your imported schedule' : 'Review every class'}</h3><p>{isClarification ? 'Start with the highlighted field. Open the other options only if the suggested fix is not right.' : isGuest ? 'Check the classes we found. Create an account when you are ready to save your schedule.' : 'Course names are restricted to the existing catalogue. Conflicts are checked separately for each semester and A/B day.'}</p></div>
               {isClarification ? null : <button className="button button-secondary" type="button" onClick={() => setPhase('upload')} disabled={phase === 'saving'}>Back to images</button>}
             </div>
             {message ? <div className="notice-box"><CheckCircle2 aria-hidden="true" /><span>{message}</span></div> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
             {developerData ? <DeveloperDiagnosticsPanel diagnostics={developerData} /> : null}
-            <div className="import-review-controls" aria-label="Review row display controls">
+            {isClarification ? null : <div className="import-review-controls" aria-label="Review row display controls">
               <p><strong>{attentionCount}</strong> need attention <span aria-hidden="true">·</span> <strong>{readyCount}</strong> ready</p>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set(rows.map((row) => row.id)))}>Expand all</button>
               <button className="button button-secondary" type="button" onClick={() => setExpandedRowIds(new Set())}>Collapse all</button>
-            </div>
+            </div>}
             <div className="import-review-grid">
               {visibleReviewEntries.map(({ row, index, conflict, duplicate, attention }, displayIndex) => {
                 const expanded = expandedRowIds.has(row.id)
+                const primaryTermFix = termIsPrimaryFix(row, rowErrors[index], conflict)
                 return (
                   <Fragment key={row.id}>
-                  {displayIndex === 0 && attentionCount > 0 ? <div className="import-review-group-heading"><strong>Needs attention</strong><span>Resolve these first</span></div> : null}
-                  {displayIndex === attentionCount && readyCount > 0 ? <div className="import-review-group-heading is-ready"><strong>Ready</strong><span>Review only if needed</span></div> : null}
+                  {!isClarification && displayIndex === 0 && attentionCount > 0 ? <div className="import-review-group-heading"><strong>Needs attention</strong><span>Resolve these first</span></div> : null}
+                  {!isClarification && displayIndex === attentionCount && readyCount > 0 ? <div className="import-review-group-heading is-ready"><strong>Ready</strong><span>Review only if needed</span></div> : null}
                   <article className={rowErrors[index] || conflict || duplicate ? 'import-review-row has-error' : attention ? 'import-review-row needs-attention' : 'import-review-row'}>
                     <button
                       aria-expanded={expanded}
@@ -719,8 +720,15 @@ export function ScheduleImportDialog({
                       </span>
                       <ChevronDown aria-hidden="true" className={expanded ? 'is-expanded' : ''} />
                     </button>
-                    {isClarification ? <div className="import-clarification-issue" role="status"><AlertTriangle aria-hidden="true" /><span><strong>Needs clarification</strong>{clarificationIssue(row, rowErrors[index], conflict, duplicate)}</span></div> : null}
+                    {isClarification ? <div className="import-clarification-issue" role="status"><AlertTriangle aria-hidden="true" /><span><strong>{conflict ? 'Schedule conflict' : duplicate ? 'Duplicate class' : 'Schedule error'}</strong>{clarificationIssue(row, rowErrors[index], conflict, duplicate)}</span></div> : null}
                     {expanded ? <div className="import-row-details">
+                      {primaryTermFix ? <section className="import-primary-term-fix" aria-label="Suggested fix">
+                        <div><strong>Choose the academic term</strong><small>Put this class in the semester where the period is available.</small></div>
+                        <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />
+                      </section> : null}
+                      <details className={primaryTermFix ? 'import-secondary-editor' : 'import-secondary-editor is-open'} open={primaryTermFix ? undefined : true}>
+                      <summary>Other ways to fix this class</summary>
+                      <div className="import-secondary-editor-content">
                       <label className="checkbox-row"><input type="checkbox" checked={row.include} onChange={(event) => updateRow(index, { include: event.target.checked })} /><span><strong>Include this class</strong><small>Uncheck to leave it out of the imported schedule</small></span></label>
                       <div className="import-review-fields">
                       <ImportCourseField row={row} searchCourses={searchCourses} onSelect={async (course) => {
@@ -737,7 +745,7 @@ export function ScheduleImportDialog({
                       {specialCourseKind(row.course?.name) ? null : <label>Teacher last name
                         <input value={teacherForImportedCourse(row.teacher_last_name, row.course?.name)} disabled={Boolean(specialCourseKind(row.course?.name))} maxLength={120} onChange={(event) => updateRow(index, { teacher_last_name: event.target.value })} />
                       </label>}
-                      <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />
+                      {primaryTermFix ? null : <ImportedTermField row={row} onChange={(term) => updateRow(index, { term })} />}
                       <label className="import-action-field">Class action
                         <select value={row.selected_existing_class_id ?? ''} disabled={!row.course} onChange={(event) => {
                           const classId = event.target.value || null
@@ -759,11 +767,13 @@ export function ScheduleImportDialog({
                         <summary><span>Edit meeting slots</span><strong>{formatMeetingSlotSummary(row.meeting_slots) || 'None selected'}</strong></summary>
                         <MeetingSlotGrid meetingSlots={row.meeting_slots} onChange={(meetingSlots) => updateRow(index, { meeting_slots: meetingSlots })} />
                       </details>
-                      {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
-                      {conflict ? <p className="form-error">This row conflicts with another included import row in the same semester. Edit its term/slots or exclude it.</p> : null}
-                      {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
                       {row.warnings.length ? <p className="import-row-warning">{row.warnings.join(' ')}</p> : null}
                       {row.confidence < 0.9 ? <small className="import-confidence">AI confidence: {Math.round(row.confidence * 100)}%</small> : null}
+                      </div>
+                      </details>
+                      {rowErrors[index] ? <p className="form-error" role="alert">{rowErrors[index]}</p> : null}
+                      {conflict ? <p className="form-error">This class still overlaps another included class. Choose another term, edit its meeting slots, or leave it out.</p> : null}
+                      {duplicate ? <p className="form-error">These edited details duplicate another included import row.</p> : null}
                     </div> : null}
                   </article>
                   </Fragment>

@@ -431,8 +431,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
 
     expect(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
-    expect(screen.getByText('Needs attention')).toBeInTheDocument()
-    expect(screen.getByText('1', { selector: '.import-review-controls strong:first-child' })).toBeInTheDocument()
+    expect(document.querySelector('.import-clarification-issue strong')).toHaveTextContent('Schedule error')
     expect(document.querySelector('.import-row-toggle')).toHaveTextContent('Mystery Course')
 
     await user.click(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i }))
@@ -440,9 +439,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.click(screen.getByRole('button', { name: /Mystery Course.*Low confidence.*Course unresolved/i }))
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Expand all' }))
-    await user.click(screen.getByRole('button', { name: 'Collapse all' }))
-    expect(screen.queryByLabelText('Catalogue course for Mystery Course')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand all' })).not.toBeInTheDocument()
   })
 
   it('imports valid classes first and leaves the problem class open for repair', async () => {
@@ -483,6 +480,31 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.getByLabelText('Catalogue course for Mystery Course')).toBeInTheDocument()
   })
 
+  it('puts the academic-term fix first for a semester schedule conflict', async () => {
+    const user = userEvent.setup()
+    const result = importResult({
+      course: { id: COURSE_ID, name: 'Study Hall - NASH', confidence: 1, term_policy: 'flexible_attendance' },
+      term: 'semester_1',
+    })
+    result.rows.push({
+      ...result.rows[0],
+      id: 'import-2',
+      source_course_name: 'Hon Music Production 3',
+      course: { id: 'course-music-production', name: 'Honors Music Production 3', confidence: 1, term_policy: 'semester' },
+      teacher_last_name: 'Tozier',
+    })
+
+    renderDialog({ initialResult: result, clarificationRowIds: ['import-1', 'import-2'] })
+
+    expect(await screen.findByRole('heading', { name: 'Fix the highlighted issue' })).toBeInTheDocument()
+    expect(document.querySelectorAll('.import-clarification-issue strong')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Suggested fix')).toHaveLength(2)
+    screen.getAllByText('Other ways to fix this class').forEach((summary) => expect(summary.closest('details')).not.toHaveAttribute('open'))
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Semester' }), 'semester_2')
+    expect(screen.getByRole('button', { name: 'Save clarifications' })).toBeEnabled()
+  })
+
   it('labels flexible attendance choices as Full year / Semester', async () => {
     const user = userEvent.setup()
     renderDialog({
@@ -497,7 +519,7 @@ describe('ScheduleImportDialog review and confirmation', () => {
     expect(screen.queryByRole('combobox', { name: 'Attendance format' })).not.toBeInTheDocument()
   })
 
-  it('keeps an 80%-confidence extraction in review', async () => {
+  it('automatically imports a valid low-confidence extraction', async () => {
     const user = userEvent.setup()
     const confirmImport = vi.fn(async () => ({ added: 1, removed: 0 }))
     const onNeedsClarification = vi.fn()
@@ -509,8 +531,8 @@ describe('ScheduleImportDialog review and confirmation', () => {
     await user.upload(screen.getByLabelText('Choose schedule screenshots'), scheduleFile())
     await user.click(screen.getByRole('button', { name: /^Analyze screenshots?$/ }))
 
-    await waitFor(() => expect(onNeedsClarification).toHaveBeenCalledWith(expect.objectContaining({ rowIds: ['import-1'] })))
-    expect(confirmImport).not.toHaveBeenCalled()
+    await waitFor(() => expect(confirmImport).toHaveBeenCalledTimes(1))
+    expect(onNeedsClarification).not.toHaveBeenCalled()
   })
 
   it('automatically replaces a partially filled schedule instead of treating it as a conflict', async () => {

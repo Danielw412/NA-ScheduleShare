@@ -1,5 +1,5 @@
-import { BarChart3, BrainCircuit, ChevronDown, ChevronRight, Database, FileClock, Flag, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Database, FileClock, Flag, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -7,7 +7,7 @@ import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, typ
 import { adminRemoveProfilePicture } from '../lib/profile'
 import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogs, superAdminResetSite } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
 type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
@@ -612,8 +612,21 @@ const emptyActivitySummary: ActivitySummary = {
   access_requests: 0,
 }
 
-function EventLogsPanel() {
+const eventLogPageSizes = [25, 50, 100, 150, 250] as const
+
+export function eventLogPageNumbers(currentPage: number, totalPages: number): number[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])
+  if (currentPage <= 4) [2, 3, 4, 5].forEach((page) => pages.add(page))
+  if (currentPage >= totalPages - 3) [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1].forEach((page) => pages.add(page))
+  return [...pages].filter((page) => page >= 1 && page <= totalPages).sort((left, right) => left - right)
+}
+
+export function EventLogsPanel() {
   const [logs, setLogs] = useState<EventLogRecord[]>([])
+  const [totalLogs, setTotalLogs] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<(typeof eventLogPageSizes)[number]>(50)
   const [summary, setSummary] = useState<ActivitySummary>(emptyActivitySummary)
   const [category, setCategory] = useState<EventLogCategory | ''>('')
   const [eventFilter, setEventFilter] = useState('')
@@ -630,8 +643,8 @@ function EventLogsPanel() {
     setLoading(true)
     setError(null)
     try {
-      const [nextLogs, nextSummary] = await Promise.all([
-        superAdminListLogs({
+      const [nextPage, nextSummary] = await Promise.all([
+        superAdminListLogsPage({
           category,
           event: eventFilter,
           user: userFilter,
@@ -639,18 +652,25 @@ function EventLogsPanel() {
           result: resultFilter,
           createdFrom: createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined,
           createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
-          limit: 150,
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
         }),
         superAdminGetActivitySummary(),
       ])
-      setLogs(nextLogs)
+      const lastPage = Math.max(1, Math.ceil(nextPage.total / pageSize))
+      if (page > lastPage) {
+        setPage(lastPage)
+        return
+      }
+      setLogs(nextPage.logs)
+      setTotalLogs(nextPage.total)
       setSummary(nextSummary)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The logs could not be loaded.')
     } finally {
       setLoading(false)
     }
-  }, [category, createdFrom, createdTo, eventFilter, resultFilter, targetFilter, userFilter])
+  }, [category, createdFrom, createdTo, eventFilter, page, pageSize, resultFilter, targetFilter, userFilter])
 
   useEffect(() => { void load() }, [load])
 
@@ -668,7 +688,7 @@ function EventLogsPanel() {
   }
 
   async function deleteFilteredLogs() {
-    if (!window.confirm('This permanently deletes every record matching the current filters, including records beyond the 150 displayed here. This cannot be undone.')) return
+    if (!window.confirm('This permanently deletes every record matching the current filters, including records beyond the current page. This cannot be undone.')) return
     if (window.prompt('Type DELETE FILTERED LOGS PERMANENTLY to continue.') !== 'DELETE FILTERED LOGS PERMANENTLY') return
     setError(null)
     try {
@@ -682,31 +702,45 @@ function EventLogsPanel() {
         createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
       })
       setMessage(`${removed} log${removed === 1 ? '' : 's'} permanently deleted.`)
-      await load()
+      if (page === 1) await load()
+      else setPage(1)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The filtered logs could not be deleted.')
     }
   }
+
+  const totalPages = Math.max(1, Math.ceil(totalLogs / pageSize))
+  const firstVisibleLog = totalLogs === 0 ? 0 : (page - 1) * pageSize + 1
+  const lastVisibleLog = totalLogs === 0 ? 0 : Math.min((page - 1) * pageSize + logs.length, totalLogs)
+  const numberedPages = eventLogPageNumbers(page, totalPages)
 
   return <section className="admin-section event-logs-panel">
     <div className="section-heading"><div><h2>Security and audit logs</h2><p>Permanent records contain identifiers and useful change details, never image contents, share tokens, signed URLs, full prompts, or full extracted schedules.</p></div><button className="button button-secondary" type="button" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</button></div>
     <div className="activity-summary-grid">
       {[['Users', summary.total_users], ['Active today', summary.daily_active_users], ['Active this week', summary.weekly_active_users], ['Imports', summary.schedule_imports], ['Shares pressed', summary.schedules_shared], ['Access requests', summary.access_requests]].map(([label, value]) => <article key={String(label)}><span>{String(label)}</span><strong>{Number(value).toLocaleString()}</strong></article>)}
     </div>
-    <form className="event-log-filters" onSubmit={(event) => { event.preventDefault(); void load() }}>
-      <label>Log<select value={category} onChange={(event) => setCategory(event.target.value as EventLogCategory | '')}><option value="">All logs</option><option value="security">Security</option><option value="audit">Audit</option><option value="import">Import/debug</option><option value="admin">Administrative</option></select></label>
-      <label>Event<input placeholder="e.g. login_failed" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} /></label>
-      <label>User name or ID<input placeholder="Name or exact UUID" value={userFilter} onChange={(event) => setUserFilter(event.target.value)} /></label>
-      <label>Target<input placeholder="Type or ID" value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} /></label>
-      <label>Result<input placeholder="succeeded, failed…" value={resultFilter} onChange={(event) => setResultFilter(event.target.value)} /></label>
-      <label>From<input type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} /></label>
-      <label>Through<input type="date" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} /></label>
+    <form className="event-log-filters" onSubmit={(event) => { event.preventDefault(); if (page === 1) void load(); else setPage(1) }}>
+      <label>Log<select value={category} onChange={(event) => { setCategory(event.target.value as EventLogCategory | ''); setPage(1) }}><option value="">All logs</option><option value="security">Security</option><option value="audit">Audit</option><option value="import">Import/debug</option><option value="admin">Administrative</option></select></label>
+      <label>Event<input placeholder="e.g. login_failed" value={eventFilter} onChange={(event) => { setEventFilter(event.target.value); setPage(1) }} /></label>
+      <label>User name or ID<input placeholder="Name or exact UUID" value={userFilter} onChange={(event) => { setUserFilter(event.target.value); setPage(1) }} /></label>
+      <label>Target<input placeholder="Type or ID" value={targetFilter} onChange={(event) => { setTargetFilter(event.target.value); setPage(1) }} /></label>
+      <label>Result<input placeholder="succeeded, failed…" value={resultFilter} onChange={(event) => { setResultFilter(event.target.value); setPage(1) }} /></label>
+      <label>From<input type="date" value={createdFrom} onChange={(event) => { setCreatedFrom(event.target.value); setPage(1) }} /></label>
+      <label>Through<input type="date" value={createdTo} onChange={(event) => { setCreatedTo(event.target.value); setPage(1) }} /></label>
       <button className="button button-primary" disabled={loading}>{loading ? 'Loading…' : 'Apply filters'}</button>
     </form>
     {message ? <p className="form-success" role="status">{message}</p> : null}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    <div className="event-log-actions"><span>{logs.length} most recent matching records</span><button className="button button-secondary danger-text" type="button" disabled={loading || logs.length === 0} onClick={() => void deleteFilteredLogs()}><Trash2 size={16} /> Permanently delete filtered logs</button></div>
+    <div className="event-log-actions"><span>Showing {firstVisibleLog.toLocaleString()}–{lastVisibleLog.toLocaleString()} of {totalLogs.toLocaleString()} matching logs</span><button className="button button-secondary danger-text" type="button" disabled={loading || logs.length === 0} onClick={() => void deleteFilteredLogs()}><Trash2 size={16} /> Permanently delete filtered logs</button></div>
     <div className="admin-table event-log-table"><div className="admin-table-head"><span>Event</span><span>User</span><span>Subject / target</span><span>Timestamp</span><span>Details</span></div>{logs.map((log) => <div className="admin-table-row" key={log.id}><span><strong>{log.event_type}</strong><small>{log.log_category} · {log.result ?? 'no result'}</small></span><span><strong>{log.actor_name ?? 'System / signed-out'}</strong><small>{log.actor_user_id ?? '—'}</small></span><span><strong>{log.subject_name ?? log.target_type ?? '—'}</strong><small>{log.subject_user_id ?? log.target_id ?? '—'}</small></span><span>{new Date(log.created_at).toLocaleString()}</span><span className="event-log-details"><details><summary>Metadata</summary><pre>{JSON.stringify(log.metadata, null, 2)}</pre></details><button className="danger-text" type="button" onClick={() => void deleteLog(log)}>Delete</button></span></div>)}</div>
+    <nav className="event-log-pagination" aria-label="Event log pages">
+      <label>Logs per page<select value={pageSize} disabled={loading} onChange={(event) => { setPageSize(Number(event.target.value) as (typeof eventLogPageSizes)[number]); setPage(1) }}>{eventLogPageSizes.map((size) => <option value={size} key={size}>{size}</option>)}</select></label>
+      <div>
+        <button className="icon-button" type="button" aria-label="Previous page" disabled={loading || page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft aria-hidden="true" /></button>
+        {numberedPages.map((pageNumber, index) => <Fragment key={pageNumber}>{index > 0 && pageNumber - numberedPages[index - 1] > 1 ? <span className="event-log-page-gap" aria-hidden="true">…</span> : null}<button className={pageNumber === page ? 'is-current' : ''} type="button" aria-label={`Page ${pageNumber}`} aria-current={pageNumber === page ? 'page' : undefined} disabled={loading} onClick={() => setPage(pageNumber)}>{pageNumber}</button></Fragment>)}
+        <button className="icon-button" type="button" aria-label="Next page" disabled={loading || page === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}><ChevronRight aria-hidden="true" /></button>
+      </div>
+    </nav>
   </section>
 }
 
