@@ -324,9 +324,10 @@ export function importRowError(row: EditableScheduleImportRow): string | null {
   if (policy === 'semester' && row.term === 'full_year') return 'Choose Semester 1 or Semester 2 for this half-credit course.'
   const aSlots = meetingSlotsForDay(row.meeting_slots, 'A')
   const bSlots = meetingSlotsForDay(row.meeting_slots, 'B')
-  if (policy === 'flexible_attendance') {
+  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
     if (row.term === 'full_year' && row.meeting_slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
     if (row.term !== 'full_year' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) return 'Semester Gym, Wellness, or Study Hall must meet every day.'
+    if (row.term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
   }
   if (policy === 'lunch' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
     return 'Lunch must use the same period on every A and B day.'

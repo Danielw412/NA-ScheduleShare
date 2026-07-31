@@ -28,6 +28,7 @@ const catalog: CourseRecord[] = [
   { id: '55555555-5555-4555-8555-555555555555', name: 'Study Hall - NASH', term_policy: 'flexible_attendance' },
   { id: '77777777-7777-4777-8777-777777777777', name: 'Honors Music Production 3', term_policy: 'semester' },
   { id: '88888888-8888-4888-8888-888888888888', name: 'Gym', term_policy: 'flexible_attendance' },
+  { id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', name: 'Wellness for Life', term_policy: 'sectioned_attendance' },
   { id: '99999999-9999-4999-8999-999999999999', name: 'English 2', term_policy: 'full_year' },
   { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', name: 'Business Communications', term_policy: 'semester' },
   { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', name: 'Business Management', term_policy: 'semester' },
@@ -529,6 +530,43 @@ describe('normalization and backend catalogue matching', () => {
         score: 1,
       })
     }
+  })
+
+  it('flags mismatched semester periods for Gym and exact-section Wellness', async () => {
+    for (const course of ['Health & PE', 'Wellness for Life']) {
+      const response = await handleScheduleImportRequest(request([png()]), dependencies({
+        output: {
+          schedule: true,
+          issue: '',
+          rows: [{ course, teacher: 'Coach, Casey', term: 'S1', slots: ['A2', 'B3'] }],
+        },
+      }))
+      expect((await responseBody(response)).rows).toEqual([expect.objectContaining({
+        flags: expect.arrayContaining(['incomplete']),
+        warnings: expect.arrayContaining(['Semester Gym, Wellness, or Study Hall must use the same period every day.']),
+      })])
+    }
+  })
+
+  it('does not match semester Wellness to a full-year A-only section', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'Wellness for Life', teacher: 'Coach, Casey', term: 'S1', slots: ['P02(A-B)'] }],
+      },
+      classes: [{
+        id: CLASS_ID,
+        course_name_id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        teacher_last_name: 'Coach',
+        default_academic_term: 'full_year',
+        meeting_slots: [{ day_type: 'A', period_number: 2 }],
+      }],
+    }))
+    expect((await responseBody(response)).rows).toEqual([expect.objectContaining({
+      resolution: 'new_class',
+      existing_class_id: null,
+    })])
   })
 
   it('fuzzy matches decorated course names on the backend', () => {

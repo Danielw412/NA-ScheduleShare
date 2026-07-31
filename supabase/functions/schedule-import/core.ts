@@ -18,7 +18,7 @@ const SENSITIVE_KEY_PATTERN = /(?:authorization|token|secret|api.?key|image.?byt
 
 export type DayType = 'A' | 'B'
 export type ImportTerm = 'full_year' | 'semester_1' | 'semester_2' | 'unknown'
-export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'lunch' | 'variable_credit' | 'versioned'
+export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'sectioned_attendance' | 'lunch' | 'variable_credit' | 'versioned'
 export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
 export type Grade = 9 | 10 | 11 | 12
 
@@ -1133,10 +1133,13 @@ function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: Me
   const bSlots = slots.filter((slot) => slot.day_type === 'B')
   if (policy === 'full_year' && term !== 'full_year') return 'This catalogue course is full year, but the screenshot was read as semester-only.'
   if (policy === 'semester' && term === 'full_year') return 'This half-credit course must be assigned to Semester 1 or Semester 2.'
-  if (policy === 'flexible_attendance') {
+  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
     if (term === 'full_year' && slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
     if (term !== 'full_year' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) {
       return 'Semester Gym, Wellness, or Study Hall must meet every A and B day.'
+    }
+    if (term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) {
+      return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
     }
   }
   if (policy === 'lunch' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
@@ -1367,6 +1370,7 @@ function isCourseTermPolicy(value: unknown): value is CourseTermPolicy {
   return value === 'full_year'
     || value === 'semester'
     || value === 'flexible_attendance'
+    || value === 'sectioned_attendance'
     || value === 'lunch'
     || value === 'variable_credit'
     || value === 'versioned'

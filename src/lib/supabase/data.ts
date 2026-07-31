@@ -318,9 +318,13 @@ export async function getVisibleSchedule(studentId: string): Promise<ScheduleEnr
   }))
 }
 
-export async function getClassMembers(classId: string): Promise<ClassMemberResult[]> {
+export async function getClassMembers(classId: string, meeting?: MeetingSlot): Promise<ClassMemberResult[]> {
   const client = requireClient()
-  const { data, error } = await client.rpc('get_class_members', { p_class_id: classId })
+  const { data, error } = await client.rpc('get_class_members', {
+    p_class_id: classId,
+    p_day_type: meeting?.day_type,
+    p_period_number: meeting?.period_number,
+  })
   if (error) throw error
   return data as unknown as ClassMemberResult[]
 }

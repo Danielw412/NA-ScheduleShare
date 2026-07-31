@@ -100,7 +100,7 @@ select ok(
   'anonymous callers cannot execute the real schedule API'
 );
 select ok(
-  not has_function_privilege('anon', 'public.get_class_members(uuid)', 'execute'),
+  not has_function_privilege('anon', 'public.get_class_members(uuid,public.day_type,smallint)', 'execute'),
   'anonymous callers cannot execute the class-roster API'
 );
 select ok(
