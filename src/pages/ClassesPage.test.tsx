@@ -21,6 +21,7 @@ const ownClass = {
   id: 'class-own',
   course_name_id: 'course-own',
   course_name: 'My Biology',
+  course_term_policy: 'full_year' as const,
   teacher_last_name: 'Green',
   default_academic_term: 'full_year' as const,
   is_double_period: false,
@@ -31,6 +32,7 @@ const otherClass = {
   id: 'class-other',
   course_name_id: 'course-other',
   course_name: 'Other Chemistry',
+  course_term_policy: 'full_year' as const,
   teacher_last_name: 'Blue',
   default_academic_term: 'full_year' as const,
   is_double_period: false,
@@ -42,7 +44,7 @@ beforeEach(() => {
   mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })
   mocks.useSchedule.mockReturnValue({
     loading: false,
-    enrollments: [{ id: 'enrollment-1', active: true, class: ownClass }],
+    enrollments: [{ id: 'enrollment-1', active: true, academic_term: 'full_year', meeting_slots: ownClass.meeting_slots, class: ownClass }],
   })
   mocks.useClassSearch.mockReturnValue({ loading: false, error: null, results: [{ ...ownClass, score: 100 }, otherClass] })
   mocks.getClassMembers.mockResolvedValue([])
@@ -189,5 +191,88 @@ describe('ClassesPage organization', () => {
     })
     expect(screen.queryByText('Stale Student')).not.toBeInTheDocument()
     expect(screen.getByText('Current Student')).toBeInTheDocument()
+  })
+
+  it('renders semester Gym as separate A/B views and protects same-class meeting switches from stale rosters', async () => {
+    const user = userEvent.setup()
+    const gymClass = {
+      ...otherClass,
+      id: 'class-gym',
+      course_name_id: 'course-gym',
+      course_name: 'Gym',
+      teacher_last_name: 'Coach',
+      course_term_policy: 'flexible_attendance' as const,
+      default_academic_term: 'semester_1' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 2 }, { day_type: 'B' as const, period_number: 2 }],
+    }
+    mocks.useSchedule.mockReturnValue({
+      loading: false,
+      enrollments: [{
+        id: 'enrollment-gym',
+        active: true,
+        academic_term: 'semester_1',
+        meeting_slots: gymClass.meeting_slots,
+        class: gymClass,
+      }],
+    })
+    mocks.useClassSearch.mockReturnValue({ loading: false, error: null, results: [{ ...gymClass, score: 100 }] })
+    let resolveA!: (members: Array<Record<string, unknown>>) => void
+    let resolveB!: (members: Array<Record<string, unknown>>) => void
+    mocks.getClassMembers.mockImplementation((_classId: string, meeting: { day_type: 'A' | 'B' }) => new Promise((resolve) => {
+      if (meeting.day_type === 'A') resolveA = resolve
+      else resolveB = resolve
+    }))
+
+    render(<MemoryRouter initialEntries={['/classes/class-gym?day=A&period=2']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    const ownSection = screen.getByRole('heading', { name: 'Your Classes' }).closest('section') as HTMLElement
+    expect(within(ownSection).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
+      '/classes/class-gym?day=A&period=2',
+      '/classes/class-gym?day=B&period=2',
+    ])
+    expect(mocks.getClassMembers).toHaveBeenCalledWith('class-gym', { day_type: 'A', period_number: 2 })
+    expect(screen.getByRole('navigation', { name: 'Class meeting' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'B Day' }))
+    expect(mocks.getClassMembers).toHaveBeenLastCalledWith('class-gym', { day_type: 'B', period_number: 2 })
+
+    await act(async () => {
+      resolveB([{ student_id: 'student-b', full_name: 'B Meeting Student', grade: 11, privacy_setting: 'school', can_view_schedule: true }])
+    })
+    expect(await screen.findByText('B Meeting Student')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveA([{ student_id: 'student-a', full_name: 'Stale A Student', grade: 11, privacy_setting: 'school', can_view_schedule: true }])
+    })
+    expect(screen.queryByText('Stale A Student')).not.toBeInTheDocument()
+    expect(screen.getByText('B Meeting Student')).toBeInTheDocument()
+  })
+
+  it('excludes only an owned Gym meeting from Other Classes', async () => {
+    const user = userEvent.setup()
+    const gymClass = {
+      ...otherClass,
+      id: 'class-gym-a-only',
+      course_name_id: 'course-gym',
+      course_name: 'Gym',
+      teacher_last_name: 'Coach',
+      course_term_policy: 'flexible_attendance' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 2 }],
+    }
+    mocks.useSchedule.mockReturnValue({
+      loading: false,
+      enrollments: [{ id: 'enrollment-gym-a', active: true, academic_term: 'full_year', meeting_slots: gymClass.meeting_slots, class: gymClass }],
+    })
+    mocks.useClassSearch.mockReturnValue({ loading: false, error: null, results: [{ ...gymClass, score: 100 }] })
+
+    render(<MemoryRouter initialEntries={['/classes/class-gym-a-only?day=A&period=2']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    const ownSection = screen.getByRole('heading', { name: 'Your Classes' }).closest('section') as HTMLElement
+    expect(within(ownSection).getAllByRole('link')).toHaveLength(1)
+    expect(screen.queryByRole('navigation', { name: 'Class meeting' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Gym\s*1 period/ }))
+    const otherSection = screen.getByRole('heading', { name: 'Other Classes' }).closest('section') as HTMLElement
+    expect(within(otherSection).getByRole('link')).toHaveAttribute('href', '/classes/class-gym-a-only?day=B&period=2')
   })
 })

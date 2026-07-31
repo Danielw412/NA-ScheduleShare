@@ -914,7 +914,11 @@ export type Database = {
         Returns: string
       }
       get_class_members: {
-        Args: { p_class_id: string }
+        Args: {
+          p_class_id: string
+          p_day_type?: Database["public"]["Enums"]["day_type"]
+          p_period_number?: number
+        }
         Returns: {
           can_view_schedule: boolean
           full_name: string
@@ -1296,6 +1300,7 @@ export type Database = {
         | "full_year"
         | "semester"
         | "flexible_attendance"
+        | "sectioned_attendance"
         | "lunch"
         | "variable_credit"
         | "versioned"
@@ -1457,6 +1462,7 @@ export const Constants = {
         "full_year",
         "semester",
         "flexible_attendance",
+        "sectioned_attendance",
         "lunch",
         "variable_credit",
         "versioned",

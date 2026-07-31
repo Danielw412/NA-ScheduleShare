@@ -255,7 +255,7 @@ function ImportedTermField({ row, onChange }: { row: EditableScheduleImportRow; 
 
   const label = policy === 'semester'
     ? 'Semester'
-    : policy === 'flexible_attendance'
+    : policy === 'flexible_attendance' || policy === 'sectioned_attendance'
       ? 'Full year / Semester'
       : policy === 'variable_credit'
         ? 'Credit and term'
@@ -265,9 +265,9 @@ function ImportedTermField({ row, onChange }: { row: EditableScheduleImportRow; 
   return <label className="import-term-field">{label}
     <select value={row.term} onChange={(event) => onChange(event.target.value as EditableScheduleImportRow['term'])}>
       <option value="unknown">Choose format</option>
-      {policy === 'semester' ? null : <option value="full_year">{policy === 'flexible_attendance' ? 'Full Year · A or B days only' : policy === 'variable_credit' ? '1.0 credit · Full Year' : policy === 'versioned' ? 'Full-year version' : 'Full Year'}</option>}
-      <option value="semester_1">{policy === 'flexible_attendance' ? 'Semester 1 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 1' : 'Semester 1'}</option>
-      <option value="semester_2">{policy === 'flexible_attendance' ? 'Semester 2 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 2' : 'Semester 2'}</option>
+      {policy === 'semester' ? null : <option value="full_year">{policy === 'flexible_attendance' || policy === 'sectioned_attendance' ? 'Full Year · A or B days only' : policy === 'variable_credit' ? '1.0 credit · Full Year' : policy === 'versioned' ? 'Full-year version' : 'Full Year'}</option>}
+      <option value="semester_1">{policy === 'flexible_attendance' || policy === 'sectioned_attendance' ? 'Semester 1 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 1' : 'Semester 1'}</option>
+      <option value="semester_2">{policy === 'flexible_attendance' || policy === 'sectioned_attendance' ? 'Semester 2 · Every day' : policy === 'variable_credit' ? '0.5 credit · Semester 2' : 'Semester 2'}</option>
     </select>
   </label>
 }

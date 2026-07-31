@@ -32,6 +32,7 @@ const catalog: CourseNameSearchResult[] = [
   { id: 'course-gym', course_name: 'Gym', course_term_policy: 'flexible_attendance', score: 98 },
   { id: 'course-lunch', course_name: 'Lunch - NASH', course_term_policy: 'lunch', score: 97 },
   { id: 'course-study-hall', course_name: 'Study Hall - NASH', course_term_policy: 'flexible_attendance', score: 96 },
+  { id: 'course-wellness', course_name: 'Wellness for Life', course_term_policy: 'sectioned_attendance', score: 95 },
 ]
 
 function specialResult(overrides: Partial<ClassSearchResult>): ClassSearchResult {
@@ -148,6 +149,40 @@ describe('AddClassDialog semester formats', () => {
       term: 'full_year',
       meetingSlots: [{ day_type: 'B', period_number: 5 }],
     })))
+  })
+
+  it('uses one period selector for semester Gym and writes the period to both days', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Gym' }))
+
+    expect(screen.getByRole('combobox', { name: 'Format' })).toHaveValue('semester_1')
+    expect(screen.getByRole('combobox', { name: 'Period' })).toHaveValue('3')
+    expect(screen.queryByRole('combobox', { name: 'A day period' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'B day period' })).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Period' }), '6')
+    await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Coach')
+    await user.click(screen.getByRole('button', { name: 'Create and add class' }))
+
+    await waitFor(() => expect(mocks.createClassAndEnroll).toHaveBeenCalledWith(expect.objectContaining({
+      courseNameId: 'course-gym',
+      term: 'semester_1',
+      meetingSlots: [{ day_type: 'A', period_number: 6 }, { day_type: 'B', period_number: 6 }],
+    })))
+  })
+
+  it('offers the same four formats when creating an exact Wellness section', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Wellness for Life' }))
+
+    expect([...screen.getByRole('combobox', { name: 'Format' }).querySelectorAll('option')].map((option) => option.value)).toEqual([
+      'semester_1', 'semester_2', 'full_year_A', 'full_year_B',
+    ])
+    expect(screen.getByRole('combobox', { name: 'Period' })).toBeInTheDocument()
   })
 
   it('collapses semester-specific Lunch sections into one period-only search result', async () => {

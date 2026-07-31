@@ -25,6 +25,7 @@ import {
   confirmScheduleImport,
   campusCourseName,
   importClassOptionLabel,
+  importRowError,
   editableRowsFromImportResult,
   normalizeReviewTerm,
   reconcileExactClassSelection,
@@ -143,6 +144,48 @@ describe('schedule import replacement', () => {
     expect(mocks.rpc).toHaveBeenCalledWith('replace_schedule_from_import', {
       p_rows: [expect.objectContaining({ teacher_last_name: 'N/A', academic_term: 'full_year' })],
     })
+  })
+
+  it('rejects mismatched A/B periods for semester Gym and Wellness review rows', () => {
+    const mismatchedSlots = [{ day_type: 'A' as const, period_number: 2 }, { day_type: 'B' as const, period_number: 3 }]
+    expect(importRowError({
+      ...row,
+      term: 'semester_1',
+      meeting_slots: mismatchedSlots,
+      course: { ...row.course!, term_policy: 'flexible_attendance' },
+    })).toBe('Semester Gym, Wellness, or Study Hall must use the same period every day.')
+    expect(importRowError({
+      ...row,
+      term: 'semester_2',
+      meeting_slots: mismatchedSlots,
+      course: { ...row.course!, term_policy: 'sectioned_attendance' },
+    })).toBe('Semester Gym, Wellness, or Study Hall must use the same period every day.')
+  })
+
+  it('matches Wellness only to the exact term and attendance section', () => {
+    const wellnessCourse = { ...row.course!, term_policy: 'sectioned_attendance' as const }
+    const semesterOption = {
+      ...option,
+      id: 'wellness-semester',
+      term: 'semester_1' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 2 }, { day_type: 'B' as const, period_number: 2 }],
+      course_term_policy: 'sectioned_attendance' as const,
+    }
+    const fullYearOption = {
+      ...option,
+      id: 'wellness-full-year-a',
+      term: 'full_year' as const,
+      meeting_slots: [{ day_type: 'A' as const, period_number: 2 }],
+      course_term_policy: 'sectioned_attendance' as const,
+    }
+    const reconciled = reconcileExactClassSelection({
+      ...row,
+      course: wellnessCourse,
+      term: 'semester_1',
+      meeting_slots: semesterOption.meeting_slots,
+      class_options: [fullYearOption, semesterOption],
+    })
+    expect(reconciled.selected_existing_class_id).toBe('wellness-semester')
   })
 
   it('recognizes campus-specific special courses and maps grades to the correct building', () => {

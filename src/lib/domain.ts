@@ -1,7 +1,7 @@
 export type DayType = 'A' | 'B'
 export type AcademicTerm = 'full_year' | 'semester_1' | 'semester_2'
 export type SemesterTerm = Exclude<AcademicTerm, 'full_year'>
-export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'lunch' | 'variable_credit' | 'versioned'
+export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'sectioned_attendance' | 'lunch' | 'variable_credit' | 'versioned'
 export type PrivacySetting = 'private' | 'classmates' | 'school'
 export type Grade = 9 | 10 | 11 | 12
 
