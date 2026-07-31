@@ -38,6 +38,15 @@ describe('schedule share HTML', () => {
 
     expect(response?.status).toBe(200)
     expect(response?.headers.get('Content-Type')).toContain('text/html')
+    expect(response?.headers.get('Cache-Control')).toBe('no-store')
+    const contentSecurityPolicy = response?.headers.get('Content-Security-Policy') ?? ''
+    expect(contentSecurityPolicy).toContain("frame-ancestors 'none'")
+    expect(contentSecurityPolicy).not.toContain("'unsafe-inline'")
+    const nonce = contentSecurityPolicy.match(/'nonce-([^']+)'/)?.[1]
+    expect(nonce).toBeTruthy()
+    expect(html).toContain(`<script nonce="${nonce}">`)
+    expect(response?.headers.get('Permissions-Policy')).toContain('camera=()')
+    expect(response?.headers.get('X-Frame-Options')).toBe('DENY')
     expect(html).toContain('<meta property="og:title"')
     expect(html).toContain('<meta property="og:description"')
     expect(html).toContain(`<meta property="og:url" content="https://share.example/share/${TOKEN}">`)
@@ -66,6 +75,47 @@ describe('schedule share HTML', () => {
     expect(invalidHtml).toContain('Schedule unavailable | NA ScheduleShare')
     expect(privateHtml).not.toContain('course_name')
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the known site URL when SITE_URL is not HTTP or HTTPS', async () => {
+    mockShare({ available: false, schedule: [] })
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}`), {
+      ...env,
+      SITE_URL: 'javascript:alert(1)',
+    })
+    const html = await response?.text()
+
+    expect(html).toContain(`https://danielw412.github.io/NA-ScheduleShare/#/share/${TOKEN}`)
+    expect(html).not.toContain('javascript:')
+  })
+
+  it('fails closed instead of returning a partial schedule when an upstream row is malformed', async () => {
+    mockShare({
+      available: true,
+      schedule: [
+        { day_type: 'A', period_number: 1, course_name: 'Biology', academic_term: 'full_year' },
+        { day_type: 'invalid', period_number: 2, course_name: 'English', academic_term: 'full_year' },
+      ],
+    })
+
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}`), env)
+    const html = await response?.text()
+
+    expect(response?.status).toBe(404)
+    expect(html).toContain('Schedule unavailable | NA ScheduleShare')
+    expect(html).not.toContain('Biology')
+  })
+
+  it('rejects unexpectedly large share payloads before using them', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', {
+      headers: { 'Content-Length': String(128 * 1024 + 1) },
+    })))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}`), env)
+
+    expect(response?.status).toBe(404)
+    expect(await response?.text()).toContain('Schedule unavailable | NA ScheduleShare')
   })
 })
 

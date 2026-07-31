@@ -1,11 +1,24 @@
+import {
+  InvalidJsonResponseError,
+  ResponseBodyTooLargeError,
+  readBoundedBody,
+  readBoundedJson,
+  readBoundedText,
+} from './http'
+
 export const MOONDREAM_MODEL = '@cf/moondream/moondream3.1-9B-A2B'
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_IMAGES = 3
+const MAX_REQUEST_BYTES = MAX_IMAGE_BYTES * MAX_IMAGES + 256 * 1024
+const MAX_AUTH_RESPONSE_BYTES = 64 * 1024
+const MAX_SUPABASE_PAGE_BYTES = 2 * 1024 * 1024
+const MAX_AI_ANSWER_CHARACTERS = 256 * 1024
+const SUPABASE_TIMEOUT_MS = 15_000
 const DEFAULT_RATE_LIMIT = 6
 const DEFAULT_RATE_WINDOW_SECONDS = 60 * 60
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
-const PRODUCTION_ORIGIN = 'https://danielw412.github.io'
+const LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'
 const LOCAL_ORIGINS = new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -117,6 +130,7 @@ export interface Env {
 
 interface RequestContext {
   now?: () => number
+  requestId?: string
 }
 
 class HttpError extends Error {
@@ -130,15 +144,18 @@ class HttpError extends Error {
   }
 }
 
-function corsHeaders(origin: string): HeadersInit {
-  return {
-    'Access-Control-Allow-Origin': origin,
+function corsHeaders(origin: string): Headers {
+  const headers = new Headers({
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Max-Age': '86400',
     'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
     'Vary': 'Origin',
-  }
+  })
+  if (origin) headers.set('Access-Control-Allow-Origin', origin)
+  return headers
 }
 
 function jsonResponse(origin: string, status: number, body: unknown, retryAfter?: number): Response {
@@ -148,9 +165,21 @@ function jsonResponse(origin: string, status: number, body: unknown, retryAfter?
   return new Response(JSON.stringify(body), { status, headers })
 }
 
-function getOrigin(request: Request): string {
+function configuredSiteOrigin(env: Env): string | null {
+  const value = env.SITE_URL?.trim()
+  if (!value) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null
+  } catch {
+    return null
+  }
+}
+
+function getOrigin(request: Request, env: Env): string {
   const origin = request.headers.get('Origin') ?? ''
-  if (origin !== PRODUCTION_ORIGIN && !LOCAL_ORIGINS.has(origin)) {
+  const siteOrigin = configuredSiteOrigin(env)
+  if (origin !== LEGACY_PRODUCTION_ORIGIN && origin !== siteOrigin && !LOCAL_ORIGINS.has(origin)) {
     throw new HttpError(403, 'origin_not_allowed', 'This origin is not allowed to use schedule importing.')
   }
   return origin
@@ -158,11 +187,14 @@ function getOrigin(request: Request): string {
 
 function getBearerToken(request: Request): string {
   const authorization = request.headers.get('Authorization') ?? ''
-  const match = authorization.match(/^Bearer\s+(.+)$/i)
-  if (!match?.[1]) {
+  const token = authorization.match(/^Bearer\s+([^\s]+)\s*$/i)?.[1]
+  if (!token) {
     throw new HttpError(401, 'authentication_required', 'Sign in before importing a schedule screenshot.')
   }
-  return match[1]
+  if (token.length > 8_192) {
+    throw new HttpError(401, 'session_invalid', 'The supplied session is invalid.')
+  }
+  return token
 }
 
 function supabaseHeaders(env: Env, token: string): HeadersInit {
@@ -186,14 +218,30 @@ async function authenticate(request: Request, env: Env): Promise<{ token: string
   const url = configuredSupabaseUrl(env)
   let response: Response
   try {
-    response = await fetch(`${url}/auth/v1/user`, { headers: supabaseHeaders(env, token) })
+    response = await fetch(`${url}/auth/v1/user`, {
+      headers: supabaseHeaders(env, token),
+      redirect: 'error',
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS),
+    })
   } catch {
     throw new HttpError(503, 'authentication_unavailable', 'The session could not be verified. Try again shortly.')
   }
   if (!response.ok) {
+    const upstreamMessage = await readBoundedText(response, MAX_AUTH_RESPONSE_BYTES).catch(() => '')
+    if (/invalid api key|apikey/i.test(upstreamMessage)) {
+      throw new HttpError(503, 'worker_publishable_key_rejected', 'Schedule importing is temporarily unavailable.')
+    }
+    if (response.status === 429 || response.status >= 500) {
+      throw new HttpError(503, 'authentication_unavailable', 'The session could not be verified. Try again shortly.')
+    }
     throw new HttpError(401, 'session_expired', 'Your session has expired. Refresh the page and sign in again.')
   }
-  const body: unknown = await response.json()
+  let body: unknown
+  try {
+    body = await readBoundedJson(response, MAX_AUTH_RESPONSE_BYTES)
+  } catch {
+    throw new HttpError(503, 'authentication_unavailable', 'The session could not be verified. Try again shortly.')
+  }
   if (!isRecord(body) || typeof body.id !== 'string' || !UUID_PATTERN.test(body.id)) {
     throw new HttpError(401, 'session_invalid', 'The session response could not be verified.')
   }
@@ -206,14 +254,24 @@ async function consumeRateLimit(env: Env, userId: string, now: number): Promise<
   const windowSeconds = positiveInteger(env.RATE_LIMIT_WINDOW_SECONDS, DEFAULT_RATE_WINDOW_SECONDS)
   const windowStart = Math.floor(now / (windowSeconds * 1000))
   const key = `schedule-import:${userId}:${windowStart}`
-  const current = Number(await env.RATE_LIMIT.get(key) ?? '0')
-  if (Number.isFinite(current) && current >= maximum) {
+  let current: number
+  try {
+    const storedValue = Number(await env.RATE_LIMIT.get(key) ?? '0')
+    current = Number.isSafeInteger(storedValue) && storedValue >= 0 ? storedValue : 0
+  } catch {
+    throw new HttpError(503, 'rate_limit_unavailable', 'Schedule importing is temporarily unavailable.')
+  }
+  if (current >= maximum) {
     const retryAfter = windowSeconds - Math.floor((now / 1000) % windowSeconds)
     throw new HttpError(429, 'rate_limit_exceeded', 'You have reached the schedule import limit. Try again later.', retryAfter)
   }
-  await env.RATE_LIMIT.put(key, String(Number.isFinite(current) ? current + 1 : 1), {
-    expirationTtl: windowSeconds + 60,
-  })
+  try {
+    await env.RATE_LIMIT.put(key, String(current + 1), {
+      expirationTtl: windowSeconds + 60,
+    })
+  } catch {
+    throw new HttpError(503, 'rate_limit_unavailable', 'Schedule importing is temporarily unavailable.')
+  }
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -226,13 +284,40 @@ async function readImages(request: Request): Promise<File[]> {
   if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
     throw new HttpError(415, 'multipart_required', 'Upload screenshots as multipart form data.')
   }
+  const contentEncoding = request.headers.get('Content-Encoding')?.trim().toLowerCase()
+  if (contentEncoding && contentEncoding !== 'identity') {
+    throw new HttpError(415, 'content_encoding_unsupported', 'Compressed screenshot uploads are not supported.')
+  }
+  const declaredLength = request.headers.get('Content-Length')
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength)
+    if (!Number.isSafeInteger(parsedLength) || parsedLength <= 0) {
+      throw new HttpError(400, 'invalid_content_length', 'The screenshot upload size is invalid.')
+    }
+    if (parsedLength > MAX_REQUEST_BYTES) {
+      throw new HttpError(413, 'request_too_large', 'The combined screenshot upload is too large.')
+    }
+  }
   let formData: FormData
   try {
-    formData = await request.formData()
-  } catch {
+    const body = await readBoundedBody(request, MAX_REQUEST_BYTES)
+    const boundedRequest = new Request(request.url, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body,
+    })
+    formData = await boundedRequest.formData()
+  } catch (error) {
+    if (error instanceof ResponseBodyTooLargeError) {
+      throw new HttpError(413, 'request_too_large', 'The combined screenshot upload is too large.')
+    }
     throw new HttpError(400, 'invalid_form_data', 'The screenshot upload could not be read.')
   }
-  const images = formData.getAll('images').filter((value): value is File => value instanceof File)
+  const imageValues = formData.getAll('images')
+  const images = imageValues.filter((value): value is File => value instanceof File)
+  if (images.length !== imageValues.length) {
+    throw new HttpError(400, 'invalid_image', 'Every screenshot entry must be an uploaded file.')
+  }
   if (images.length < 1 || images.length > MAX_IMAGES) {
     throw new HttpError(400, 'invalid_image_count', 'Upload between one and three schedule screenshots.')
   }
@@ -244,8 +329,23 @@ async function readImages(request: Request): Promise<File[]> {
     if (image.size > MAX_IMAGE_BYTES) {
       throw new HttpError(413, 'image_too_large', 'Each screenshot must be 10 MB or smaller.')
     }
+    if (!await hasExpectedImageSignature(image)) {
+      throw new HttpError(415, 'invalid_image_data', 'One of the screenshots does not match its declared image type.')
+    }
   }
   return images
+}
+
+async function hasExpectedImageSignature(image: File): Promise<boolean> {
+  const bytes = new Uint8Array(await image.slice(0, 12).arrayBuffer())
+  if (image.type.toLowerCase() === 'image/png') {
+    return [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte)
+  }
+  if (image.type.toLowerCase() === 'image/jpeg') {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  }
+  return bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
 }
 
 async function fetchCatalog(env: Env, token: string): Promise<CourseRecord[]> {
@@ -253,7 +353,7 @@ async function fetchCatalog(env: Env, token: string): Promise<CourseRecord[]> {
   const body = await fetchAllPages(`${url}/rest/v1/course_names?select=id,name&status=eq.active&order=name`, env, token, 'catalog')
   const courses = body.filter((value): value is CourseRecord => (
     isRecord(value) && typeof value.id === 'string' && UUID_PATTERN.test(value.id)
-    && typeof value.name === 'string' && value.name.trim().length >= 2
+    && typeof value.name === 'string' && value.name.trim().length >= 2 && value.name.length <= 160
   ))
   if (courses.length === 0) {
     throw new HttpError(403, 'catalog_forbidden', 'Your account cannot access schedule importing.')
@@ -269,10 +369,10 @@ async function fetchExistingClasses(env: Env, token: string): Promise<ExistingCl
     if (!isRecord(value)
       || typeof value.id !== 'string' || !UUID_PATTERN.test(value.id)
       || typeof value.course_name_id !== 'string' || !UUID_PATTERN.test(value.course_name_id)
-      || typeof value.teacher_last_name !== 'string'
+      || typeof value.teacher_last_name !== 'string' || value.teacher_last_name.length > 200
       || !isAcademicTerm(value.default_academic_term)
       || typeof value.is_double_period !== 'boolean'
-      || !Array.isArray(value.class_meeting_slots)) return []
+      || !Array.isArray(value.class_meeting_slots) || value.class_meeting_slots.length > 18) return []
     const slots = parseSlots(value.class_meeting_slots)
     if (!slots) return []
     return [{
@@ -293,22 +393,56 @@ async function fetchAllPages(
   resource: 'catalog' | 'classes',
 ): Promise<unknown[]> {
   const pageSize = 1_000
+  const maximumRows = 5_000
   const rows: unknown[] = []
-  for (let offset = 0; offset < 20_000; offset += pageSize) {
+  for (let offset = 0; offset < maximumRows; offset += pageSize) {
     const headers = new Headers(supabaseHeaders(env, token))
     headers.set('Range', `${offset}-${offset + pageSize - 1}`)
-    const response = await fetch(url, { headers })
+    let response: Response
+    try {
+      response = await fetch(url, {
+        headers,
+        redirect: 'error',
+        signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS),
+      })
+    } catch {
+      throw new HttpError(503, `${resource}_unavailable`, resource === 'catalog'
+        ? 'The course catalogue is temporarily unavailable.'
+        : 'Existing classes are temporarily unavailable.')
+    }
     if (response.status === 401) throw new HttpError(401, 'session_expired', 'Your session has expired. Refresh and sign in again.')
     if (!response.ok) {
       throw new HttpError(503, `${resource}_unavailable`, resource === 'catalog'
         ? 'The course catalogue is temporarily unavailable.'
         : 'Existing classes are temporarily unavailable.')
     }
-    const body: unknown = await response.json()
+    let body: unknown
+    try {
+      body = await readBoundedJson(response, MAX_SUPABASE_PAGE_BYTES)
+    } catch (error) {
+      if (error instanceof ResponseBodyTooLargeError) {
+        throw new HttpError(503, `${resource}_too_large`, resource === 'catalog'
+          ? 'The course catalogue is too large to import safely.'
+          : 'The class list is too large to import safely.')
+      }
+      if (error instanceof InvalidJsonResponseError) {
+        throw new HttpError(502, `${resource}_invalid`, resource === 'catalog'
+          ? 'The course catalogue response was malformed.'
+          : 'The existing-class response was malformed.')
+      }
+      throw new HttpError(503, `${resource}_unavailable`, resource === 'catalog'
+        ? 'The course catalogue is temporarily unavailable.'
+        : 'Existing classes are temporarily unavailable.')
+    }
     if (!Array.isArray(body)) {
       throw new HttpError(502, `${resource}_invalid`, resource === 'catalog'
         ? 'The course catalogue response was malformed.'
         : 'The existing-class response was malformed.')
+    }
+    if (rows.length + body.length > maximumRows) {
+      throw new HttpError(503, `${resource}_too_large`, resource === 'catalog'
+        ? 'The course catalogue is too large to import safely.'
+        : 'The class list is too large to import safely.')
     }
     rows.push(...body)
     if (body.length < pageSize) return rows
@@ -401,21 +535,18 @@ async function runAi(
   try {
     output = await invokeMoondreamQuery(env.AI, image, prompt)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const diagnosticText = error instanceof Error ? error.message.slice(0, 512).toLowerCase() : ''
+    const quotaFailure = diagnosticText.includes('429')
+      || diagnosticText.includes('quota')
+      || diagnosticText.includes('rate limit')
     console.error(JSON.stringify({
       event: 'workers_ai_inference_failed',
       model: MOONDREAM_MODEL,
       task: 'query',
-      error_name: error instanceof Error ? error.name : 'UnknownError',
-      error_message: message,
+      failure_category: quotaFailure ? 'quota' : 'upstream',
     }))
-    const normalized = message.toLowerCase()
 
-    if (
-      normalized.includes('429')
-      || normalized.includes('quota')
-      || normalized.includes('rate limit')
-    ) {
+    if (quotaFailure) {
       throw new HttpError(
         503,
         'ai_quota_exceeded',
@@ -437,13 +568,20 @@ async function runAi(
       model: MOONDREAM_MODEL,
       task: 'query',
       result_type: typeof output,
-      result_keys: isRecord(output) ? Object.keys(output) : [],
+      result_field_count: isRecord(output) ? Object.keys(output).length : 0,
     }))
 
     throw new HttpError(
       502,
       'ai_invalid_response',
       'Schedule recognition returned an invalid response.',
+    )
+  }
+  if (answer.length > MAX_AI_ANSWER_CHARACTERS) {
+    throw new HttpError(
+      502,
+      'ai_invalid_response',
+      'Schedule recognition returned an oversized response.',
     )
   }
 
@@ -492,7 +630,7 @@ function parseAiSchedule(answer: string): AiScheduleResult {
     console.error(JSON.stringify({
       event: 'workers_ai_unexpected_shape',
       parsed_type: Array.isArray(value) ? 'array' : typeof value,
-      parsed_keys: isRecord(value) ? Object.keys(value) : [],
+      parsed_field_count: isRecord(value) ? Object.keys(value).length : 0,
     }))
 
     throw new HttpError(
@@ -508,7 +646,7 @@ function parseAiSchedule(answer: string): AiScheduleResult {
     || !['clear', 'usable', 'unusable'].includes(
       String(value.image_quality),
     )
-    || !isStringArray(value.warnings)
+    || !isBoundedStringArray(value.warnings, 50, 300)
     || !Array.isArray(value.entries)
     || value.entries.length > 30
   ) {
@@ -536,9 +674,9 @@ function parseAiEntry(value: unknown): AiEntry {
   if (!isRecord(value) || !hasRequiredKeys(value, keys)
     || typeof value.source_course_name !== 'string' || value.source_course_name.trim().length < 2
     || value.source_course_name.length > 160 || typeof value.teacher_raw !== 'string' || value.teacher_raw.length > 200
-    || !isImportTerm(value.term) || !Array.isArray(value.meeting_slots)
+    || !isImportTerm(value.term) || !Array.isArray(value.meeting_slots) || value.meeting_slots.length > 18
     || typeof value.confidence !== 'number' || !inConfidenceRange(value.confidence)
-    || !isStringArray(value.warnings) || value.warnings.some((warning) => warning.length > 300)) {
+    || !isBoundedStringArray(value.warnings, 20, 300)) {
     throw new HttpError(502, 'ai_invalid_response', 'Schedule recognition returned an invalid class entry.')
   }
   const meetingSlots = parseSlots(value.meeting_slots)
@@ -749,10 +887,14 @@ function validateCombinedImages(results: AiScheduleResult[]): void {
 }
 
 async function importSchedule(request: Request, env: Env, context: RequestContext): Promise<ScheduleImportResponse> {
-  const [{ token, userId }, images] = await Promise.all([authenticate(request, env), readImages(request)])
+  const { token, userId } = await authenticate(request, env)
   await consumeRateLimit(env, userId, (context.now ?? Date.now)())
+  const images = await readImages(request)
   const [catalog, classes] = await Promise.all([fetchCatalog(env, token), fetchExistingClasses(env, token)])
-  const results = await Promise.all(images.map((image) => extractImage(env, image)))
+  const results: AiScheduleResult[] = []
+  for (const image of images) {
+    results.push(await extractImage(env, image))
+  }
   validateCombinedImages(results)
   return {
     rows: buildReviewRows(results, catalog, classes),
@@ -764,14 +906,16 @@ async function importSchedule(request: Request, env: Env, context: RequestContex
 export async function handleRequest(request: Request, env: Env, context: RequestContext = {}): Promise<Response> {
   let origin = ''
   try {
-    origin = getOrigin(request)
+    origin = getOrigin(request, env)
     const url = new URL(request.url)
     if (url.pathname !== '/api/schedule-import') {
       return jsonResponse(origin, 404, { error: 'not_found', message: 'Endpoint not found.' })
     }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     if (request.method !== 'POST') {
-      return jsonResponse(origin, 405, { error: 'method_not_allowed', message: 'Use POST for schedule importing.' })
+      const response = jsonResponse(origin, 405, { error: 'method_not_allowed', message: 'Use POST for schedule importing.' })
+      response.headers.set('Allow', 'POST, OPTIONS')
+      return response
     }
     const result = await importSchedule(request, env, context)
     return jsonResponse(origin, 200, result)
@@ -779,8 +923,16 @@ export async function handleRequest(request: Request, env: Env, context: Request
     const caught = error instanceof HttpError
       ? error
       : new HttpError(500, 'worker_failure', 'Schedule importing failed unexpectedly.')
-    const safeOrigin = origin || PRODUCTION_ORIGIN
-    return jsonResponse(safeOrigin, caught.status, { error: caught.code, message: caught.message }, caught.retryAfter)
+    if (!(error instanceof HttpError) || caught.status >= 500) {
+      console.error(JSON.stringify({
+        event: 'schedule_import_request_failed',
+        request_id: context.requestId,
+        status: caught.status,
+        error_code: caught.code,
+        error_name: error instanceof Error ? error.name : 'UnknownError',
+      }))
+    }
+    return jsonResponse(origin, caught.status, { error: caught.code, message: caught.message }, caught.retryAfter)
   }
 }
 
@@ -805,6 +957,10 @@ function hasRequiredKeys(
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isBoundedStringArray(value: unknown, maximumItems: number, maximumLength: number): value is string[] {
+  return isStringArray(value) && value.length <= maximumItems && value.every((item) => item.length <= maximumLength)
 }
 
 function isDayType(value: unknown): value is DayType {

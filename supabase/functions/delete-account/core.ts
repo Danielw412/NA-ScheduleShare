@@ -1,5 +1,6 @@
 export interface DeleteAccountDependencies {
   verifyUser: (token: string) => Promise<{ id: string }>
+  revokeSessions: (token: string) => Promise<void>
   deleteAvatar: (userId: string) => Promise<void>
   deleteUser: (userId: string) => Promise<void>
   recordEvent: (userId: string, event: 'account_deletion_requested' | 'account_deleted' | 'account_deletion_failed', result: string) => Promise<void>
@@ -55,6 +56,7 @@ export async function handleDeleteAccountRequest(request: Request, dependencies:
     const user = await dependencies.verifyUser(token)
     userId = user.id
     await dependencies.recordEvent(user.id, 'account_deletion_requested', 'requested').catch(() => undefined)
+    await dependencies.revokeSessions(token)
     await dependencies.deleteAvatar(user.id)
     await dependencies.deleteUser(user.id)
     await dependencies.recordEvent(user.id, 'account_deleted', 'succeeded').catch(() => undefined)

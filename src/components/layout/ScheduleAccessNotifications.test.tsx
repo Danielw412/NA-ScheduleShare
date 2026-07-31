@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
@@ -66,5 +66,20 @@ describe('ScheduleAccessNotifications', () => {
     resolveResponse()
     await waitFor(() => expect(mocks.respondScheduleAccessRequest).toHaveBeenCalledWith('request-1', true))
     expect(await screen.findByRole('status')).toHaveTextContent('Schedule access allowed')
+  })
+
+  it('restores focus on Escape and reports mark-read failures', async () => {
+    const user = userEvent.setup()
+    mocks.markScheduleAccessNotificationsRead.mockRejectedValueOnce(new Error('offline'))
+    render(<ScheduleAccessNotifications userId="student-1" />)
+    const bell = await screen.findByRole('button', { name: 'Notifications, 2 pending or unread' })
+
+    await user.click(bell)
+    expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Close notifications' })).toHaveFocus()
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not be marked as read')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(bell).toHaveFocus()
   })
 })

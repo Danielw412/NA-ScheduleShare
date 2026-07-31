@@ -189,6 +189,7 @@ function AuthenticatedClassesPage() {
   const [period, setPeriod] = useState<number | ''>('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [members, setMembers] = useState<ClassMemberResult[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
   const [memberError, setMemberError] = useState<string | null>(null)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoClasses.filter((item) => matchesFilters(item, input.query, input.dayType ?? '', input.period ?? ''))
@@ -213,17 +214,24 @@ function AuthenticatedClassesPage() {
   const hasSchedule = ownClasses.length > 0
 
   useEffect(() => {
+    let active = true
     setMembers([])
+    setMembersLoading(false)
     setMemberError(null)
-    if (!classId || !hasSchedule) return
+    if (!classId || !hasSchedule) return () => { active = false }
     if (isDemo) {
       setMembers([
         { student_id: 'a', full_name: 'Alex Morgan', grade: 11, privacy_setting: 'school', can_view_schedule: true },
         { student_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'classmates', can_view_schedule: true },
       ])
-      return
+      return () => { active = false }
     }
-    void getClassMembers(classId).then(setMembers).catch((caught: unknown) => setMemberError(caught instanceof Error ? caught.message : 'Could not load class members.'))
+    setMembersLoading(true)
+    void getClassMembers(classId)
+      .then((nextMembers) => { if (active) setMembers(nextMembers) })
+      .catch((caught: unknown) => { if (active) setMemberError(caught instanceof Error ? caught.message : 'Could not load class members.') })
+      .finally(() => { if (active) setMembersLoading(false) })
+    return () => { active = false }
   }, [classId, hasSchedule, isDemo])
 
   if (schedule.loading) return <LoadingScreen label="Loading your classes…" />
@@ -248,7 +256,7 @@ function AuthenticatedClassesPage() {
             <div className="class-detail-heading"><div><h2>{selected.course_name}</h2><p>{selected.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
             <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{formatMeetingSlotSummary(selected.meeting_slots)}</dd></div><div><dt>Default term</dt><dd>{selected.default_academic_term === 'full_year' ? 'Full Year' : selected.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</dd></div></dl>
             {ownClassIds.has(selected.id) ? <Link className="manage-class-link" to="/schedule">Manage this class on your schedule</Link> : null}
-            {hasSchedule ? <><div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{members.length}</span></div><div className="member-list">{members.map((member) => <div key={member.student_id} style={{ viewTransitionName: `student-${member.student_id}` }}><ProfileAvatar userId={member.student_id} fullName={member.full_name} /><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link viewTransition to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Schedule hidden</span>}</div>)}</div>{members.length === 0 ? <p className="empty-inline">No students in this class are visible under their privacy settings.</p> : null}</> : <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Upload your schedule to see which classmates share your courses.</p><Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link></section>}
+            {hasSchedule ? <><div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{membersLoading ? '…' : members.length}</span></div>{membersLoading ? <p className="muted" role="status">Loading students…</p> : <><div className="member-list">{members.map((member) => <div key={member.student_id} style={{ viewTransitionName: `student-${member.student_id}` }}><ProfileAvatar userId={member.student_id} fullName={member.full_name} /><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link viewTransition to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Schedule hidden</span>}</div>)}</div>{members.length === 0 && !memberError ? <p className="empty-inline">No students in this class are visible under their privacy settings.</p> : null}</>}</> : <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Upload your schedule to see which classmates share your courses.</p><Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link></section>}
           </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Click on a class to see who's in it. Students with schedules set to private or classmates will not be shown. </p></div>}
         </section>
       </div>

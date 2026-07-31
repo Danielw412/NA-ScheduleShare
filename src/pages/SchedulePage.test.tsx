@@ -380,6 +380,23 @@ describe('SchedulePage onboarding', () => {
     expect(schedule.reload).toHaveBeenCalled()
   })
 
+  it('keeps the page usable and reports a failed class removal', async () => {
+    const user = userEvent.setup()
+    const schedule = {
+      ...emptySchedule(),
+      enrollments: [{ id: 'enrollment-test', student_id: 'student-1', class: { course_name: 'Test Biology' } }],
+    }
+    mocks.useSchedule.mockReturnValue(schedule)
+    mocks.removeEnrollment.mockRejectedValueOnce(new Error('Class removal is temporarily unavailable.'))
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Remove test class' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Class removal is temporarily unavailable.')
+    expect(schedule.reload).not.toHaveBeenCalled()
+    expect(screen.getByText('Test Biology')).toBeInTheDocument()
+  })
+
   it('requires confirmation before clearing every class', async () => {
     const user = userEvent.setup()
     const schedule = {

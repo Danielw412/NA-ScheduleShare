@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility'
 import type { PrivacySetting } from '../lib/domain'
 import { deleteOwnAccount, removeProfilePicture, uploadProfilePicture } from '../lib/profile'
 import { recordAuthenticatedEvent } from '../lib/supabase/data'
@@ -22,6 +23,11 @@ export function ProfilePage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteDialogRef = useDialogAccessibility(deleteOpen, closeDeleteDialog, !deleting)
+
+  function closeDeleteDialog() {
+    if (!deleting) setDeleteOpen(false)
+  }
 
   useEffect(() => {
     if (!profileFullName || !profilePrivacy) return
@@ -145,14 +151,14 @@ export function ProfilePage() {
       <button className="button button-secondary danger-text" disabled={auth.isDemo} type="button" onClick={() => { setDeleteConfirmation(''); setDeleteError(null); setDeleteOpen(true) }}><Trash2 size={17} aria-hidden="true" /> Delete my account</button>
     </section>
 
-    {deleteOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) setDeleteOpen(false) }}>
-      <section className="class-dialog delete-account-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-dialog-title">
+    {deleteOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDeleteDialog() }}>
+      <section className="class-dialog delete-account-dialog" ref={deleteDialogRef} role="dialog" aria-modal="true" aria-labelledby="delete-account-dialog-title" tabIndex={-1}>
         <div className="sheet-handle" aria-hidden="true" />
-        <header><div><h2 id="delete-account-dialog-title">Permanently delete your account?</h2><p>This cannot be undone.</p></div><button className="icon-button" type="button" aria-label="Close account deletion confirmation" disabled={deleting} onClick={() => setDeleteOpen(false)}><X aria-hidden="true" /></button></header>
+        <header><div><h2 id="delete-account-dialog-title">Permanently delete your account?</h2><p>This cannot be undone.</p></div><button className="icon-button" type="button" aria-label="Close account deletion confirmation" disabled={deleting} onClick={closeDeleteDialog}><X aria-hidden="true" /></button></header>
         <div className="notice-box error"><AlertTriangle aria-hidden="true" /><span>Your authentication account, profile, schedule enrollments, and profile picture will be removed.</span></div>
         <label className="delete-confirmation-field"><span>Type <strong>DELETE</strong> to confirm</span><input aria-label="Type DELETE to confirm" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>
         {deleteError ? <p className="form-error" role="alert">{deleteError}</p> : null}
-        <div className="form-actions"><button className="button button-secondary" type="button" disabled={deleting} onClick={() => setDeleteOpen(false)}>Cancel</button><button className="button button-danger" type="button" disabled={deleteConfirmation !== 'DELETE' || deleting} onClick={() => void confirmDeletion()}>{deleting ? 'Deleting…' : 'Delete account permanently'}</button></div>
+        <div className="form-actions"><button className="button button-secondary" type="button" disabled={deleting} onClick={closeDeleteDialog}>Cancel</button><button className="button button-danger" type="button" disabled={deleteConfirmation !== 'DELETE' || deleting} onClick={() => void confirmDeletion()}>{deleting ? 'Deleting…' : 'Delete account permanently'}</button></div>
       </section>
     </div> : null}
   </div>

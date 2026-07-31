@@ -67,7 +67,7 @@ export async function deleteOwnAccount(confirmation: string): Promise<void> {
     const context = (error as unknown as { context?: unknown }).context
     const response = context instanceof Response ? context : null
     const body = response ? await response.clone().json().catch(() => ({})) as { message?: string } : {}
-    throw new Error(body.message || 'Your account could not be deleted. No further changes were made.')
+    throw new Error(body.message || 'Your account could not be fully deleted. Your session may have been signed out; sign in again to retry or contact an administrator.')
   }
   await client.auth.signOut({ scope: 'local' })
 }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import styles from '../../styles.css?raw'
@@ -156,6 +156,38 @@ describe('ScheduleGrid borders', () => {
 
     await user.click(screen.getByRole('grid'))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('supports arrow-key menu navigation and restores focus on Escape', async () => {
+    const user = userEvent.setup()
+    render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
+    const trigger = screen.getAllByRole('button', { name: 'Actions for AP Physics 1&2' })[0]
+
+    await user.click(trigger)
+    expect(screen.getByRole('menuitem', { name: 'Edit or replace class' })).toHaveFocus()
+
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Remove class' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('restores focus after menu actions and viewport changes', async () => {
+    const user = userEvent.setup()
+    render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)
+    const trigger = screen.getAllByRole('button', { name: 'Actions for AP Physics 1&2' })[0]
+
+    await user.click(trigger)
+    await user.click(screen.getByRole('menuitem', { name: 'Remove class' }))
+    expect(callbacks.onRemove).toHaveBeenCalledWith(doublePeriod)
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    await act(async () => { window.dispatchEvent(new Event('resize')) })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('opens the editor for flexible special-course attendance changes', async () => {

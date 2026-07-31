@@ -24,21 +24,34 @@ export function StudentDetailPage() {
   const [denied, setDenied] = useState(false)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
+    let active = true
+    setSchedule([])
+    setDenied(false)
+    setLoading(true)
     if (!user) {
       setLoading(false)
-      return
+      return () => { active = false }
     }
     const request = isDemo ? Promise.resolve(demoEnrollments) : getVisibleSchedule(studentId)
-    void request.then(setSchedule).catch(() => setDenied(true)).finally(() => setLoading(false))
-  }, [isDemo, studentId, user])
+    void request
+      .then((nextSchedule) => { if (active) setSchedule(nextSchedule) })
+      .catch(() => { if (active) setDenied(true) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [isDemo, studentId, user?.id])
   useEffect(() => {
-    if (!user) return
+    let active = true
+    setStudent(navigationUser ?? null)
+    if (!user) return () => { active = false }
     if (isDemo) {
       setStudent({ student_id: studentId, full_name: navigationUser?.full_name ?? 'Alex Morgan', grade: navigationUser?.grade ?? 11 })
-      return
+      return () => { active = false }
     }
-    void searchReportableUsers('', studentId).then((results) => setStudent(results[0] ?? null)).catch(() => undefined)
-  }, [isDemo, navigationUser?.full_name, navigationUser?.grade, studentId, user])
+    void searchReportableUsers('', studentId)
+      .then((results) => { if (active) setStudent(results[0] ?? null) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [isDemo, navigationUser?.full_name, navigationUser?.grade, navigationUser?.student_id, studentId, user?.id])
   if (!user) return <><section className="empty-state"><LockKeyhole size={38} /><h1>Schedule locked</h1><p>Real schedule data is never exposed to logged-out visitors.</p></section><GuestSchedulePrompt open onClose={() => void navigate('/students', { replace: true })} /></>
   if (denied) return <section className="empty-state"><LockKeyhole size={38} /><h1>This schedule isn’t available</h1><p>You do not currently have access to this student’s schedule.</p><Link to="/students">Back to students</Link></section>
   return (

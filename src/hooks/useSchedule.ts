@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../features/auth/AuthProvider'
 import { demoEnrollments } from '../lib/demo-data'
 import type { AcademicTerm, ClassDefinition, MeetingSlot, ScheduleEnrollment } from '../lib/domain'
@@ -10,31 +10,49 @@ export function useSchedule(studentId?: string) {
   const [enrollments, setEnrollments] = useState<ScheduleEnrollment[]>(isDemo ? demoEnrollments : [])
   const [loading, setLoading] = useState(Boolean(ownerId && !isDemo))
   const [error, setError] = useState<string | null>(null)
+  const latestRequest = useRef(0)
+  const loadedOwner = useRef<string | undefined>(isDemo ? ownerId : undefined)
 
   const reload = useCallback(async () => {
+    const requestId = ++latestRequest.current
     if (!ownerId) {
+      loadedOwner.current = undefined
       setEnrollments([])
       setLoading(false)
       setError(null)
       return
     }
     if (isDemo) {
+      loadedOwner.current = ownerId
       setLoading(false)
+      setError(null)
       return
+    }
+    const ownerChanged = loadedOwner.current !== ownerId
+    if (ownerChanged) {
+      loadedOwner.current = undefined
+      setEnrollments([])
     }
     setLoading(true)
     setError(null)
     try {
-      setEnrollments(await fetchSchedule(ownerId))
+      const nextEnrollments = await fetchSchedule(ownerId)
+      if (requestId === latestRequest.current) {
+        loadedOwner.current = ownerId
+        setEnrollments(nextEnrollments)
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load the schedule.')
+      if (requestId === latestRequest.current) {
+        setError(caught instanceof Error ? caught.message : 'Unable to load the schedule.')
+      }
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) setLoading(false)
     }
   }, [isDemo, ownerId])
 
   useEffect(() => {
     void reload()
+    return () => { latestRequest.current += 1 }
   }, [reload])
 
   const addDemoEnrollment = useCallback((classDefinition: ClassDefinition, term: AcademicTerm, replacingEnrollmentId?: string) => {

@@ -1,4 +1,4 @@
-name: Test and deploy schedule import Worker
+name: Test and deploy ScheduleShare Worker
 
 on:
   workflow_dispatch:
@@ -6,9 +6,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: scheduleshare-worker-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +27,29 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm worker:typecheck
+      - run: pnpm exec eslint cloudflare/schedule-import-worker
       - run: pnpm test:worker
+      - name: Validate Worker bundle and configuration
+        run: pnpm exec wrangler deploy --config cloudflare/schedule-import-worker/wrangler.toml --dry-run
+      - name: Validate production secrets
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is not configured" >&2; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured" >&2; exit 1; }
+          test -n "$SUPABASE_URL" || { echo "SUPABASE_URL is not configured" >&2; exit 1; }
+          test -n "$SUPABASE_PUBLISHABLE_KEY" || { echo "SUPABASE_PUBLISHABLE_KEY is not configured" >&2; exit 1; }
+          case "$SUPABASE_URL" in
+            https://*) ;;
+            *) echo "SUPABASE_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+          case "$SUPABASE_PUBLISHABLE_KEY" in
+            sb_secret_*) echo "SUPABASE_PUBLISHABLE_KEY must not be a secret key" >&2; exit 1 ;;
+          esac
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:

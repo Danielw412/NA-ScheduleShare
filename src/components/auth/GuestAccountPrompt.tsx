@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/AuthProvider'
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
 import { clearAuthDestination, safeAuthDestination } from '../../lib/authDestination'
 import { AuthForm } from './AuthForm'
 
@@ -23,6 +24,7 @@ export function GuestAccountPromptProvider({ children }: { children: ReactNode }
   const openSignInPrompt = useCallback((next = '/schedule') => setPrompt({ open: true, next: safeAuthDestination(next), mode: 'sign-in' }), [])
   const closeAccountPrompt = useCallback(() => setPrompt((current) => ({ ...current, open: false })), [])
   const value = useMemo(() => ({ openAccountPrompt, openSignInPrompt }), [openAccountPrompt, openSignInPrompt])
+  const dialogRef = useDialogAccessibility(prompt.open && !user, closeAccountPrompt)
 
   useEffect(() => {
     if (!user || !prompt.open) return
@@ -35,8 +37,8 @@ export function GuestAccountPromptProvider({ children }: { children: ReactNode }
     <GuestAccountPromptContext.Provider value={value}>
       {children}
       {prompt.open && !user ? (
-        <div className="dialog-backdrop" role="presentation">
-          <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-dialog-title">
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAccountPrompt() }}>
+          <section className="account-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="account-dialog-title" tabIndex={-1}>
             <button className="icon-button" type="button" aria-label="Close account dialog" onClick={closeAccountPrompt}><X aria-hidden="true" /></button>
             <div id="account-dialog-title" className="sr-only">{prompt.mode === 'sign-in' ? 'Sign in' : 'Create an account'}</div>
             <AuthForm key={prompt.mode} initialMode={prompt.mode} next={prompt.next} />

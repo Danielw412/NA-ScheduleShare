@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -164,5 +164,30 @@ describe('ClassesPage organization', () => {
     await user.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.queryByLabelText('Active class filters')).not.toBeInTheDocument()
     expect(mocks.useClassSearch).toHaveBeenLastCalledWith(expect.objectContaining({ dayType: undefined, period: undefined }), expect.any(Object))
+  })
+
+  it('does not show a stale roster after navigating to another class', async () => {
+    const user = userEvent.setup()
+    let resolveOther!: (members: Array<Record<string, unknown>>) => void
+    let resolveOwn!: (members: Array<Record<string, unknown>>) => void
+    mocks.getClassMembers.mockImplementation((classId: string) => new Promise((resolve) => {
+      if (classId === 'class-other') resolveOther = resolve
+      else resolveOwn = resolve
+    }))
+    render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading students')
+    await user.click(screen.getByRole('link', { name: /My Biology/ }))
+
+    await act(async () => {
+      resolveOwn([{ student_id: 'student-current', full_name: 'Current Student', grade: 11, privacy_setting: 'school', can_view_schedule: true }])
+    })
+    expect(await screen.findByText('Current Student')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveOther([{ student_id: 'student-stale', full_name: 'Stale Student', grade: 11, privacy_setting: 'school', can_view_schedule: true }])
+    })
+    expect(screen.queryByText('Stale Student')).not.toBeInTheDocument()
+    expect(screen.getByText('Current Student')).toBeInTheDocument()
   })
 })

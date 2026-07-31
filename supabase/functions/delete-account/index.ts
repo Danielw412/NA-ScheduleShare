@@ -24,6 +24,10 @@ function dependencies(): DeleteAccountDependencies {
       if (error || !data.user) throw error ?? new Error('Authenticated user missing.')
       return { id: data.user.id }
     },
+    revokeSessions: async (token) => {
+      const { error } = await adminClient.auth.admin.signOut(token, 'global')
+      if (error) throw error
+    },
     deleteAvatar: async (userId) => {
       const { error } = await adminClient.storage.from('profile-pictures').remove([`${userId}/avatar`])
       if (error) throw error

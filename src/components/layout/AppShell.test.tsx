@@ -64,6 +64,20 @@ describe('AppShell mobile navigation', () => {
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
   })
 
+  it('closes the expandable navigation with Escape and restores focus', async () => {
+    const user = userEvent.setup()
+    renderShell('/classes')
+    const toggle = screen.getByRole('button', { name: 'Open navigation' })
+
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAttribute('aria-controls', 'primary-navigation')
+
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('shows guest-safe destinations and prompts for an account on protected destinations', async () => {
     const user = userEvent.setup()
     mocks.useAuth.mockReturnValue({ user: null, profile: null, isAdmin: false, signOut: mocks.signOut })

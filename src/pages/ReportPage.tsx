@@ -73,33 +73,61 @@ export function ReportPage() {
   useEffect(() => {
     if (targetType !== 'user' || selectedUser || userQuery.trim().length < 2) {
       setUserResults([])
+      setSearching(false)
       return
     }
+    let active = true
+    setUserResults([])
+    setError(null)
     const timer = window.setTimeout(() => {
       setSearching(true)
       const normalizedQuery = userQuery.trim().toLowerCase()
       const request = isDemo
         ? Promise.resolve(demoUsers.filter((user) => user.full_name.toLowerCase().includes(normalizedQuery)))
         : searchReportableUsers(userQuery.trim())
-      void request.then(setUserResults).catch((caught: unknown) => setError(reportErrorMessage(caught))).finally(() => setSearching(false))
+      void request
+        .then((results) => { if (active) setUserResults(results) })
+        .catch((caught: unknown) => {
+          if (!active) return
+          setUserResults([])
+          setError(reportErrorMessage(caught))
+        })
+        .finally(() => { if (active) setSearching(false) })
     }, 250)
-    return () => window.clearTimeout(timer)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
   }, [isDemo, selectedUser, targetType, userQuery])
 
   useEffect(() => {
     if (targetType !== 'class' || selectedClass || classQuery.trim().length < 2) {
       setClassResults([])
+      setSearching(false)
       return
     }
+    let active = true
+    setClassResults([])
+    setError(null)
     const timer = window.setTimeout(() => {
       setSearching(true)
       const normalizedQuery = classQuery.trim().toLowerCase()
       const request = isDemo
         ? Promise.resolve(demoClasses.filter((course) => `${course.course_name} ${course.teacher_last_name}`.toLowerCase().includes(normalizedQuery)))
         : searchClasses({ query: classQuery.trim() })
-      void request.then(setClassResults).catch((caught: unknown) => setError(reportErrorMessage(caught))).finally(() => setSearching(false))
+      void request
+        .then((results) => { if (active) setClassResults(results) })
+        .catch((caught: unknown) => {
+          if (!active) return
+          setClassResults([])
+          setError(reportErrorMessage(caught))
+        })
+        .finally(() => { if (active) setSearching(false) })
     }, 250)
-    return () => window.clearTimeout(timer)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
   }, [classQuery, isDemo, selectedClass, targetType])
 
   function changeTargetType(nextType: ReportTargetType) {
