@@ -103,8 +103,21 @@ function teacherNotApplicable(courseName?: string): boolean {
   return isLunchCourseName(courseName) || isStudyHallCourseName(courseName)
 }
 
-function isSimplifiedSpecialResult(result: ClassSearchResult): boolean {
-  return courseTermPolicy(result) === 'lunch' || isStudyHallCourseName(result.course_name)
+function isGroupedAttendanceResult(result: ClassSearchResult): boolean {
+  return courseTermPolicy(result) === 'lunch' || courseTermPolicy(result) === 'flexible_attendance'
+}
+
+function groupedAttendanceKey(result: ClassSearchResult): string {
+  const periods = [...new Set(result.meeting_slots.map((slot) => slot.period_number))]
+    .sort((left, right) => left - right)
+    .join(',')
+  const teacher = courseTermPolicy(result) === 'lunch' ? 'N/A' : result.teacher_last_name.trim().toLocaleLowerCase()
+  return `${result.course_name_id}:${teacher}:${periods}`
+}
+
+function groupedAttendancePeriodLabel(result: ClassSearchResult, fallbackPeriod: number): string {
+  const periods = [...new Set(result.meeting_slots.map((slot) => slot.period_number))].sort((left, right) => left - right)
+  return periods.length > 0 ? periods.map((value) => `P${value}`).join(' / ') : `P${fallbackPeriod}`
 }
 
 function specialResultRank(result: ClassSearchResult, semester: SemesterTerm, dayType: DayType, period: number): number {
@@ -123,12 +136,12 @@ function collapseSpecialCourseResults(results: ClassSearchResult[], semester: Se
   const specialIndexes = new Map<string, number>()
 
   for (const result of results) {
-    if (!isSimplifiedSpecialResult(result)) {
+    if (!isGroupedAttendanceResult(result)) {
       collapsed.push(result)
       continue
     }
 
-    const key = `${result.course_name_id}:${period}`
+    const key = groupedAttendanceKey(result)
     const existingIndex = specialIndexes.get(key)
     if (existingIndex === undefined) {
       specialIndexes.set(key, collapsed.length)
@@ -268,7 +281,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
     setIsDoublePeriod(result.is_double_period)
     if (policy === 'flexible_attendance') {
       setTerm(semester)
-      setMeetingSlots(semesterEveryDaySlots(period))
+      setMeetingSlots(semesterEveryDaySlots(result.meeting_slots[0]?.period_number ?? period))
     } else if (policy === 'lunch') {
       setTerm(semester)
       setMeetingSlots(semesterEveryDaySlots(period))
@@ -377,23 +390,24 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
             <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search class or teacher</span><input autoFocus={shouldAutoFocus} placeholder="Search class or teacher" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
             <div className="search-results" aria-live="polite">
               {loading ? <p className="muted">Searching…</p> : searchError ? null : displayResults.length === 0 ? <p className="empty-inline">No classes match this semester and period.</p> : displayResults.map((result) => {
-                const simplifiedSpecial = isSimplifiedSpecialResult(result)
+                const groupedAttendance = isGroupedAttendanceResult(result)
+                const hideTeacher = isLunchCourseName(result.course_name) || isStudyHallCourseName(result.course_name)
                 return (
                   <label className={selected?.id === result.id ? 'class-result is-selected' : 'class-result'} key={result.id}>
                     <input type="radio" name="class-result" checked={selected?.id === result.id} onChange={() => selectClass(result)} />
                     <span>
                       <strong>{result.course_name}</strong>
-                      {simplifiedSpecial ? null : <small>{result.teacher_last_name}</small>}
+                      {hideTeacher ? null : <small>{result.teacher_last_name}</small>}
                       <em>
-                        <span>{simplifiedSpecial ? `P${period}` : formatMeetingSlotSummary(result.meeting_slots)}</span>
-                        {simplifiedSpecial ? null : <><i /><span className="class-result-term" data-mobile-label={result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Sem 1' : 'Sem 2'}>{result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</span></>}
+                        <span>{groupedAttendance ? groupedAttendancePeriodLabel(result, period) : formatMeetingSlotSummary(result.meeting_slots)}</span>
+                        {groupedAttendance ? null : <><i /><span className="class-result-term" data-mobile-label={result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Sem 1' : 'Sem 2'}>{result.default_academic_term === 'full_year' ? 'Full Year' : result.default_academic_term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</span></>}
                       </em>
                     </span>
                   </label>
                 )
               })}
             </div>
-            {selected ? <SelectedAttendanceControls policy={selectedPolicy} courseName={selected.course_name} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}
+            {selected ? <SelectedAttendanceControls policy={selectedPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}
             <div className="cant-find"><span>Can’t find the right class?</span><button className="button button-secondary" type="button" onClick={() => setMode('create')}><Plus aria-hidden="true" /> Create a new class</button></div>
             {searchError || error || meetingSlotError ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{searchError ?? error ?? meetingSlotError}</span></div> : null}
             <div className="dialog-action-bar"><button className="button button-primary button-block" type="button" disabled={!selected || saving || Boolean(meetingSlotError)} onClick={() => void confirmSelection()}>{saving ? 'Saving…' : replacing ? 'Save class entry' : 'Add class'}</button></div>
@@ -433,7 +447,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
               <small id="teacher-last-name-help" className="field-help">{teacherIsNotApplicable ? 'Lunch and Study Hall always use N/A for the teacher.' : 'Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.'}</small>
             </label>
             {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
-            <NewCourseFormatControls policy={creatingPolicy} courseName={activeCourseName} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />
+            <NewCourseFormatControls policy={creatingPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />
             {creatingPolicy !== 'flexible_attendance' && creatingPolicy !== 'sectioned_attendance' && creatingPolicy !== 'lunch' ? <MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} onDoublePeriodChange={changeDoublePeriod} onMeetingSlotsChange={setMeetingSlots} /> : null}
             {meetingSlotError ? <p className="form-error" role="alert">{meetingSlotError}</p> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
@@ -445,9 +459,8 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   )
 }
 
-function SelectedAttendanceControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
+function SelectedAttendanceControls({ policy, term, meetingSlots, dayType, period, onChange }: {
   policy: CourseTermPolicy
-  courseName: string
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
   dayType: DayType
@@ -455,14 +468,12 @@ function SelectedAttendanceControls({ policy, courseName, term, meetingSlots, da
   onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
 }) {
   if (policy === 'lunch') return <AutomaticSpecialCourseControls legend="Lunch schedule" lunch term={term} dayType={dayType} period={period} onChange={onChange} />
-  if (policy === 'flexible_attendance' && isStudyHallCourseName(courseName)) return <AutomaticSpecialCourseControls legend="Study Hall schedule" term={term} dayType={dayType} period={period} onChange={onChange} />
-  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls term={term} meetingSlots={meetingSlots} onChange={onChange} />
+  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls fixedPeriod={meetingSlots[0]?.period_number ?? period} term={term} meetingSlots={meetingSlots} onChange={onChange} />
   return <div className="term-field"><p><span>Academic term</span><strong>{term === 'full_year' ? 'Full Year' : term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</strong></p></div>
 }
 
-function NewCourseFormatControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
+function NewCourseFormatControls({ policy, term, meetingSlots, dayType, period, onChange }: {
   policy: CourseTermPolicy
-  courseName: string
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
   dayType: DayType
@@ -472,7 +483,6 @@ function NewCourseFormatControls({ policy, courseName, term, meetingSlots, dayTy
   if (policy === 'full_year') return <div className="term-field"><p><span>Academic term</span><strong>Full Year</strong></p></div>
   if (policy === 'semester') return <SemesterSelect label="Semester" term={term} onChange={(nextTerm) => onChange(nextTerm, meetingSlots)} />
   if (policy === 'lunch') return <AutomaticSpecialCourseControls legend="Lunch schedule" lunch term={term} dayType={dayType} period={period} onChange={onChange} />
-  if (policy === 'flexible_attendance' && isStudyHallCourseName(courseName)) return <AutomaticSpecialCourseControls legend="Study Hall schedule" term={term} dayType={dayType} period={period} onChange={onChange} />
   if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') return <FlexibleAttendanceControls term={term} meetingSlots={meetingSlots} onChange={onChange} />
   return <label>{policy === 'variable_credit' ? 'Credit and term' : 'Course version format'}
     <select value={term} onChange={(event) => onChange(event.target.value as AcademicTerm, meetingSlots)}>
@@ -507,16 +517,17 @@ function AutomaticSpecialCourseControls({ legend, lunch = false, term, dayType, 
   </fieldset>
 }
 
-function FlexibleAttendanceControls({ term, meetingSlots, onChange }: {
+function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, onChange }: {
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
+  fixedPeriod?: number
   onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
 }) {
   const onlyDay = meetingSlots[0]?.day_type ?? 'A'
   const pattern = term === 'full_year' ? `full_year_${onlyDay}` : term
-  const fallback = meetingSlots[0]?.period_number ?? 1
+  const fallback = fixedPeriod ?? meetingSlots[0]?.period_number ?? 1
   const aPeriod = meetingSlotsForDay(meetingSlots, 'A')[0]?.period_number ?? fallback
-  const semesterPeriod = aPeriod
+  const semesterPeriod = fixedPeriod ?? aPeriod
 
   function changePattern(nextPattern: string) {
     if (nextPattern === 'full_year_A' || nextPattern === 'full_year_B') {
@@ -538,9 +549,9 @@ function FlexibleAttendanceControls({ term, meetingSlots, onChange }: {
 
   return <fieldset className="meeting-slot-picker special-attendance-picker"><legend>Attendance pattern</legend>
     <label>Format<select value={pattern} onChange={(event) => changePattern(event.target.value)}><option value="semester_1">Semester 1 · Every day</option><option value="semester_2">Semester 2 · Every day</option><option value="full_year_A">Full Year · A days only</option><option value="full_year_B">Full Year · B days only</option></select></label>
-    <div className="two-field-row">
+    {fixedPeriod ? <p className="inferred-slot">Period: <strong>{fixedPeriod}</strong></p> : <div className="two-field-row">
       {term === 'full_year' ? <DayPeriodSelect dayType={onlyDay} value={fallback} onChange={changePeriod} /> : <PeriodSelect value={semesterPeriod} onChange={(nextPeriod) => changePeriod('A', nextPeriod)} />}
-    </div>
+    </div>}
     <p className="inferred-slot">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
   </fieldset>
 }

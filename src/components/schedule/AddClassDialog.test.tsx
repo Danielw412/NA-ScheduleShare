@@ -151,6 +151,47 @@ describe('AddClassDialog semester formats', () => {
     })))
   })
 
+  it('groups Gym by course, teacher, and period while keeping other teachers and periods separate', async () => {
+    const user = userEvent.setup()
+    mocks.useClassSearch.mockReturnValue({
+      error: null,
+      loading: false,
+      results: [
+        specialResult({ id: 'gym-coach-a', course_name_id: 'course-gym', course_name: 'Gym', teacher_last_name: 'Coach', meeting_slots: [{ day_type: 'A', period_number: 3 }] }),
+        specialResult({ id: 'gym-coach-b', course_name_id: 'course-gym', course_name: 'Gym', teacher_last_name: 'Coach', meeting_slots: [{ day_type: 'B', period_number: 3 }] }),
+        specialResult({ id: 'gym-coach-semester', course_name_id: 'course-gym', course_name: 'Gym', teacher_last_name: 'Coach', default_academic_term: 'semester_1', meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }] }),
+        specialResult({ id: 'gym-trainer', course_name_id: 'course-gym', course_name: 'Gym', teacher_last_name: 'Trainer', meeting_slots: [{ day_type: 'A', period_number: 3 }] }),
+        specialResult({ id: 'gym-coach-p4', course_name_id: 'course-gym', course_name: 'Gym', teacher_last_name: 'Coach', meeting_slots: [{ day_type: 'A', period_number: 4 }] }),
+      ],
+    })
+    renderDialog()
+
+    const rows = screen.getAllByRole('radio').map((radio) => radio.closest('.class-result') as HTMLElement)
+    expect(rows).toHaveLength(3)
+    expect(rows.filter((result) => within(result).queryByText('Coach'))).toHaveLength(2)
+    expect(rows.filter((result) => within(result).queryByText('Trainer'))).toHaveLength(1)
+    expect(rows.filter((result) => within(result).queryByText('P3'))).toHaveLength(2)
+    expect(rows.filter((result) => within(result).queryByText('P4'))).toHaveLength(1)
+
+    const coachPeriodThree = rows.find((result) => within(result).queryByText('Coach') && within(result).queryByText('P3'))
+    const coachPeriodFour = rows.find((result) => within(result).queryByText('Coach') && within(result).queryByText('P4'))
+    expect(coachPeriodThree).toBeDefined()
+    expect(coachPeriodFour).toBeDefined()
+    await user.click(within(coachPeriodFour!).getByRole('radio'))
+    expect(screen.getByText('4', { selector: '.inferred-slot strong' })).toBeInTheDocument()
+    await user.click(within(coachPeriodThree!).getByRole('radio'))
+    expect(screen.getByRole('combobox', { name: 'Format' })).toHaveValue('semester_1')
+    expect(screen.queryByRole('combobox', { name: 'Period' })).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Format' }), 'full_year_B')
+    await user.click(screen.getByRole('button', { name: 'Add class' }))
+    await waitFor(() => expect(mocks.enrollInClass).toHaveBeenCalledWith(
+      'gym-coach-semester',
+      'full_year',
+      [{ day_type: 'B', period_number: 3 }],
+    ))
+  })
+
   it('uses one period selector for semester Gym and writes the period to both days', async () => {
     const user = userEvent.setup()
     renderDialog()
@@ -268,7 +309,7 @@ describe('AddClassDialog semester formats', () => {
     })))
   })
 
-  it('collapses Study Hall variants and infers the day or semester attendance pattern', async () => {
+  it('collapses Study Hall variants and lets the student choose one attendance format', async () => {
     const user = userEvent.setup()
     mocks.useClassSearch.mockReturnValue({
       error: null,
@@ -308,17 +349,19 @@ describe('AddClassDialog semester formats', () => {
     expect(within(result as HTMLElement).queryByText('Full Year')).not.toBeInTheDocument()
 
     await user.click(screen.getByText('Study Hall - NASH'))
-    expect(screen.queryByRole('combobox', { name: 'Format' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Format' })).toHaveValue('semester_1')
+    expect(screen.getByText('3', { selector: '.inferred-slot strong' })).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'A day period' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'B day period' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Period' })).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Academic term' }), 'full_year')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Format' }), 'full_year_B')
     await user.click(screen.getByRole('button', { name: 'Add class' }))
 
     await waitFor(() => expect(mocks.enrollInClass).toHaveBeenCalledWith(
       'study-hall-semester-1',
       'full_year',
-      [{ day_type: 'A', period_number: 3 }],
+      [{ day_type: 'B', period_number: 3 }],
     ))
   })
 
