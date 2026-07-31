@@ -1,11 +1,15 @@
 import { Resvg } from '@cf-wasm/resvg/workerd'
 import interSemibold from '@fontsource/inter/files/inter-latin-600-normal.woff2'
 import interBold from '@fontsource/inter/files/inter-latin-700-normal.woff2'
+import { readBoundedJson } from './http'
 
-const SHARE_PATH = /^\/share\/([^/]+)(\/image\.png)?$/i
+const SHARE_PATH = /^\/share\/([^/]{1,128})(\/image\.png)?$/i
 const SHARE_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WIDTH = 1200
 const HEIGHT = 630
+const MAX_PUBLIC_SCHEDULE_ROWS = 54
+const MAX_SHARE_RESPONSE_BYTES = 128 * 1024
+const SUPABASE_TIMEOUT_MS = 10_000
 const DEFAULT_SITE_URL = 'https://danielw412.github.io/NA-ScheduleShare/'
 
 export interface ShareEnv {
@@ -28,6 +32,18 @@ interface PublicScheduleShare {
 
 const genericShare: PublicScheduleShare = { available: false, schedule: [] }
 
+function configuredSiteUrl(env: ShareEnv): string {
+  const candidate = env.SITE_URL?.trim() || DEFAULT_SITE_URL
+  try {
+    const url = new URL(candidate)
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:')
+      || url.username || url.password || url.search || url.hash) return DEFAULT_SITE_URL.replace(/\/$/, '')
+    return url.href.replace(/\/$/, '')
+  } catch {
+    return DEFAULT_SITE_URL.replace(/\/$/, '')
+  }
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -39,17 +55,18 @@ function safeRow(value: unknown): PublicScheduleRow | null {
   const row = value as Record<string, unknown>
   if (row.day_type !== 'A' && row.day_type !== 'B') return null
   if (!Number.isInteger(row.period_number) || Number(row.period_number) < 1 || Number(row.period_number) > 9) return null
-  if (typeof row.course_name !== 'string' || row.course_name.trim().length === 0) return null
-  if (!['full_year', 'semester_1', 'semester_2'].includes(String(row.academic_term))) return null
+  if (typeof row.course_name !== 'string' || row.course_name.length > 120 || row.course_name.trim().length === 0) return null
+  const academicTerm = row.academic_term
+  if (academicTerm !== 'full_year' && academicTerm !== 'semester_1' && academicTerm !== 'semester_2') return null
   return {
     day_type: row.day_type,
     period_number: Number(row.period_number),
-    course_name: row.course_name.trim().slice(0, 120),
-    academic_term: row.academic_term as PublicScheduleRow['academic_term'],
+    course_name: row.course_name.trim(),
+    academic_term: academicTerm,
   }
 }
 
-async function fetchPublicSchedule(token: string, env: ShareEnv): Promise<PublicScheduleShare> {
+async function fetchPublicSchedule(token: string, env: ShareEnv, requestId?: string): Promise<PublicScheduleShare> {
   const supabaseUrl = env.SUPABASE_URL?.trim().replace(/\/$/, '')
   const publishableKey = env.SUPABASE_PUBLISHABLE_KEY?.trim()
   if (!supabaseUrl || !publishableKey) return genericShare
@@ -64,22 +81,35 @@ async function fetchPublicSchedule(token: string, env: ShareEnv): Promise<Public
         Accept: 'application/json',
       },
       body: JSON.stringify({ p_token: token }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS),
     })
-    if (!response.ok) return genericShare
-    const value: unknown = await response.json()
+    if (!response.ok) {
+      console.error(JSON.stringify({ event: 'public_schedule_fetch_failed', request_id: requestId, status: response.status }))
+      return genericShare
+    }
+    const value = await readBoundedJson(response, MAX_SHARE_RESPONSE_BYTES)
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return genericShare
     const result = value as Record<string, unknown>
-    if (result.available !== true || !Array.isArray(result.schedule)) return genericShare
-    return { available: true, schedule: result.schedule.map(safeRow).filter((row): row is PublicScheduleRow => row !== null) }
-  } catch {
+    if (result.available !== true || !Array.isArray(result.schedule)
+      || result.schedule.length < 1 || result.schedule.length > MAX_PUBLIC_SCHEDULE_ROWS) return genericShare
+    const schedule = result.schedule.map(safeRow).filter((row): row is PublicScheduleRow => row !== null)
+    if (schedule.length !== result.schedule.length) return genericShare
+    return { available: true, schedule }
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'public_schedule_fetch_failed',
+      request_id: requestId,
+      error_name: error instanceof Error ? error.name : 'UnknownError',
+    }))
     return genericShare
   }
 }
 
-function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: ShareEnv): string {
+function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: ShareEnv, nonce: string): string {
   const canonicalUrl = `${url.origin}${url.pathname}`
   const imageUrl = `${canonicalUrl}/image.png`
-  const siteUrl = (env.SITE_URL?.trim() || DEFAULT_SITE_URL).replace(/\/$/, '')
+  const siteUrl = configuredSiteUrl(env)
   const reactUrl = `${siteUrl}/#/share/${encodeURIComponent(token)}`
   const title = share.available
     ? 'A/B-Day Schedule | NA ScheduleShare'
@@ -106,7 +136,7 @@ function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: Shar
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
-<script>window.location.replace(${JSON.stringify(reactUrl)})</script>
+<script nonce="${nonce}">window.location.replace(${JSON.stringify(reactUrl)})</script>
 </head><body><p>Opening ScheduleShare… <a href="${escapeHtml(reactUrl)}">Continue to the shared schedule</a>.</p></body></html>`
 }
 
@@ -114,19 +144,26 @@ export async function handleShareRequest(request: Request, env: ShareEnv): Promi
   const url = new URL(request.url)
   const match = url.pathname.match(SHARE_PATH)
   if (!match) return null
+  const headers = new Headers({
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'Permissions-Policy': 'camera=(), geolocation=(), microphone=()',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'X-Robots-Tag': 'noindex, nofollow, noarchive',
+  })
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } })
+    headers.set('Allow', 'GET, HEAD')
+    headers.set('Content-Type', 'text/plain; charset=utf-8')
+    return new Response('Method not allowed', { status: 405, headers })
   }
 
   const token = match[1].toLowerCase()
-  const share = SHARE_TOKEN.test(token) ? await fetchPublicSchedule(token, env) : genericShare
+  const cfRay = request.headers.get('CF-Ray')
+  const requestId = cfRay && /^[a-z0-9-]{1,100}$/i.test(cfRay) ? cfRay : undefined
+  const share = SHARE_TOKEN.test(token) ? await fetchPublicSchedule(token, env, requestId) : genericShare
   const status = share.available ? 200 : 404
-  const headers = new Headers({
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-  })
-
   if (match[2]) {
     headers.set('Content-Type', 'image/png')
     const png = request.method === 'HEAD' ? null : await renderPreviewPng(share)
@@ -134,7 +171,9 @@ export async function handleShareRequest(request: Request, env: ShareEnv): Promi
   }
 
   headers.set('Content-Type', 'text/html; charset=utf-8')
-  return new Response(request.method === 'HEAD' ? null : pageHtml(url, token, share, env), { status, headers })
+  const nonce = crypto.randomUUID().replace(/-/g, '')
+  headers.set('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`)
+  return new Response(request.method === 'HEAD' ? null : pageHtml(url, token, share, env, nonce), { status, headers })
 }
 
 const COURSE_FONT_SIZE = 20
@@ -233,9 +272,14 @@ export async function renderPreviewPng(share: PublicScheduleShare): Promise<Uint
     shapeRendering: 2,
     textRendering: 2,
   })
-  const image = renderer.render()
-  const png = image.asPng().slice()
-  image.free()
-  renderer.free()
-  return png
+  try {
+    const image = renderer.render()
+    try {
+      return image.asPng().slice()
+    } finally {
+      image.free()
+    }
+  } finally {
+    renderer.free()
+  }
 }

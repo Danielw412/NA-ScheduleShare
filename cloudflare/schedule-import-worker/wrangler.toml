@@ -1,6 +1,7 @@
 name = "na-scheduleshare-import"
 main = "src/entry.ts"
 compatibility_date = "2026-07-16"
+compatibility_flags = ["nodejs_compat"]
 routes = [
   { pattern = "schedule-api.naclubs.net", custom_domain = true }
 ]
@@ -17,6 +18,19 @@ preview_id = "50dc62af983a4f69a91a89aed2a56a4e"
 RATE_LIMIT_MAX = "6"
 RATE_LIMIT_WINDOW_SECONDS = "3600"
 SITE_URL = "https://schedule.naclubs.net/"
+
+# Share URLs contain access tokens. Persist explicit structured application logs,
+# but do not retain automatic request paths or traces.
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1.0
+invocation_logs = false
+
+[observability.traces]
+enabled = false
 
 [secrets]
 required = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"]

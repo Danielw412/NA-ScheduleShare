@@ -8,6 +8,7 @@ import { ScheduleImportDialog, type ScheduleImportClarification } from '../compo
 import { TermSelector } from '../components/schedule/TermSelector'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useAuth } from '../features/auth/AuthProvider'
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility'
 import { useSchedule } from '../hooks/useSchedule'
 import type { ClassDefinition, DayType, ScheduleEnrollment, SemesterTerm } from '../lib/domain'
 import {
@@ -154,8 +155,9 @@ export function SchedulePage() {
   const [showSavedCheck, setShowSavedCheck] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareCtaDismissed, setShareCtaDismissed] = useState(() => user ? hasDismissedShareCta(user.id) : true)
-  const onboardingChecked = useRef(false)
-  const guestTransferStarted = useRef(false)
+  const clearScheduleDialogRef = useDialogAccessibility(clearScheduleOpen, closeClearScheduleDialog, !clearingSchedule)
+  const onboardingCheckedFor = useRef<string | null>(null)
+  const guestTransferStartedFor = useRef<string | null>(null)
   const guestPreviewEnrollments = useMemo(
     () => guestImportResult ? scheduleImportPreviewEnrollments(guestImportResult) : [],
     [guestImportResult],
@@ -203,12 +205,12 @@ export function SchedulePage() {
   useEffect(() => {
     if (!user || schedule.loading) return
     if (schedule.enrollments.length > 0) {
-      onboardingChecked.current = true
+      onboardingCheckedFor.current = user.id
       rememberOnboarding(user.id, 'completed')
       return
     }
     if (searchParams.get('import') === '1') {
-      onboardingChecked.current = true
+      onboardingCheckedFor.current = user.id
       setImportOnboarding(false)
       setImportOpen(true)
       const nextParams = new URLSearchParams(searchParams)
@@ -217,11 +219,11 @@ export function SchedulePage() {
       return
     }
     if (loadGuestScheduleImportDraft()) {
-      onboardingChecked.current = true
+      onboardingCheckedFor.current = user.id
       return
     }
-    if (onboardingChecked.current) return
-    onboardingChecked.current = true
+    if (onboardingCheckedFor.current === user.id) return
+    onboardingCheckedFor.current = user.id
     if (!hasHandledOnboarding(user.id)) {
       setImportOnboarding(true)
       setImportOpen(true)
@@ -249,10 +251,10 @@ export function SchedulePage() {
       || !profile.onboarding_completed
       || schedule.loading
       || schedule.enrollments.length > 0
-      || guestTransferStarted.current) return
+      || guestTransferStartedFor.current === user.id) return
     const draft = loadGuestScheduleImportDraft()
     if (!draft) return
-    guestTransferStarted.current = true
+    guestTransferStartedFor.current = user.id
     const grade = profile.grade
     const removeLegacyResumeMarker = () => {
       if (searchParams.get('import') !== 'resume') return
@@ -277,13 +279,18 @@ export function SchedulePage() {
   }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
-    if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
-    else {
-      await removeEnrollment(enrollment.id)
-      await schedule.reload()
+    try {
+      if (isDemo) schedule.removeDemoEnrollment(enrollment.id)
+      else {
+        await removeEnrollment(enrollment.id)
+        await schedule.reload()
+      }
+      setMessage(`${enrollment.class.course_name} was removed from your schedule.`)
+      setShowSavedCheck(false)
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'The class could not be removed from your schedule.')
+      setShowSavedCheck(false)
     }
-    setMessage(`${enrollment.class.course_name} was removed from your schedule.`)
-    setShowSavedCheck(false)
   }
 
   async function clearAllClasses() {
@@ -345,6 +352,10 @@ export function SchedulePage() {
   function dismissShareCta() {
     if (user) rememberShareCtaDismissal(user.id)
     setShareCtaDismissed(true)
+  }
+
+  function closeClearScheduleDialog() {
+    if (!clearingSchedule) setClearScheduleOpen(false)
   }
 
   function openImport(onboarding = false) {
@@ -506,10 +517,10 @@ export function SchedulePage() {
         onClarificationChange={updateClarification}
         onClarificationResolved={finishClarification}
       /> : null}
-      {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !clearingSchedule) setClearScheduleOpen(false) }}>
-        <section className="class-dialog clear-schedule-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description">
-          <header><div><h2 id="clear-schedule-dialog-title">Clear your schedule?</h2><p id="clear-schedule-dialog-description">Are you sure? This will remove all {schedule.enrollments.length} {schedule.enrollments.length === 1 ? 'class' : 'classes'} from your schedule. The shared classes themselves will not be deleted.</p></div><button className="icon-button" type="button" aria-label="Close clear schedule confirmation" disabled={clearingSchedule} onClick={() => setClearScheduleOpen(false)}><X aria-hidden="true" /></button></header>
-          <div className="form-actions"><button className="button button-secondary" type="button" disabled={clearingSchedule} onClick={() => setClearScheduleOpen(false)}>Cancel</button><button className="button button-danger" type="button" disabled={clearingSchedule} onClick={() => void clearAllClasses()}>{clearingSchedule ? 'Clearing…' : 'Yes, clear schedule'}</button></div>
+      {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeClearScheduleDialog() }}>
+        <section className="class-dialog clear-schedule-dialog" ref={clearScheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description" tabIndex={-1}>
+          <header><div><h2 id="clear-schedule-dialog-title">Clear your schedule?</h2><p id="clear-schedule-dialog-description">Are you sure? This will remove all {schedule.enrollments.length} {schedule.enrollments.length === 1 ? 'class' : 'classes'} from your schedule. The shared classes themselves will not be deleted.</p></div><button className="icon-button" type="button" aria-label="Close clear schedule confirmation" disabled={clearingSchedule} onClick={closeClearScheduleDialog}><X aria-hidden="true" /></button></header>
+          <div className="form-actions"><button className="button button-secondary" type="button" disabled={clearingSchedule} onClick={closeClearScheduleDialog}>Cancel</button><button className="button button-danger" type="button" disabled={clearingSchedule} onClick={() => void clearAllClasses()}>{clearingSchedule ? 'Clearing…' : 'Yes, clear schedule'}</button></div>
         </section>
       </div> : null}
     </div>

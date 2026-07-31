@@ -27,7 +27,14 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
   const [feedback, setFeedback] = useState<string | null>(null)
   const [respondingTo, setRespondingTo] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const bellRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
   const requestVersion = useRef(0)
+
+  const closeAndRestoreFocus = useCallback(() => {
+    setOpen(false)
+    bellRef.current?.focus()
+  }, [])
 
   const refresh = useCallback(async (showLoading = false) => {
     const version = ++requestVersion.current
@@ -74,11 +81,12 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!open) return
+    panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') closeAndRestoreFocus()
     }
     document.addEventListener('pointerdown', closeOnOutsidePress)
     document.addEventListener('keydown', closeOnEscape)
@@ -86,17 +94,25 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
       document.removeEventListener('pointerdown', closeOnOutsidePress)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [open])
+  }, [closeAndRestoreFocus, open])
 
   useEffect(() => {
     if (!open) return
+    let active = true
     void refresh(true).then(async () => {
-      await markScheduleAccessNotificationsRead()
+      try {
+        await markScheduleAccessNotificationsRead()
+      } catch {
+        if (active) setError('Notifications could not be marked as read.')
+        return
+      }
+      if (!active) return
       setBundle((current) => ({
         count: current.notifications.filter((item) => item.kind === 'incoming_request').length,
         notifications: current.notifications.map((item) => item.kind === 'request_update' ? { ...item, read: true } : item),
       }))
     })
+    return () => { active = false }
   }, [open, refresh])
 
   async function respond(notification: ScheduleAccessNotification, allow: boolean) {
@@ -119,6 +135,7 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
   return (
     <div className="schedule-notifications" ref={rootRef}>
       <button
+        ref={bellRef}
         aria-controls="schedule-notification-panel"
         aria-expanded={open}
         aria-label={bundle.count > 0 ? `Notifications, ${bundle.count} pending or unread` : 'Notifications'}
@@ -129,11 +146,11 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
         <Bell aria-hidden="true" />
         {bundle.count > 0 ? <span className="notification-badge">{badgeLabel}</span> : null}
       </button>
-      {open ? <button className="notification-sheet-backdrop" type="button" aria-label="Close notifications" onClick={() => setOpen(false)} /> : null}
-      {open ? <section aria-label="Schedule access notifications" className="notification-panel" id="schedule-notification-panel">
+      {open ? <button className="notification-sheet-backdrop" type="button" aria-label="Close notifications" onClick={closeAndRestoreFocus} /> : null}
+      {open ? <section aria-labelledby="schedule-notification-heading" className="notification-panel" id="schedule-notification-panel" ref={panelRef} role="dialog">
         <header>
-          <div><h2>Notifications</h2><p>Schedule access</p></div>
-          <button className="icon-button" type="button" aria-label="Close notifications" onClick={() => setOpen(false)}><X aria-hidden="true" /></button>
+          <div><h2 id="schedule-notification-heading">Notifications</h2><p>Schedule access</p></div>
+          <button className="icon-button" type="button" aria-label="Close notifications" onClick={closeAndRestoreFocus}><X aria-hidden="true" /></button>
         </header>
         {feedback ? <p className="notification-feedback" role="status"><Check size={16} aria-hidden="true" /> {feedback}</p> : null}
         {error ? <p className="notification-error" role="alert">{error}</p> : null}

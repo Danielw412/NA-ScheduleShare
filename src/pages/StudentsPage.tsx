@@ -71,8 +71,16 @@ function ClassmatesList() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    let active = true
+    setClassmates([])
+    setLoading(true)
+    setError('')
     const request = isDemo ? Promise.resolve(demoClassmates) : getClassmates()
-    void request.then(setClassmates).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Unable to load classmates.')).finally(() => setLoading(false))
+    void request
+      .then((nextClassmates) => { if (active) setClassmates(nextClassmates) })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Unable to load classmates.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [isDemo])
 
   return <section className="students-view-panel" aria-label="Classmates">
@@ -106,9 +114,9 @@ function StudentDirectory() {
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setError(null)
     const timer = window.setTimeout(() => {
-      setLoading(true)
-      setError(null)
       const request = isDemo
         ? Promise.resolve(demoStudents.filter((student) => (!query || student.full_name.toLowerCase().includes(query.toLowerCase())) && (!grade || student.grade === grade)))
         : searchStudentDirectory({ query, grade: grade || undefined, courseName, teacherLastName })
@@ -184,7 +192,7 @@ function StudentDirectory() {
     {success ? <div className="toast-message" role="status"><span>{success}</span><button type="button" aria-label="Dismiss message" onClick={() => setSuccess(null)}>×</button></div> : null}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <div className="student-results" aria-label="Student schedules">
-      {loading ? <p className="muted">Loading schedules…</p> : students.map((student) => {
+      {loading ? <p className="muted" role="status">Loading schedules…</p> : students.map((student) => {
         const isActing = acting?.studentId === student.student_id
         const actionLabel = acting?.action === 'allow' ? 'Allowing…' : acting?.action === 'remove' ? 'Removing…' : acting?.action === 'request' ? 'Requesting…' : 'Canceling…'
         const profile = <><ProfileAvatar userId={student.student_id} fullName={student.full_name} /><span className="student-access-name"><strong>{student.full_name}</strong><small>Grade {student.grade}{student.shared_class_count > 0 ? ` · ${student.shared_class_count} shared ${student.shared_class_count === 1 ? 'class' : 'classes'}` : ''}</small></span></>
@@ -205,7 +213,7 @@ function StudentDirectory() {
           </div>
         </article>
       })}
-      {!loading && students.length === 0 ? <p className="empty-inline">No students match those filters.</p> : null}
+      {!loading && !error && students.length === 0 ? <p className="empty-inline">No students match those filters.</p> : null}
     </div>
   </section>
 }

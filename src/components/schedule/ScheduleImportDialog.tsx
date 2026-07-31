@@ -2,6 +2,7 @@ import { AlertTriangle, Bug, CheckCircle2, ChevronDown, ClipboardPaste, FileImag
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
 import type { CourseNameSearchResult, CourseTermPolicy, MeetingSlot, ScheduleEnrollment, ScheduleImportModelRecord } from '../../lib/domain'
 import { formatMeetingSlotSummary, sameSlot, sortMeetingSlots, termsOverlap } from '../../lib/schedule'
 import {
@@ -309,6 +310,7 @@ export function ScheduleImportDialog({
   const [resultSummary, setResultSummary] = useState<Omit<ScheduleImportResult, 'rows'>>({ warnings: [], image_count: 0 })
   const imagesRef = useRef(images)
   imagesRef.current = images
+  const dialogRef = useDialogAccessibility(open, closeDialog, phase !== 'saving')
 
   useEffect(() => () => {
     imagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
@@ -592,7 +594,7 @@ export function ScheduleImportDialog({
   if (!open) return null
   return createPortal(
     <div className="dialog-backdrop import-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && phase !== 'saving') closeDialog() }}>
-      <section className="class-dialog schedule-import-dialog" role="dialog" aria-modal="true" aria-labelledby="schedule-import-title">
+      <section className="class-dialog schedule-import-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="schedule-import-title" tabIndex={-1}>
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>

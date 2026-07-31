@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import worker from '../src/entry'
 import { handleRequest, parseTeacherLastName, type Env } from '../src/index'
 
 const USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -137,16 +138,29 @@ function mockSupabase(existingClasses: unknown[] = [], authStatus = 200, catalog
   }))
 }
 
-function requestWithImages(files: File[], options: { origin?: string; token?: string } = {}) {
+function requestWithImages(
+  files: File[],
+  options: { origin?: string; token?: string; includeContentLength?: boolean } = {},
+) {
   const form = new FormData()
   for (const file of files) form.append('images', file)
   const headers = new Headers({ Origin: options.origin ?? ORIGIN })
   if (options.token !== '') headers.set('Authorization', `Bearer ${options.token ?? 'valid-token'}`)
+  if (options.includeContentLength !== false) {
+    headers.set('Content-Length', String(files.reduce((total, file) => total + file.size, 0) + 1024))
+  }
   return new Request('https://worker.example/api/schedule-import', { method: 'POST', headers, body: form })
 }
 
 function image(name = 'schedule.png', type = 'image/png', bytes = 32) {
-  return new File([new Uint8Array(bytes)], name, { type })
+  const data = new Uint8Array(bytes)
+  if (type === 'image/png') data.set([137, 80, 78, 71, 13, 10, 26, 10].slice(0, bytes))
+  if (type === 'image/jpeg') data.set([0xff, 0xd8, 0xff].slice(0, bytes))
+  if (type === 'image/webp') {
+    data.set([0x52, 0x49, 0x46, 0x46].slice(0, bytes))
+    if (bytes > 8) data.set([0x57, 0x45, 0x42, 0x50].slice(0, bytes - 8), 8)
+  }
+  return new File([data], name, { type })
 }
 
 async function body(response: Response) {
@@ -162,9 +176,11 @@ beforeEach(() => {
 
 describe('authentication and CORS', () => {
   it('rejects requests without a Supabase access token', async () => {
+    const formDataSpy = vi.spyOn(Request.prototype, 'formData')
     const response = await handleRequest(requestWithImages([image()], { token: '' }), createEnv())
     expect(response.status).toBe(401)
     expect(await body(response)).toMatchObject({ error: 'authentication_required' })
+    expect(formDataSpy).not.toHaveBeenCalled()
   })
 
   it('rejects an expired token after server-side validation', async () => {
@@ -196,7 +212,25 @@ describe('authentication and CORS', () => {
       method: 'OPTIONS', headers: { Origin: 'https://attacker.example' },
     }), createEnv())
     expect(blocked.status).toBe(403)
-    expect(blocked.headers.get('Access-Control-Allow-Origin')).not.toBe('https://attacker.example')
+    expect(blocked.headers.get('Access-Control-Allow-Origin')).toBeNull()
+  })
+
+  it('accepts the configured production site origin at the deployed entrypoint', async () => {
+    const env = createEnv()
+    env.SITE_URL = 'https://schedule.naclubs.net/'
+    const response = await worker.fetch(new Request('https://worker.example/api/schedule-import', {
+      method: 'OPTIONS', headers: { Origin: 'https://schedule.naclubs.net' },
+    }), env)
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://schedule.naclubs.net')
+  })
+
+  it('verifies authentication only once at the deployed entrypoint', async () => {
+    const response = await worker.fetch(requestWithImages([image()]), createEnv())
+
+    expect(response.status).toBe(200)
+    expect(mockSupabaseCalls.filter(({ url }) => url.includes('/auth/v1/user'))).toHaveLength(1)
   })
 })
 
@@ -207,8 +241,48 @@ describe('image input and rate limiting', () => {
     expect(await body(response)).toMatchObject({ image_count: 1 })
   })
 
+  it('accepts a bounded multipart upload when Content-Length is unavailable', async () => {
+    const request = requestWithImages([image()], { includeContentLength: false })
+
+    const response = await handleRequest(request, createEnv())
+
+    expect(response.status).toBe(200)
+    expect(await body(response)).toMatchObject({ image_count: 1 })
+  })
+
+  it('stops an oversized chunked upload before parsing multipart data', async () => {
+    let emittedChunks = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emittedChunks >= 31) {
+          controller.close()
+          return
+        }
+        emittedChunks += 1
+        controller.enqueue(new Uint8Array(1024 * 1024))
+      },
+    })
+    const request = new Request('https://worker.example/api/schedule-import', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid-token',
+        'Content-Type': 'multipart/form-data; boundary=test-boundary',
+        Origin: ORIGIN,
+      },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' })
+    const formDataSpy = vi.spyOn(Request.prototype, 'formData')
+
+    const response = await handleRequest(request, createEnv())
+
+    expect(response.status).toBe(413)
+    expect(await body(response)).toMatchObject({ error: 'request_too_large' })
+    expect(formDataSpy).not.toHaveBeenCalled()
+  })
+
   it('passes the exact uploaded bytes in the schema-required Moondream data URI', async () => {
-    const uploadedBytes = [0, 1, 2, 127, 128, 254, 255]
+    const uploadedBytes = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 127, 128, 254, 255]
     const calls: AiRunCall[] = []
     const uploadedImage = new File([Uint8Array.from(uploadedBytes)], 'schedule.png', { type: 'image/png' })
     const response = await handleRequest(
@@ -313,6 +387,36 @@ describe('image input and rate limiting', () => {
     expect(await body(oversized)).toMatchObject({ error: 'image_too_large' })
   })
 
+  it('rejects files whose bytes do not match the declared image type', async () => {
+    const disguised = new File([new Uint8Array(32)], 'schedule.png', { type: 'image/png' })
+    const response = await handleRequest(requestWithImages([disguised]), createEnv())
+
+    expect(response.status).toBe(415)
+    expect(await body(response)).toMatchObject({ error: 'invalid_image_data' })
+  })
+
+  it('processes large screenshots sequentially to keep peak memory bounded', async () => {
+    const env = createEnv()
+    let activeCalls = 0
+    let maximumActiveCalls = 0
+    env.AI = {
+      async run() {
+        activeCalls += 1
+        maximumActiveCalls = Math.max(maximumActiveCalls, activeCalls)
+        await new Promise<void>((resolve) => queueMicrotask(resolve))
+        activeCalls -= 1
+        return { result: { answer: JSON.stringify(aiResult()) } }
+      },
+    }
+
+    const response = await handleRequest(requestWithImages([
+      image('one.png'), image('two.png'), image('three.png'),
+    ]), env)
+
+    expect(response.status).toBe(200)
+    expect(maximumActiveCalls).toBe(1)
+  })
+
   it('enforces a per-user KV rate limit', async () => {
     const env = createEnv()
     env.RATE_LIMIT_MAX = '1'
@@ -412,5 +516,32 @@ describe('model failure handling', () => {
     const failure = await handleRequest(requestWithImages([image()]), createEnv([new Error('daemon down')]))
     expect(failure.status).toBe(503)
     expect(await body(failure)).toMatchObject({ error: 'ai_unavailable' })
+  })
+
+  it('does not write raw AI failure messages to logs', async () => {
+    const sensitiveMessage = 'upstream echoed private-image-metadata-12345'
+    const response = await handleRequest(requestWithImages([image()]), createEnv([new Error(sensitiveMessage)]))
+    const logs = vi.mocked(console.error).mock.calls.map(([value]) => String(value))
+
+    expect(response.status).toBe(503)
+    expect(logs.join('\n')).not.toContain(sensitiveMessage)
+    expect(logs.some((value) => value.includes('"failure_category":"upstream"'))).toBe(true)
+  })
+
+  it('does not write model-supplied object keys to logs', async () => {
+    const sensitiveKey = 'private-student-course-key-12345'
+    const malformedShape = await handleRequest(
+      requestWithImages([image()]),
+      createEnv([{ [sensitiveKey]: true }]),
+    )
+
+    const invalidResultEnv = createEnv()
+    invalidResultEnv.AI.run = vi.fn(async () => ({ [sensitiveKey]: true }))
+    const invalidResult = await handleRequest(requestWithImages([image()]), invalidResultEnv)
+    const logs = vi.mocked(console.error).mock.calls.map(([value]) => String(value)).join('\n')
+
+    expect(malformedShape.status).toBe(502)
+    expect(invalidResult.status).toBe(502)
+    expect(logs).not.toContain(sensitiveKey)
   })
 })

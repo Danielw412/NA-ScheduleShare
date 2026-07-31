@@ -1,5 +1,5 @@
 import { AlertTriangle, MoreVertical, Plus } from 'lucide-react'
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { termLabels, type DayType, type ScheduleEnrollment, type SemesterTerm } from '../../lib/domain'
 import { enrollmentAtSlot, enrollmentMeetingSlots, findScheduleConflicts, hasMultiplePeriodsOnAnyDay, isMeetingSlotContinuation, meetingSlotsForDay, PERIOD_NUMBERS } from '../../lib/schedule'
@@ -27,28 +27,55 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
   const [openMenu, setOpenMenu] = useState<CellMenuState | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setOpenMenu(null)
+    if (restoreFocus) triggerRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     if (!openMenu) return
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpenMenu(null)
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) closeMenu()
     }
-    const closeMenu = () => setOpenMenu(null)
+    const closeOnViewportChange = () => closeMenu(true)
+    const handleMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMenu(true)
+        return
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !menuRef.current?.contains(event.target as Node)) return
+      const items = [...menuRef.current.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      if (items.length === 0) return
+      event.preventDefault()
+      const currentIndex = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement))
+      const nextIndex = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : event.key === 'ArrowDown'
+            ? (currentIndex + 1) % items.length
+            : (currentIndex - 1 + items.length) % items.length
+      items[nextIndex]?.focus()
+    }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
-    window.addEventListener('resize', closeMenu)
-    window.addEventListener('scroll', closeMenu, true)
+    document.addEventListener('keydown', handleMenuKeyDown)
+    window.addEventListener('resize', closeOnViewportChange)
+    window.addEventListener('scroll', closeOnViewportChange, true)
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
-      window.removeEventListener('resize', closeMenu)
-      window.removeEventListener('scroll', closeMenu, true)
+      document.removeEventListener('keydown', handleMenuKeyDown)
+      window.removeEventListener('resize', closeOnViewportChange)
+      window.removeEventListener('scroll', closeOnViewportChange, true)
     }
-  }, [openMenu])
+  }, [closeMenu, openMenu])
 
   function toggleMenu(event: MouseEvent<HTMLButtonElement>, enrollment: ScheduleEnrollment, dayType: DayType, period: number) {
     const key = `${enrollment.id}:${dayType}:${period}`
     if (openMenu?.key === key) {
-      setOpenMenu(null)
+      closeMenu(true)
       return
     }
     const rect = event.currentTarget.getBoundingClientRect()
@@ -111,6 +138,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
                     {hasMultiplePeriods && !continuation ? <small>{dayType} Day · {daySlots.map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
                   </div>
                   {!readOnly ? <button
+                    aria-controls={openMenu?.key === `${enrollment.id}:${dayType}:${period}` ? 'schedule-cell-actions' : undefined}
                     aria-expanded={openMenu?.key === `${enrollment.id}:${dayType}:${period}`}
                     aria-haspopup="menu"
                     aria-label={`Actions for ${enrollment.class.course_name}`}
@@ -126,15 +154,15 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
       </div>
       </div>
       {openMenu ? createPortal(
-        <div className="cell-menu-popover" ref={menuRef} role="menu" style={openMenu.style}>
+        <div className="cell-menu-popover" id="schedule-cell-actions" ref={menuRef} role="menu" style={openMenu.style}>
           <div className="cell-menu-term"><span>Academic term</span><strong>{termLabels[openMenu.enrollment.academic_term]}</strong></div>
           <button type="button" role="menuitem" onClick={() => {
+            closeMenu(true)
             onReplace(openMenu.enrollment, openMenu.dayType, openMenu.period)
-            setOpenMenu(null)
           }}>Edit or replace class</button>
           <button className="danger-text" type="button" role="menuitem" onClick={() => {
+            closeMenu(true)
             onRemove(openMenu.enrollment)
-            setOpenMenu(null)
           }}>Remove class</button>
         </div>,
         document.body,

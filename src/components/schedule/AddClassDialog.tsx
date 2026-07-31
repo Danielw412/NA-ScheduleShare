@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../../hooks/useClassSearch'
 import { useCourseNameSearch, type CourseNameSearchExecutor } from '../../hooks/useCourseNameSearch'
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
 import type {
   AcademicTerm,
   ClassDefinition,
@@ -192,6 +193,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const [isDoublePeriod, setIsDoublePeriod] = useState(false)
   const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(() => defaultMeetingSlots(dayType, period))
   const [confirmedNoCourseMatch, setConfirmedNoCourseMatch] = useState(false)
+  const dialogRef = useDialogAccessibility(open, onClose, !saving)
 
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoResults.filter((result) => {
@@ -360,12 +362,12 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   if (!open) return null
   const context = `${semester === 'semester_1' ? 'Semester 1' : 'Semester 2'} · ${dayType} Day · Period ${period}`
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className="class-dialog add-class-dialog" role="dialog" aria-modal="true" aria-labelledby="add-class-title">
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}>
+      <section className="class-dialog add-class-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="add-class-title" tabIndex={-1}>
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div><h2 id="add-class-title">{replacing ? 'Edit class entry' : mode === 'create' ? 'Create a class' : 'Add a class'}</h2><p>{context}</p></div>
-          <button className="icon-button" type="button" aria-label="Close" autoFocus={!shouldAutoFocus} onClick={onClose}><X aria-hidden="true" /></button>
+          <button className="icon-button" type="button" aria-label="Close" autoFocus={!shouldAutoFocus} disabled={saving} onClick={onClose}><X aria-hidden="true" /></button>
         </header>
         {mode === 'search' ? (
           <>

@@ -5,6 +5,15 @@ import { LoadingScreen } from '../ui/LoadingScreen'
 import { useGuestAccountPrompt } from './GuestAccountPrompt'
 import { SuspensionNotice } from './SuspensionNotice'
 
+function AccountLoadFailure() {
+  const { refreshProfile } = useAuth()
+  return <section className="empty-state" role="alert">
+    <h1>We couldn’t load your account</h1>
+    <p>Your private account data is unavailable right now. Try again before continuing.</p>
+    <button className="button button-primary" type="button" onClick={() => void refreshProfile().catch(() => undefined)}>Try again</button>
+  </section>
+}
+
 export function RequireAuth() {
   const auth = useAuth()
   const location = useLocation()
@@ -15,6 +24,7 @@ export function RequireAuth() {
   if (auth.loading) return <LoadingScreen />
   if (!auth.user) return <Navigate to="/" replace />
   if (auth.accountState?.suspended || auth.accountState?.deleted) return <SuspensionNotice />
+  if (!auth.profile) return <AccountLoadFailure />
   if (auth.profile && !auth.profile.onboarding_completed && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
@@ -26,6 +36,7 @@ export function AllowGuest() {
   const location = useLocation()
   if (auth.loading) return <LoadingScreen />
   if (auth.user && (auth.accountState?.suspended || auth.accountState?.deleted)) return <SuspensionNotice />
+  if (auth.user && !auth.profile) return <AccountLoadFailure />
   if (auth.user && auth.profile && !auth.profile.onboarding_completed && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
@@ -33,7 +44,8 @@ export function AllowGuest() {
 }
 
 export function RequireAdmin() {
-  const { isAdmin, loading } = useAuth()
-  if (loading) return <LoadingScreen />
-  return isAdmin ? <Outlet /> : <Navigate to="/" replace />
+  const auth = useAuth()
+  if (auth.loading) return <LoadingScreen />
+  if (auth.user && !auth.profile) return <AccountLoadFailure />
+  return auth.isAdmin ? <Outlet /> : <Navigate to="/" replace />
 }

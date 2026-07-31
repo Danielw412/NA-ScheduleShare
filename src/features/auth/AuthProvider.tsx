@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent } from '@supabase/supabase-js'
 import { demoProfile } from '../../lib/demo-data'
 import type { AccountState, Grade, PrivacySetting, Profile } from '../../lib/domain'
@@ -72,6 +72,11 @@ function toProfile(row: Record<string, unknown>): Profile {
   }
 }
 
+function isMissingAuthSession(error: unknown): boolean {
+  return error instanceof Error
+    && (error.name === 'AuthSessionMissingError' || error.message === 'Auth session missing!')
+}
+
 async function recordSignInOutcome(provider: 'google' | 'password'): Promise<void> {
   if (!supabase) return
   const { data } = await supabase.rpc('get_my_account_state')
@@ -92,9 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [passwordRecovery, setPasswordRecovery] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState<number>()
+  const hydrationGeneration = useRef(0)
   const isDemo = !isSupabaseConfigured && demoModeEnabled
 
   const hydrateUser = useCallback(async (nextUser: CurrentUser | null) => {
+    const generation = ++hydrationGeneration.current
+    const isCurrent = () => hydrationGeneration.current === generation
     setUser(nextUser)
     setProfile(null)
     setAvatarRevision(undefined)
@@ -106,33 +114,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(true)
-    const { data: accountData, error: accountError } = await supabase.rpc('get_my_account_state')
-    if (accountError) {
-      setLoading(false)
-      throw accountError
-    }
-    const accountRow = Array.isArray(accountData) ? accountData[0] : accountData
-    const nextAccount: AccountState = accountRow
-      ? {
-          suspended: Boolean((accountRow as Record<string, unknown>).suspended),
-          suspension_reason: ((accountRow as Record<string, unknown>).suspension_reason as string | null) ?? null,
-          deleted: Boolean((accountRow as Record<string, unknown>).deleted),
-        }
-      : activeAccount
-    setAccountState(nextAccount)
-    if (nextAccount.suspended || nextAccount.deleted) {
-      setLoading(false)
-      return
-    }
+    try {
+      const { data: accountData, error: accountError } = await supabase.rpc('get_my_account_state')
+      if (!isCurrent()) return
+      if (accountError) throw accountError
+      const accountRow = Array.isArray(accountData) ? accountData[0] : accountData
+      const nextAccount: AccountState = accountRow
+        ? {
+            suspended: Boolean((accountRow as Record<string, unknown>).suspended),
+            suspension_reason: ((accountRow as Record<string, unknown>).suspension_reason as string | null) ?? null,
+            deleted: Boolean((accountRow as Record<string, unknown>).deleted),
+          }
+        : activeAccount
+      setAccountState(nextAccount)
+      if (nextAccount.suspended || nextAccount.deleted) return
 
-    const [profileResult, adminResult] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, grade, privacy_setting, onboarding_completed, students_visited_at, created_at, updated_at').eq('id', nextUser.id).single(),
-      supabase.rpc('is_current_user_admin'),
-    ])
-    if (profileResult.error) throw profileResult.error
-    setProfile(toProfile(profileResult.data as unknown as Record<string, unknown>))
-    setIsAdmin(Boolean(adminResult.data))
-    setLoading(false)
+      const [profileResult, adminResult] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, grade, privacy_setting, onboarding_completed, students_visited_at, created_at, updated_at').eq('id', nextUser.id).single(),
+        supabase.rpc('is_current_user_admin'),
+      ])
+      if (!isCurrent()) return
+      if (profileResult.error) throw profileResult.error
+      setProfile(toProfile(profileResult.data as unknown as Record<string, unknown>))
+      setIsAdmin(Boolean(adminResult.data))
+    } finally {
+      if (isCurrent()) setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -150,24 +157,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let active = true
-    void supabase.auth.getUser().then(({ data }) => {
-      if (!active) return
-      void hydrateUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null)
+    let authEventObserved = false
+    const reportHydrationFailure = (error: unknown) => {
+      if (import.meta.env.DEV) console.error('Could not load the authenticated user.', error)
+    }
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (!active || authEventObserved) return
+      if (error) {
+        if (isMissingAuthSession(error)) {
+          void hydrateUser(null)
+          return
+        }
+        setLoading(false)
+        reportHydrationFailure(error)
+        return
+      }
+      void hydrateUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null).catch(reportHydrationFailure)
+    }, (error: unknown) => {
+      if (!active || authEventObserved) return
+      setLoading(false)
+      reportHydrationFailure(error)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       if (!active) return
       // getUser() above verifies and hydrates the initial session. Ignoring the
       // matching SDK event avoids running the account/profile/admin queries twice.
       if (event === 'INITIAL_SESSION') return
+      authEventObserved = true
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       if (event === 'SIGNED_IN' && window.sessionStorage.getItem('scheduleshare:oauth-sign-in') === 'pending') {
         window.sessionStorage.removeItem('scheduleshare:oauth-sign-in')
         void recordSignInOutcome('google').catch(() => undefined)
       }
-      void hydrateUser(session?.user ? { id: session.user.id, email: session.user.email ?? null } : null)
+      void hydrateUser(session?.user ? { id: session.user.id, email: session.user.email ?? null } : null).catch(reportHydrationFailure)
     })
     return () => {
       active = false
+      hydrationGeneration.current += 1
       listener.subscription.unsubscribe()
     }
   }, [hydrateUser, isDemo])
