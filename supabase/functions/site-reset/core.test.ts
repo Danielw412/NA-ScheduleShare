@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { handleSiteResetRequest, type SiteResetDependencies } from './core'
 
 const USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-const PHRASE = 'RESET SCHEDULESHARE DELETE ALL ACCOUNTS AND CLASSES'
+const PHRASE = 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES'
 
 function dependencies(): SiteResetDependencies {
   return {

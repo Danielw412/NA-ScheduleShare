@@ -744,7 +744,7 @@ export function EventLogsPanel() {
   </section>
 }
 
-const resetPhrase = 'RESET SCHEDULESHARE DELETE ALL ACCOUNTS AND CLASSES'
+const resetPhrase = 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES'
 
 function ProtectedToolsPanel() {
   const [preview, setPreview] = useState<SiteResetPreview | null>(null)
@@ -778,7 +778,7 @@ function ProtectedToolsPanel() {
 
   async function resetSite() {
     if (!acknowledged || confirmation !== resetPhrase) return
-    if (!window.confirm('Final warning: every account, profile picture, schedule, class, course, access request, and report will be permanently removed. Continue?')) return
+    if (!window.confirm('Final warning: every other account and all profile pictures, profile data, schedules, classes, access requests, and reports will be permanently removed. Your account will return to onboarding, while your admin permissions and the course-name catalog remain. Continue?')) return
     setBusy(true)
     setError(null)
     try {
@@ -796,9 +796,9 @@ function ProtectedToolsPanel() {
     {message ? <p className="form-success" role="status">{message}</p> : null}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <section className="site-reset-card">
-      <div><h3>Reset for a new school year</h3><p>This deletes all accounts, profile pictures, profiles, schedules, classes, course names, access requests, reports, and temporary importer data. Configuration and the protected audit record remain.</p></div>
+      <div><h3>Reset for a new school year</h3><p>This deletes every other account and all profile pictures, profile data, schedules, classes, access requests, reports, and temporary importer data. Your account returns to onboarding, while its admin permissions, the course-name catalog, configuration, and the protected audit record remain.</p></div>
       {preview ? <dl>{Object.entries(preview).map(([label, value]) => <div key={label}><dt>{label.replaceAll('_', ' ')}</dt><dd>{value.toLocaleString()}</dd></div>)}</dl> : <p className="muted">Loading exact deletion counts…</p>}
-      <label className="checkbox-row"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>I understand that this removes every account, including mine.</strong><small>Recovery requires students and administrators to create new accounts.</small></span></label>
+      <label className="checkbox-row"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>I understand that this removes every other account and resets my profile.</strong><small>Your sign-in and existing admin permissions remain; everyone else must create a new account.</small></span></label>
       <label className="reset-confirmation-field"><span>Type <strong>{resetPhrase}</strong></span><input autoComplete="off" spellCheck={false} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
       <button className="button button-danger" type="button" disabled={busy || !acknowledged || confirmation !== resetPhrase} onClick={() => void resetSite()}>{busy ? 'Resetting…' : 'Permanently reset ScheduleShare'}</button>
     </section>

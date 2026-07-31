@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(22);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -63,9 +63,101 @@ select set_config('request.jwt.claim.sub', '97000000-0000-4000-8000-000000000003
 set local role authenticated;
 select is(public.is_current_user_super_admin(), true, 'newly granted protected access is enforced by the database');
 select throws_ok(
-  $$select public.service_reset_site_data('97000000-0000-4000-8000-000000000003', 'RESET SCHEDULESHARE DELETE ALL ACCOUNTS AND CLASSES')$$,
+  $$select public.service_reset_site_data('97000000-0000-4000-8000-000000000003', 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES')$$,
   '42501', 'permission denied for function service_reset_site_data',
   'the destructive reset implementation is callable only by the service role Edge Function'
+);
+
+reset role;
+insert into public.course_names (
+  id, name, normalized_name, source, created_by
+) values (
+  '97000000-0000-4000-8000-000000000004',
+  'Reset Preserved Course',
+  'reset preserved course',
+  'approved',
+  '97000000-0000-4000-8000-000000000003'
+);
+create temporary table site_reset_expectations as
+select
+  (select count(*) from public.course_names)::bigint as course_name_count,
+  (
+    select count(*)
+    from auth.users
+    where id <> '97000000-0000-4000-8000-000000000003'
+  )::bigint as account_deletion_count;
+grant select on site_reset_expectations to authenticated;
+
+select set_config('request.jwt.claim.sub', '97000000-0000-4000-8000-000000000003', true);
+set local role authenticated;
+select is(
+  (select accounts from public.super_admin_get_site_reset_preview()),
+  (select account_deletion_count from site_reset_expectations),
+  'the reset preview excludes the retained administrator account from account deletions'
+);
+select is(
+  (select course_names from public.super_admin_get_site_reset_preview()),
+  0::bigint,
+  'the reset preview reports that no course names will be deleted'
+);
+
+reset role;
+set local role service_role;
+select lives_ok(
+  $$select public.service_reset_site_data('97000000-0000-4000-8000-000000000003', 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES')$$,
+  'the service role can complete the reset'
+);
+reset role;
+select is((select count(*) from auth.users), 1::bigint, 'all other Auth accounts are deleted');
+select ok(
+  exists (select 1 from auth.users where id = '97000000-0000-4000-8000-000000000003'),
+  'the resetting administrator Auth account remains'
+);
+select is(
+  (select count(*) from public.course_names),
+  (select course_name_count from site_reset_expectations),
+  'the full course-name catalog remains'
+);
+select ok(
+  exists (
+    select 1
+    from public.course_names
+    where id = '97000000-0000-4000-8000-000000000004'
+  ),
+  'course names created before the reset remain available'
+);
+select is((select count(*) from public.classes), 0::bigint, 'class sections are removed');
+select ok(
+  exists (
+    select 1
+    from public.profiles
+    where id = '97000000-0000-4000-8000-000000000003'
+      and full_name = 'Elevated Target'
+      and grade is null
+      and privacy_setting = 'classmates'
+      and not onboarding_completed
+      and students_visited_at is null
+      and last_login_at is null
+      and last_active_at is null
+  ),
+  'the retained administrator profile returns to first-run state'
+);
+select ok(
+  exists (
+    select 1
+    from private.user_roles
+    where user_id = '97000000-0000-4000-8000-000000000003'
+      and role = 'administrator'
+  ),
+  'the retained account remains an administrator'
+);
+select ok(
+  exists (
+    select 1
+    from private.super_admins
+    where user_id = '97000000-0000-4000-8000-000000000003'
+  ),
+  'the retained account keeps protected reset permissions'
 );
 
 select * from finish();

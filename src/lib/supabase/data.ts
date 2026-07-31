@@ -769,7 +769,6 @@ export async function superAdminResetSite(confirmation: string): Promise<void> {
     const body = response ? await response.clone().json().catch(() => ({})) as { message?: string } : {}
     throw new Error(body.message || 'The website reset did not complete. No database changes were made.')
   }
-  await client.auth.signOut({ scope: 'local' })
 }
 
 export async function markUserActive(): Promise<void> {

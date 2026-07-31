@@ -12,7 +12,7 @@ class HttpError extends Error {
   }
 }
 
-const CONFIRMATION = 'RESET SCHEDULESHARE DELETE ALL ACCOUNTS AND CLASSES'
+const CONFIRMATION = 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES'
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
