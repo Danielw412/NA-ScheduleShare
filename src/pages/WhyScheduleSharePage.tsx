@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  ArrowLeft,
   BellOff,
   CalendarCheck2,
   Globe2,
@@ -9,7 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthProvider'
 
 interface ScheduleShareReason {
@@ -72,25 +73,22 @@ const reasons: ScheduleShareReason[] = [
 
 export function WhyScheduleSharePage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
+
+  function goBack() {
+    if (window.history.length > 1) {
+      void navigate(-1)
+      return
+    }
+    void navigate('/')
+  }
 
   return (
     <div className="why-page">
       <section className="why-hero">
         <div className="why-hero-copy">
-          <h1>Why ScheduleShare beats Saturn at NA.</h1>
-          <p>Saturn tries to do a lot. ScheduleShare does one job—NA schedules—and is unapologetically specific about doing it well.</p>
-          {!user ? <Link className="button button-primary" to="/schedule?import=1">Upload My Schedule <ArrowRight size={18} aria-hidden="true" /></Link> : null}
-        </div>
-        <div className="why-import-demo" aria-label="A PowerSchool screenshot becomes a ready-to-use ScheduleShare schedule">
-          <div>
-            <ImagePlus aria-hidden="true" />
-            <span><strong>PowerSchool screenshot</strong><small>One upload. No class-by-class typing.</small></span>
-          </div>
-          <ArrowRight className="why-demo-arrow" aria-hidden="true" />
-          <div>
-            <CalendarCheck2 aria-hidden="true" />
-            <span><strong>Schedule ready</strong><small>Semesters and A/B days included.</small></span>
-          </div>
+          <h1>Why ScheduleShare over Saturn</h1>
+          <button className="button button-primary" type="button" onClick={goBack}>Back <ArrowLeft size={18} aria-hidden="true" /></button>
         </div>
       </section>
 
@@ -118,7 +116,10 @@ export function WhyScheduleSharePage() {
           <h2>Built for your schedule, not your screen time.</h2>
           <p>See how quickly a PowerSchool screenshot becomes something useful.</p>
         </div>
-        {!user ? <Link className="button button-primary" to="/schedule?import=1">Upload My Schedule <ArrowRight size={18} aria-hidden="true" /></Link> : null}
+        <div className="why-final-actions">
+          {!user ? <Link className="button button-primary" to="/schedule?import=1">Upload My Schedule <ArrowRight size={18} aria-hidden="true" /></Link> : null}
+          <button className="button button-secondary why-back-button" type="button" onClick={goBack}>Back <ArrowLeft size={18} aria-hidden="true" /></button>
+        </div>
       </section>
     </div>
   )
