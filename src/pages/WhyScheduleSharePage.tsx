@@ -22,53 +22,47 @@ interface ScheduleShareReason {
 
 const reasons: ScheduleShareReason[] = [
   {
-    title: 'Screenshot in. Schedule out.',
-    description: 'Upload PowerSchool screenshots and ScheduleShare turns them into a schedule. No typing every class, teacher, period, and day by hand.',
+    title: 'Just need a screenshot',
+    description: 'Upload PowerSchool screenshots and ScheduleShare turns them into a schedule. No typing every class, teacher, period by hand.',
     aside: 'PowerSchool already did the typing. We let it keep the job.',
     Icon: ImagePlus,
   },
   {
-    title: 'Your schedule means your actual schedule.',
-    description: 'We account for semesters, A/B days, attendance patterns, and course-name variations—so classmate matches are based on when you really share a class.',
+    title: 'Your actual schedule',
+    description: 'We account for semesters, A/B days, and course name variations so classmate matches are based on when you really share a class.',
     aside: 'More schedule detail in. Fewer mystery classmates out.',
     Icon: CalendarCheck2,
   },
   {
-    title: 'Your lock screen can remain peaceful.',
-    description: 'ScheduleShare will not manufacture reasons to buzz your phone all day. Check your schedule when you need it; enjoy the silence when you do not.',
+    title: 'No notifications!',
+    description: 'ScheduleShare will not come up with reasons to buzz your phone all day. Check your schedule when you need it and enjoy the silence when you do not.',
     aside: 'No engagement campaign disguised as breaking news.',
     Icon: BellOff,
   },
   {
-    title: 'It gets out of your way.',
-    description: 'No nagging popups, no forced invites, and no guilt trip about sharing the app with everyone you have ever met. The useful thing is simply the useful thing.',
+    title: 'We\'re not annoying',
+    description: 'No random popups and no asking you to share the app with everyone you have ever met.',
     aside: 'Radical concept: one click should take one click.',
     Icon: MousePointerClick,
   },
-  {
-    title: 'A website that is happy being a website.',
-    description: 'Open ScheduleShare on your phone or computer and it works. You do not need to install an entire app just to answer “who is in my third period?”',
-    aside: 'No app-store detour. No storage-space negotiation.',
-    Icon: Globe2,
-  },
-  {
-    title: 'Privacy has real controls.',
-    description: 'Choose who can see your schedule, approve access requests, and share with private links. Being useful does not require making your schedule public.',
-    aside: 'Your schedule is social only when you say so.',
-    Icon: ShieldCheck,
-  },
-  {
+    {
     title: 'NAI and NASH are not the same building.',
-    description: 'Saturn can combine NAI and NASH classes. ScheduleShare keeps the schools straight, which keeps class listings and classmate matches straight too.',
+    description: 'Now you wont find 9th graders and 12th graders in the same lunch.',
     aside: 'A small geographic detail with a very large hallway between it.',
     Icon: MapPin,
   },
   {
-    title: 'Built around NA’s particular flavor of scheduling.',
-    description: 'NA course names, semester rules, unusual attendance patterns, Lunch, Study Hall, and the other details generic schedule apps tend to flatten are part of the design here.',
-    aside: 'General-purpose is fine. NA-purpose is better for NA.',
-    Icon: CalendarCheck2,
+    title: 'Just a website',
+    description: 'You do not need to install an entire app just to answer “who is in my third period?”',
+    aside: 'No app-store detour. No storage-space negotiation.',
+    Icon: Globe2,
   },
+  {
+    title: 'Anti-stalking',
+    description: 'Choose who can see your schedule. Now your ex wont be able to track you down!',
+    aside: 'Your schedule is social only when you say so.',
+    Icon: ShieldCheck,
+  }
 ]
 
 export function WhyScheduleSharePage() {
