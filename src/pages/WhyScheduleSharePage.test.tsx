@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WhyScheduleSharePage } from './WhyScheduleSharePage'
 
@@ -8,8 +8,13 @@ const mocks = vi.hoisted(() => ({ useAuth: vi.fn() }))
 
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 
-function renderPage() {
-  return render(<MemoryRouter><WhyScheduleSharePage /></MemoryRouter>)
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname}</output>
+}
+
+function renderPage(initialEntries = ['/why-scheduleshare'], initialIndex?: number) {
+  return render(<MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}><WhyScheduleSharePage /><LocationProbe /></MemoryRouter>)
 }
 
 beforeEach(() => {
@@ -25,11 +30,12 @@ describe('WhyScheduleSharePage', () => {
   it('makes the guest comparison scannable and offers screenshot importing', () => {
     renderPage()
 
-    expect(screen.getByRole('heading', { name: 'Why ScheduleShare beats Saturn at NA.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Why ScheduleShare over Saturn' })).toBeInTheDocument()
+    expect(screen.queryByText(/Saturn tries to/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Screenshot in. Schedule out.' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your schedule means your actual schedule.' })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: /Upload My Schedule/ })).toHaveLength(2)
-    expect(screen.getAllByRole('link', { name: /Upload My Schedule/ })[0]).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule?import=1')
   })
 
   it('removes upload calls to action for signed-in students', () => {
@@ -37,6 +43,23 @@ describe('WhyScheduleSharePage', () => {
     renderPage()
 
     expect(screen.queryByRole('link', { name: /Upload My Schedule/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Privacy has real controls.' })).toBeInTheDocument()
+  })
+
+  it('returns to the previous page from the top back button', () => {
+    renderPage(['/', '/why-scheduleshare'], 1)
+
+    screen.getAllByRole('button', { name: 'Back' })[0].click()
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/')
+  })
+
+  it('returns to the previous page from the bottom back button', () => {
+    renderPage(['/', '/why-scheduleshare'], 1)
+
+    screen.getAllByRole('button', { name: 'Back' })[1].click()
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/')
   })
 })
