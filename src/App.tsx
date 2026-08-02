@@ -16,6 +16,7 @@ const SchedulePage = lazy(() => import('./pages/SchedulePage').then((module) => 
 const SharedSchedulePage = lazy(() => import('./pages/SharedSchedulePage').then((module) => ({ default: module.SharedSchedulePage })))
 const StudentDetailPage = lazy(() => import('./pages/StudentDetailPage').then((module) => ({ default: module.StudentDetailPage })))
 const StudentsPage = lazy(() => import('./pages/StudentsPage').then((module) => ({ default: module.StudentsPage })))
+const WhyScheduleSharePage = lazy(() => import('./pages/WhyScheduleSharePage').then((module) => ({ default: module.WhyScheduleSharePage })))
 
 function deferredPage(page: ReactNode) {
   return <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="loader" aria-hidden="true" /><p>Loading page…</p></div>}>{page}</Suspense>
@@ -39,6 +40,7 @@ export function App() {
           <Route path="schedule" element={deferredPage(<SchedulePage />)} />
           <Route path="classes" element={deferredPage(<ClassesPage />)} />
           <Route path="classes/:classId" element={deferredPage(<ClassesPage />)} />
+          <Route path="why-scheduleshare" element={deferredPage(<WhyScheduleSharePage />)} />
           <Route element={<RequireAuth />}>
             <Route path="students" element={deferredPage(<StudentsPage />)} />
             <Route path="students/:studentId" element={deferredPage(<StudentDetailPage />)} />

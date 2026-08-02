@@ -59,6 +59,7 @@ describe('HomePage hero', () => {
     expect(screen.getByRole('heading', { name: 'Find out who’s in your classes.' })).toBeInTheDocument()
     expect(screen.getByText('Upload a picture of your schedule, find classmates, and share schedules with friends.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
+    expect(screen.getByRole('link', { name: 'Why ScheduleShare instead of Saturn?' })).toHaveAttribute('href', '/why-scheduleshare')
   })
 
   it('takes an authenticated user directly to the Schedule tab', () => {
@@ -66,6 +67,7 @@ describe('HomePage hero', () => {
     renderPage()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
     expect(screen.getByRole('heading', { name: 'Start your schedule' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Why ScheduleShare instead of Saturn?' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
   })
 
