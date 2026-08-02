@@ -16,7 +16,6 @@ import { useAuth } from '../features/auth/AuthProvider'
 interface ScheduleShareReason {
   title: string
   description: string
-  aside: string
   Icon: LucideIcon
 }
 
@@ -24,43 +23,36 @@ const reasons: ScheduleShareReason[] = [
   {
     title: 'Just need a screenshot',
     description: 'Upload PowerSchool screenshots and ScheduleShare turns them into a schedule. No typing every class, teacher, period by hand.',
-    aside: 'PowerSchool already did the typing. We let it keep the job.',
     Icon: ImagePlus,
   },
   {
     title: 'Your actual schedule',
     description: 'We account for semesters, A/B days, and course name variations so classmate matches are based on when you really share a class.',
-    aside: 'More schedule detail in. Fewer mystery classmates out.',
     Icon: CalendarCheck2,
   },
   {
     title: 'No notifications!',
     description: 'ScheduleShare will not come up with reasons to buzz your phone all day. Check your schedule when you need it and enjoy the silence when you do not.',
-    aside: 'No engagement campaign disguised as breaking news.',
     Icon: BellOff,
   },
   {
     title: 'We\'re not annoying',
     description: 'No random popups and no asking you to share the app with everyone you have ever met.',
-    aside: 'Radical concept: one click should take one click.',
     Icon: MousePointerClick,
   },
     {
     title: 'NAI and NASH are not the same building.',
     description: 'Now you wont find 9th graders and 12th graders in the same lunch.',
-    aside: 'A small geographic detail with a very large hallway between it.',
     Icon: MapPin,
   },
   {
     title: 'Just a website',
     description: 'You do not need to install an entire app just to answer “who is in my third period?”',
-    aside: 'No app-store detour. No storage-space negotiation.',
     Icon: Globe2,
   },
   {
     title: 'Anti-stalking',
     description: 'Choose who can see your schedule. Now your ex wont be able to track you down!',
-    aside: 'Your schedule is social only when you say so.',
     Icon: ShieldCheck,
   }
 ]
@@ -86,20 +78,14 @@ export function WhyScheduleSharePage() {
         </div>
       </section>
 
-      <section className="why-intro" aria-labelledby="why-reasons-heading">
-        <h2 id="why-reasons-heading">The case, without the notification campaign</h2>
-        <p>Eight reasons. Zero popups asking you to invite eight friends before you can read them.</p>
-      </section>
-
       <ol className="why-reasons">
-        {reasons.map(({ title, description, aside, Icon }, index) => (
+        {reasons.map(({ title, description, Icon }, index) => (
           <li key={title}>
             <span className="why-reason-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
             <span className="why-reason-icon"><Icon aria-hidden="true" /></span>
             <div>
               <h2>{title}</h2>
               <p>{description}</p>
-              <small>{aside}</small>
             </div>
           </li>
         ))}

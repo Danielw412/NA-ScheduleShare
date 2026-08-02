@@ -31,9 +31,14 @@ describe('WhyScheduleSharePage', () => {
     renderPage()
 
     expect(screen.getByRole('heading', { name: 'Why ScheduleShare over Saturn' })).toBeInTheDocument()
-    expect(screen.queryByText(/Saturn tries to/)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Screenshot in. Schedule out.' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Your schedule means your actual schedule.' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'The case, without the notification campaign' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Eight reasons. Zero popups asking you to invite eight friends before you can read them.')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Just need a screenshot' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your actual schedule' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No notifications!' })).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(7)
+    expect(screen.queryByText('PowerSchool already did the typing. We let it keep the job.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your schedule is social only when you say so.')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule?import=1')
   })
@@ -44,7 +49,7 @@ describe('WhyScheduleSharePage', () => {
 
     expect(screen.queryByRole('link', { name: /Upload My Schedule/ })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
-    expect(screen.getByRole('heading', { name: 'Privacy has real controls.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Anti-stalking' })).toBeInTheDocument()
   })
 
   it('returns to the previous page from the top back button', () => {

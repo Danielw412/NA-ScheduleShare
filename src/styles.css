@@ -1761,7 +1761,7 @@ legend {
 }
 
 .why-hero {
-  min-height: 470px;
+  min-height: 420px;
   display: flex;
   align-items: center;
   padding: clamp(36px, 6vw, 76px);
@@ -1783,29 +1783,6 @@ legend {
   font-size: clamp(48px, 6vw, 78px);
   line-height: .95;
   letter-spacing: -.06em;
-}
-
-.why-intro {
-  display: grid;
-  grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr);
-  gap: clamp(30px, 8vw, 110px);
-  align-items: end;
-  padding: 72px clamp(24px, 5vw, 70px) 30px;
-  border-bottom: 2px solid var(--ink);
-}
-
-.why-intro h2 {
-  margin: 0;
-  font-size: clamp(30px, 4vw, 48px);
-  line-height: 1.02;
-  letter-spacing: -.04em;
-}
-
-.why-intro p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1.55;
 }
 
 .why-reasons {
@@ -1865,12 +1842,6 @@ legend {
   line-height: 1.6;
 }
 
-.why-reasons small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 750;
-}
-
 .why-final {
   display: flex;
   align-items: center;
@@ -1906,6 +1877,19 @@ legend {
 
 .why-final-actions .button {
   width: 100%;
+}
+
+.why-hero .button,
+.why-back-button {
+  min-height: 52px;
+  padding: 12px 22px;
+  font-size: 15px;
+}
+
+.why-hero .button svg,
+.why-back-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 .why-back-button {
@@ -5747,20 +5731,6 @@ a.student-access-profile:hover strong {
     width: 100%;
   }
 
-  .why-intro {
-    grid-template-columns: 1fr;
-    gap: 14px;
-    padding: 46px 22px 24px;
-  }
-
-  .why-intro h2 {
-    font-size: 32px;
-  }
-
-  .why-intro p {
-    font-size: 14px;
-  }
-
   .why-reasons li {
     grid-template-columns: 38px minmax(0, 1fr);
     gap: 12px;
@@ -5796,11 +5766,6 @@ a.student-access-profile:hover strong {
   .why-reasons p {
     font-size: 14px;
     line-height: 1.55;
-  }
-
-  .why-reasons small {
-    font-size: 11px;
-    line-height: 1.45;
   }
 
   .why-final {
