@@ -22,17 +22,17 @@ interface ScheduleShareReason {
 const reasons: ScheduleShareReason[] = [
   {
     title: 'Just need a screenshot',
-    description: 'Upload PowerSchool screenshots and ScheduleShare turns them into a schedule. No typing every class, teacher, period by hand.',
+    description: 'Upload PowerSchool screenshots and we will turn them into a schedule. No more typing every class, teacher, period by hand. AI is really replacing everything...',
     Icon: ImagePlus,
   },
   {
     title: 'Your actual schedule',
-    description: 'We account for semesters, A/B days, and course name variations so classmate matches are based on when you really share a class.',
+    description: 'We account for semesters, A/B days, and course name variations so you wont be surprised when your ex is in your class.',
     Icon: CalendarCheck2,
   },
   {
     title: 'No notifications!',
-    description: 'ScheduleShare will not come up with reasons to buzz your phone all day. Check your schedule when you need it and enjoy the silence when you do not.',
+    description: 'We dont come up with reasons to buzz your phone all day. Check your schedule when you need it and keep your lockscreen clean',
     Icon: BellOff,
   },
   {
@@ -52,7 +52,7 @@ const reasons: ScheduleShareReason[] = [
   },
   {
     title: 'Anti-stalking',
-    description: 'Choose who can see your schedule. Now your ex wont be able to track you down!',
+    description: 'Choose who can see your schedule. Your third period is not public information.',
     Icon: ShieldCheck,
   }
 ]
