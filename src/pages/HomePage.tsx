@@ -83,7 +83,7 @@ export function HomePage() {
               ? <span className="button button-primary home-schedule-loading" aria-label="Loading schedule">Loading...</span>
               : <Link className="button button-primary" to={hasCompleteSchedule ? '/students' : '/schedule'}>{hasCompleteSchedule ? 'Find Classmates' : 'Upload My Schedule'} <ArrowRight size={18} /></Link>}
           </div>
-          {!user ? <Link className="home-why-link" to="/why-scheduleshare">Why ScheduleShare instead of Saturn?</Link> : null}
+          {!user ? <Link className="home-why-link" to="/why-scheduleshare">Why we're better than Saturn</Link> : null}
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
       </section>
