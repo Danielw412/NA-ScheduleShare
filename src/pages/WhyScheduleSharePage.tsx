@@ -93,8 +93,8 @@ export function WhyScheduleSharePage() {
 
       <section className="why-final">
         <div>
-          <h2>Built for your schedule, not your screen time.</h2>
-          <p>See how quickly a PowerSchool screenshot becomes something useful.</p>
+          <h2>Ditch Saturn!</h2>
+          <p>Upload a screenshot and see your classes!</p>
         </div>
         <div className="why-final-actions">
           {!user ? <Link className="button button-primary" to="/schedule?import=1">Upload My Schedule <ArrowRight size={18} aria-hidden="true" /></Link> : null}
