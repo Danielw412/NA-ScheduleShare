@@ -103,10 +103,18 @@ function parseScheduleEnginePrediction(value: unknown, allowDevelopmentPlacehold
     ? payload.schedule.map(parseScheduleEnginePredictedEnrollment).filter((item): item is ScheduleEnginePredictedEnrollment => item !== null)
     : []
   if (schedule.length === 0) return null
+  const collateralChangeCount = Number(payload.collateral_change_count ?? 0)
+  const searchStage = payload.search_stage
+  const validSearchStage = searchStage === 'direct_replacement' || searchStage === 'one_collateral_change' || searchStage === 'displacement_chain'
+    ? searchStage
+    : collateralChangeCount === 0 ? 'direct_replacement' : collateralChangeCount === 1 ? 'one_collateral_change' : 'displacement_chain'
   return {
     rank: Number(row.rank),
     schedule,
     developmentPlaceholder,
+    collateralChangeCount: Number.isInteger(collateralChangeCount) && collateralChangeCount >= 0 ? collateralChangeCount : 0,
+    searchStage: validSearchStage,
+    explanations: Array.isArray(payload.explanations) ? payload.explanations.filter((item): item is string => typeof item === 'string') : [],
   }
 }
 
@@ -221,6 +229,7 @@ function parseScheduleEngineJob(value: unknown): ScheduleEngineJob | null {
     queuedAt: String(row.queued_at), processingStartedAt: stringOrNull(row.processing_started_at),
     completedAt: stringOrNull(row.completed_at), failedAt: stringOrNull(row.failed_at),
     cancelledAt: stringOrNull(row.cancelled_at), errorMessage: stringOrNull(row.error_message),
+    noValidScheduleReason: stringOrNull(row.no_valid_schedule_reason),
     createdAt: String(row.created_at), updatedAt: String(row.updated_at), sourceCourses, replacementCourses, predictions,
   }
 }

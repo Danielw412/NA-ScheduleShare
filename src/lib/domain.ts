@@ -65,6 +65,9 @@ export interface ScheduleEnginePrediction {
   rank: number
   schedule: ScheduleEnginePredictedEnrollment[]
   developmentPlaceholder: boolean
+  collateralChangeCount: number
+  searchStage: 'direct_replacement' | 'one_collateral_change' | 'displacement_chain'
+  explanations: string[]
 }
 
 export interface ScheduleEngineJob {
@@ -78,6 +81,7 @@ export interface ScheduleEngineJob {
   failedAt: string | null
   cancelledAt: string | null
   errorMessage: string | null
+  noValidScheduleReason: string | null
   createdAt: string
   updatedAt: string
   sourceCourses: ScheduleEngineSourceCourseSummary[]

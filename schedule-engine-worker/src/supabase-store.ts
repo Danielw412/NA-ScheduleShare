@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { ClaimedScheduleEngineJob, NotificationDelivery, PredictedScheduleResult, ScheduleEngineInput, ScheduleEngineStore, WorkerJobSummary } from './types.js'
+import type { ClaimedScheduleEngineJob, NotificationDelivery, PredictionOutcome, ScheduleEngineInput, ScheduleEngineStore, WorkerJobSummary } from './types.js'
 
 interface RpcResponse {
   data: unknown
@@ -17,7 +17,7 @@ function firstRecord(value: unknown): Record<string, unknown> | null {
 
 function assertWorkerInput(value: unknown): ScheduleEngineInput {
   const row = recordFrom(value)
-  if (!row || !recordFrom(row.job) || !recordFrom(row.user) || !Array.isArray(row.current_schedule) || !Array.isArray(row.source_courses) || !Array.isArray(row.replacement_courses) || !Array.isArray(row.replacement_course_sections)) {
+  if (!row || !recordFrom(row.job) || !recordFrom(row.user) || !Array.isArray(row.current_schedule) || !Array.isArray(row.source_courses) || !Array.isArray(row.replacement_courses) || !Array.isArray(row.available_sections)) {
     throw new Error('Supabase returned an invalid Schedule Engine worker input.')
   }
   return row as unknown as ScheduleEngineInput
@@ -55,8 +55,13 @@ export class SupabaseScheduleEngineStore implements ScheduleEngineStore {
     return assertWorkerInput(await this.rpc('get_schedule_engine_worker_input', { p_job_id: jobId, p_worker_id: workerId }))
   }
 
-  async complete(jobId: string, workerId: string, results: PredictedScheduleResult[]): Promise<void> {
-    await this.rpc('complete_schedule_engine_job', { p_job_id: jobId, p_worker_id: workerId, p_results: results })
+  async complete(jobId: string, workerId: string, outcome: PredictionOutcome): Promise<void> {
+    await this.rpc('complete_schedule_engine_job', {
+      p_job_id: jobId,
+      p_worker_id: workerId,
+      p_results: outcome.results,
+      p_no_valid_schedule_reason: outcome.no_valid_schedule_reason,
+    })
   }
 
   async fail(jobId: string, workerId: string, errorMessage: string): Promise<void> {

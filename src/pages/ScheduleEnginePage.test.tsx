@@ -157,6 +157,7 @@ describe('ScheduleEnginePage', () => {
       failedAt: null,
       cancelledAt: null,
       errorMessage: null,
+      noValidScheduleReason: null,
       createdAt: '2026-08-01T12:00:00Z',
       updatedAt: '2026-08-01T12:20:00Z',
       sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }],
@@ -164,6 +165,9 @@ describe('ScheduleEnginePage', () => {
       predictions: [{
         rank: 1,
         developmentPlaceholder: false,
+        collateralChangeCount: 0,
+        searchStage: 'direct_replacement',
+        explanations: ['Requested change: dropped AP English Language and added AP Literature using an existing section.'],
         schedule: [{
           ...english,
           id: 'prediction-literature',
@@ -177,13 +181,15 @@ describe('ScheduleEnginePage', () => {
     renderPage()
 
     expect(await screen.findByText('Completed')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Most likely' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Best fit' })).toBeInTheDocument()
+    expect(screen.getByText('No unrelated courses moved')).toBeInTheDocument()
+    expect(screen.getByText(/Requested change: dropped AP English Language/)).toBeInTheDocument()
     expect(screen.getAllByText('Changed')).not.toHaveLength(0)
     expect(screen.getByRole('button', { name: /New request/ })).toBeInTheDocument()
   })
 
   it('shows queued request details and lets the owner cancel', async () => {
-    const queued: ScheduleEngineJob = { id: 'job-queued', status: 'queued', emailNotification: true, notificationStatus: 'pending', queuedAt: '2026-08-01T12:00:00Z', processingStartedAt: null, completedAt: null, failedAt: null, cancelledAt: null, errorMessage: null, createdAt: '2026-08-01T12:00:00Z', updatedAt: '2026-08-01T12:00:00Z', sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }], replacementCourses: [{ position: 1, courseId: 'course-literature', courseName: 'AP Literature' }], predictions: [] }
+    const queued: ScheduleEngineJob = { id: 'job-queued', status: 'queued', emailNotification: true, notificationStatus: 'pending', queuedAt: '2026-08-01T12:00:00Z', processingStartedAt: null, completedAt: null, failedAt: null, cancelledAt: null, errorMessage: null, noValidScheduleReason: null, createdAt: '2026-08-01T12:00:00Z', updatedAt: '2026-08-01T12:00:00Z', sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }], replacementCourses: [{ position: 1, courseId: 'course-literature', courseName: 'AP Literature' }], predictions: [] }
     mocks.listScheduleEngineJobs.mockResolvedValue([queued])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
@@ -191,5 +197,21 @@ describe('ScheduleEnginePage', () => {
     expect(await screen.findByText('Requested changes')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Cancel request' }))
     await waitFor(() => expect(mocks.cancelScheduleEngineJob).toHaveBeenCalledWith('job-queued'))
+  })
+
+  it('shows the worker explanation when existing sections cannot make a valid schedule', async () => {
+    const completedWithoutResult: ScheduleEngineJob = {
+      id: 'job-no-solution', status: 'completed', emailNotification: false, notificationStatus: 'not_requested',
+      queuedAt: '2026-08-01T12:00:00Z', processingStartedAt: '2026-08-01T12:10:00Z', completedAt: '2026-08-01T12:11:00Z',
+      failedAt: null, cancelledAt: null, errorMessage: null,
+      noValidScheduleReason: 'Biology requires A4, but English has no other legal existing section.',
+      createdAt: '2026-08-01T12:00:00Z', updatedAt: '2026-08-01T12:11:00Z',
+      sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }],
+      replacementCourses: [{ position: 1, courseId: 'course-biology', courseName: 'Biology' }], predictions: [],
+    }
+    mocks.listScheduleEngineJobs.mockResolvedValue([completedWithoutResult])
+    renderPage()
+    expect(await screen.findByText(completedWithoutResult.noValidScheduleReason!)).toBeInTheDocument()
+    expect(screen.getByText('No valid schedule found')).toBeInTheDocument()
   })
 })

@@ -28,6 +28,7 @@ export interface CurrentScheduleEnrollment {
 }
 
 export interface ReplacementCourse {
+  position: number
   course_id: string
   course_name: string
   course_term_policy: CourseTermPolicy
@@ -39,16 +40,23 @@ export interface RequestedSourceCourse {
   current_course: CurrentScheduleEnrollment
 }
 
-export interface ReplacementCourseSection {
+/**
+ * One placement that already exists in ScheduleShare. Fixed courses expose
+ * the section's locked schedule. Flexible-attendance sections additionally
+ * expose distinct attendance patterns already used by active enrollments.
+ */
+export interface ExistingSectionPlacement {
   course_id: string
   course_name: string
   course_term_policy: CourseTermPolicy
   class_id: string
   teacher_last_name: string
   default_academic_term: AcademicTerm
+  academic_term: AcademicTerm
   is_double_period: boolean
   meeting_slots: MeetingSlot[]
   active_enrollment_count: number
+  pattern_source: 'section_default' | 'existing_enrollment'
 }
 
 export interface ScheduleEngineInput {
@@ -67,7 +75,7 @@ export interface ScheduleEngineInput {
   current_schedule: CurrentScheduleEnrollment[]
   source_courses: RequestedSourceCourse[]
   replacement_courses: ReplacementCourse[]
-  replacement_course_sections: ReplacementCourseSection[]
+  available_sections: ExistingSectionPlacement[]
 }
 
 export interface PredictedScheduleEnrollment extends CurrentScheduleEnrollment {
@@ -76,7 +84,14 @@ export interface PredictedScheduleEnrollment extends CurrentScheduleEnrollment {
 
 export interface PredictedScheduleResult {
   schedule: PredictedScheduleEnrollment[]
-  development_placeholder?: boolean
+  collateral_change_count: number
+  search_stage: 'direct_replacement' | 'one_collateral_change' | 'displacement_chain'
+  explanations: string[]
+}
+
+export interface PredictionOutcome {
+  results: PredictedScheduleResult[]
+  no_valid_schedule_reason: string | null
 }
 
 export interface NotificationDelivery {
@@ -107,16 +122,17 @@ export interface WorkerJobSummary {
   created_at: string
   source_courses: Array<{ position: number; enrollment_id: string; course_id: string; course_name: string }>
   replacement_courses: Array<{ position: number; course_id: string; course_name: string }>
-  results: Array<{ rank: number; development_placeholder: boolean }>
+  results: Array<{ rank: number; development_placeholder: boolean; prediction?: unknown }>
+  no_valid_schedule_reason?: string
 }
 
-export type PredictionFunction = (input: ScheduleEngineInput) => Promise<PredictedScheduleResult[]>
+export type PredictionFunction = (input: ScheduleEngineInput) => Promise<PredictionOutcome>
 
 export interface ScheduleEngineStore {
   listJobs(limit?: number): Promise<WorkerJobSummary[]>
   claimNext(workerId: string): Promise<ClaimedScheduleEngineJob | null>
   getWorkerInput(jobId: string, workerId: string): Promise<ScheduleEngineInput>
-  complete(jobId: string, workerId: string, results: PredictedScheduleResult[]): Promise<void>
+  complete(jobId: string, workerId: string, outcome: PredictionOutcome): Promise<void>
   fail(jobId: string, workerId: string, errorMessage: string): Promise<void>
   recordNotification(jobId: string, workerId: string, delivery: Exclude<NotificationDelivery, { status: 'not_configured' }>): Promise<void>
 }

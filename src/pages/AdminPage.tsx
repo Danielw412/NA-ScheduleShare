@@ -324,6 +324,7 @@ function ScheduleEngineAdminPanel({ jobs, onRefresh }: { jobs: AdminScheduleEngi
             <div><dt>Email</dt><dd>{job.emailNotification ? job.notificationStatus : 'Not requested'}</dd></div>
           </dl>
           {job.errorMessage || job.notificationError ? <p className="form-error">{job.errorMessage ?? job.notificationError}</p> : null}
+          {job.noValidScheduleReason ? <p className="notice-box">No valid schedule: {job.noValidScheduleReason}</p> : null}
         </div>
       </details>)}
     </div>}

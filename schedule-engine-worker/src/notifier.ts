@@ -1,7 +1,7 @@
-import type { NotificationDelivery, ScheduleEngineInput } from './types.js'
+import type { NotificationDelivery, PredictionOutcome, ScheduleEngineInput } from './types.js'
 import nodemailer, { type Transporter } from 'nodemailer'
 
-export type PredictionReadyNotifier = (input: ScheduleEngineInput) => Promise<NotificationDelivery>
+export type PredictionReadyNotifier = (input: ScheduleEngineInput, outcome: PredictionOutcome) => Promise<NotificationDelivery>
 
 export interface SmtpNotifierConfig {
   host?: string
@@ -35,15 +35,16 @@ export function createPredictionReadyNotifier(config: SmtpNotifierConfig, provid
     host: config.host, port: config.port, secure: config.secure,
     auth: config.user ? { user: config.user, pass: config.password } : undefined,
   })
-  return async (input) => {
+  return async (input, outcome) => {
     if (!input.user.email) return { status: 'failed', errorMessage: 'The requesting user does not have an email address.' }
     try {
+      const hasResults = outcome.results.length > 0
       await transport.sendMail({
         from: config.from,
         to: input.user.email,
-        subject: 'Your Schedule Engine predictions are ready',
-        text: `Your predicted schedules are ready. View them in ScheduleShare: ${config.appUrl}`,
-        html: `<p>Your predicted schedules are ready.</p><p><a href="${config.appUrl}">View them in ScheduleShare</a></p><p>Predictions are estimates and may not match the schedule produced by the school.</p>`,
+        subject: hasResults ? 'Your Schedule Engine predictions are ready' : 'Your Schedule Engine request is ready',
+        text: `${hasResults ? 'Your predicted schedules are ready.' : 'Schedule Engine could not build a valid schedule from the existing sections.'} View the details in ScheduleShare: ${config.appUrl}`,
+        html: `<p>${hasResults ? 'Your predicted schedules are ready.' : 'Schedule Engine could not build a valid schedule from the existing sections.'}</p><p><a href="${config.appUrl}">View the details in ScheduleShare</a></p><p>Predictions are estimates and may not match the schedule produced by the school.</p>`,
       })
       return { status: 'sent' }
     } catch {

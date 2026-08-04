@@ -593,6 +593,7 @@ export type Database = {
           failed_at: string | null
           heartbeat_at: string | null
           id: string
+          no_valid_schedule_reason: string | null
           notification_error: string | null
           notification_sent_at: string | null
           notification_status: Database["public"]["Enums"]["schedule_engine_notification_status"]
@@ -614,6 +615,7 @@ export type Database = {
           failed_at?: string | null
           heartbeat_at?: string | null
           id?: string
+          no_valid_schedule_reason?: string | null
           notification_error?: string | null
           notification_sent_at?: string | null
           notification_status?: Database["public"]["Enums"]["schedule_engine_notification_status"]
@@ -635,6 +637,7 @@ export type Database = {
           failed_at?: string | null
           heartbeat_at?: string | null
           id?: string
+          no_valid_schedule_reason?: string | null
           notification_error?: string | null
           notification_sent_at?: string | null
           notification_status?: Database["public"]["Enums"]["schedule_engine_notification_status"]
@@ -1076,10 +1079,20 @@ export type Database = {
         }[]
       }
       clear_my_schedule: { Args: never; Returns: number }
-      complete_schedule_engine_job: {
-        Args: { p_job_id: string; p_results: Json; p_worker_id: string }
-        Returns: undefined
-      }
+      complete_schedule_engine_job:
+        | {
+            Args: { p_job_id: string; p_results: Json; p_worker_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_job_id: string
+              p_no_valid_schedule_reason: string
+              p_results: Json
+              p_worker_id: string
+            }
+            Returns: undefined
+          }
       create_class_and_enroll: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]

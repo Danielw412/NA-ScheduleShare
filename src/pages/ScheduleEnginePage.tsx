@@ -119,7 +119,7 @@ function JobStatus({ job }: { job: ScheduleEngineJob }) {
     <section className={`engine-status engine-status-${job.status}`} role="status" aria-live="polite">
       {current.icon}
       <div><strong>{current.label}</strong><span>{job.sourceCourses.length} course{job.sourceCourses.length === 1 ? '' : 's'} → {job.replacementCourses.length} course{job.replacementCourses.length === 1 ? '' : 's'}</span></div>
-      {job.status === 'completed' ? <span>{job.predictions.length} predicted schedule{job.predictions.length === 1 ? '' : 's'}</span> : null}
+      {job.status === 'completed' ? <span>{job.predictions.length > 0 ? `${job.predictions.length} valid predicted schedule${job.predictions.length === 1 ? '' : 's'}` : 'No valid schedule found'}</span> : null}
     </section>
   )
 }
@@ -129,10 +129,13 @@ function PredictionCard({ prediction, selectedTerm }: { prediction: ScheduleEngi
     () => new Set(prediction.schedule.filter((enrollment) => enrollment.changedFromEnrollmentId).map((enrollment) => enrollment.id)),
     [prediction.schedule],
   )
-  const rankLabel = prediction.rank === 1 ? 'Most likely' : prediction.rank === 2 ? '2nd most likely' : prediction.rank === 3 ? '3rd most likely' : '4th most likely'
+  const rankLabel = prediction.rank === 1 ? 'Best fit' : `Alternative ${prediction.rank}`
+  const collateralLabel = prediction.collateralChangeCount === 0
+    ? 'No unrelated courses moved'
+    : `${prediction.collateralChangeCount} unrelated course${prediction.collateralChangeCount === 1 ? '' : 's'} moved`
   return (
     <article className="engine-prediction-card">
-      <header><span>{prediction.rank}</span><h2>{rankLabel}</h2>{prediction.developmentPlaceholder ? <small>Development placeholder</small> : null}</header>
+      <header><span>{prediction.rank}</span><h2>{rankLabel}</h2><small className={prediction.developmentPlaceholder ? 'is-placeholder' : ''}>{prediction.developmentPlaceholder ? 'Development placeholder' : collateralLabel}</small></header>
       <ScheduleGrid
         enrollments={prediction.schedule}
         selectedTerm={selectedTerm}
@@ -142,6 +145,12 @@ function PredictionCard({ prediction, selectedTerm }: { prediction: ScheduleEngi
         onRemove={() => undefined}
         onReplace={() => undefined}
       />
+      {prediction.explanations.length > 0 ? (
+        <section className="engine-prediction-explanations" aria-label={`Explanation for ${rankLabel}`}>
+          <h3>Why this schedule works</h3>
+          <ul>{prediction.explanations.map((explanation, index) => <li key={`${prediction.rank}-${index}`}>{explanation}</li>)}</ul>
+        </section>
+      ) : null}
     </article>
   )
 }
@@ -303,7 +312,7 @@ export function ScheduleEnginePage() {
                     {selectedJob.predictions.map((prediction) => <PredictionCard key={prediction.rank} prediction={prediction} selectedTerm={selectedTerm} />)}
                   </div>
                 </>
-              ) : <p className="notice-box"><Info aria-hidden="true" />This request completed without any displayable predictions.</p>}
+              ) : <p className="notice-box"><Info aria-hidden="true" />{selectedJob.noValidScheduleReason ?? 'No valid schedule could be built from the existing sections and meeting patterns.'}</p>}
             </section>
           ) : null}
           {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}

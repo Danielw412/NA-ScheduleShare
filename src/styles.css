@@ -2560,9 +2560,14 @@ legend {
 
 .engine-prediction-card>header small {
   margin-left: auto;
-  color: var(--danger);
+  color: var(--muted);
   font-size: 10px;
   font-weight: 750;
+  text-align: right;
+}
+
+.engine-prediction-card>header small.is-placeholder {
+  color: var(--danger);
 }
 
 .engine-prediction-card .schedule-grid {
@@ -2580,6 +2585,32 @@ legend {
 
 .engine-prediction-card .empty-cell {
   padding-inline: 12px;
+}
+
+.engine-prediction-explanations {
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-gold);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.engine-prediction-explanations h3 {
+  margin: 0 0 7px;
+  font-size: 13px;
+}
+
+.engine-prediction-explanations ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.engine-prediction-explanations li + li {
+  margin-top: 5px;
 }
 
 .engine-new-request {

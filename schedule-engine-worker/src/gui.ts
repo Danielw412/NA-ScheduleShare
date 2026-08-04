@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createPredictionReadyNotifier, smtpConfigured, smtpNotifierConfigFromEnvironment } from './notifier.js'
-import { createPredictionFunction, developmentPlaceholderAllowed } from './prediction-engine.js'
+import { createPredictionFunction, maxCollateralChangesFromEnvironment } from './prediction-engine.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import type { ScheduleEngineStore } from './types.js'
 import { processFullQueue, processNextJob } from './worker.js'
@@ -19,7 +19,7 @@ export function controlPanelHtml(): string {
   function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   async function request(path,method='GET'){const response=await fetch(path,{method});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');return body}
   function stat(label,value){return '<div class="stat"><strong>'+value+'</strong><span>'+label+'</span></div>'}
-  async function refresh(){try{const data=await request('/api/status');busy=data.busy;el('one').disabled=busy;el('queue').disabled=busy;el('worker').textContent='Worker: '+data.workerId;el('banner').textContent=(data.placeholderEnabled?'Development placeholder enabled.':'Prediction engine not implemented; real jobs will fail safely.')+' Email: '+(data.emailConfigured?'configured':'not configured')+'.';const counts=data.counts;el('stats').innerHTML=stat('Queued',counts.queued)+stat('Processing',counts.processing)+stat('Completed',counts.completed)+stat('Failed',counts.failed)+stat('Cancelled',counts.cancelled);el('jobs').innerHTML=data.jobs.map(job=>'<details class="job" '+(['queued','processing'].includes(job.status)?'open':'')+'><summary><i class="dot '+esc(job.status)+'"></i><strong>'+esc(job.status)+'</strong><span>'+esc(job.user_name)+' · '+esc(job.source_courses.map(r=>r.course_name).join(' + '))+' → '+esc(job.replacement_courses.map(r=>r.course_name).join(' + '))+'</span><small>'+esc(new Date(job.created_at).toLocaleString())+'</small></summary><div class="body"><p><b>ID:</b> '+esc(job.id)+'</p><p><b>Worker:</b> '+esc(job.worker_id||'unclaimed')+' · <b>Attempts:</b> '+esc(job.attempt_count)+'</p><p><b>Error:</b> '+esc(job.error_message||job.notification_error||'none')+'</p><details><summary>Raw debug data</summary><pre class="debug">'+esc(JSON.stringify(job,null,2))+'</pre></details></div></details>').join('')||'<p class="banner">The queue is empty.</p>';el('log').innerHTML=data.logs.map(line=>'<div>'+esc(line)+'</div>').join('')}catch(error){el('banner').textContent=error.message}}
+  async function refresh(){try{const data=await request('/api/status');busy=data.busy;el('one').disabled=busy;el('queue').disabled=busy;el('worker').textContent='Worker: '+data.workerId;el('banner').textContent='Prediction engine ready · displacement limit: '+data.maxCollateralChanges+' collateral course changes · Email: '+(data.emailConfigured?'configured':'not configured')+'.';const counts=data.counts;el('stats').innerHTML=stat('Queued',counts.queued)+stat('Processing',counts.processing)+stat('Completed',counts.completed)+stat('Failed',counts.failed)+stat('Cancelled',counts.cancelled);el('jobs').innerHTML=data.jobs.map(job=>'<details class="job" '+(['queued','processing'].includes(job.status)?'open':'')+'><summary><i class="dot '+esc(job.status)+'"></i><strong>'+esc(job.status)+'</strong><span>'+esc(job.user_name)+' · '+esc(job.source_courses.map(r=>r.course_name).join(' + '))+' → '+esc(job.replacement_courses.map(r=>r.course_name).join(' + '))+'</span><small>'+esc(new Date(job.created_at).toLocaleString())+'</small></summary><div class="body"><p><b>ID:</b> '+esc(job.id)+'</p><p><b>Worker:</b> '+esc(job.worker_id||'unclaimed')+' · <b>Attempts:</b> '+esc(job.attempt_count)+'</p><p><b>Result:</b> '+esc(job.no_valid_schedule_reason||job.error_message||job.notification_error||'no error')+'</p><details><summary>Raw debug data</summary><pre class="debug">'+esc(JSON.stringify(job,null,2))+'</pre></details></div></details>').join('')||'<p class="banner">The queue is empty.</p>';el('log').innerHTML=data.logs.map(line=>'<div>'+esc(line)+'</div>').join('')}catch(error){el('banner').textContent=error.message}}
   async function run(path){try{busy=true;el('one').disabled=true;el('queue').disabled=true;await request(path,'POST')}catch(error){el('banner').textContent=error.message}finally{await refresh()}}
   el('one').onclick=()=>run('/api/process-one');el('queue').onclick=()=>run('/api/process-queue');el('refresh').onclick=refresh;refresh();setInterval(refresh,5000);
   </script></body></html>`
@@ -35,7 +35,7 @@ export function startControlPanel(options: {
   workerId: string
   predict: ReturnType<typeof createPredictionFunction>
   notify: ReturnType<typeof createPredictionReadyNotifier>
-  placeholderEnabled: boolean
+  maxCollateralChanges: number
   emailConfigured: boolean
   port: number
 }) {
@@ -51,7 +51,7 @@ export function startControlPanel(options: {
         const jobs = await options.store.listJobs()
         const counts = { queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0 }
         for (const job of jobs) counts[job.status] += 1
-        json(response, 200, { busy, workerId: options.workerId, placeholderEnabled: options.placeholderEnabled, emailConfigured: options.emailConfigured, counts, jobs, logs }); return
+        json(response, 200, { busy, workerId: options.workerId, maxCollateralChanges: options.maxCollateralChanges, emailConfigured: options.emailConfigured, counts, jobs, logs }); return
       }
       if (request.method === 'POST' && (request.url === '/api/process-one' || request.url === '/api/process-queue')) {
         if (busy) { json(response, 409, { error: 'The worker is already processing.' }); return }
@@ -77,10 +77,10 @@ function main() {
   const url = requiredEnvironment('SUPABASE_URL')
   const store = createScheduleEngineStore(url, requiredEnvironment('SUPABASE_SERVICE_ROLE_KEY'))
   const workerId = process.env.SCHEDULE_ENGINE_WORKER_ID?.trim() || `laptop-${crypto.randomUUID()}`
-  const placeholderEnabled = developmentPlaceholderAllowed(url, process.env.SCHEDULE_ENGINE_ENABLE_PLACEHOLDER, process.env.NODE_ENV)
+  const maxCollateralChanges = maxCollateralChangesFromEnvironment(process.env.SCHEDULE_ENGINE_MAX_COLLATERAL_CHANGES)
   const smtpConfig = smtpNotifierConfigFromEnvironment()
-  startControlPanel({ store, workerId, placeholderEnabled, emailConfigured: smtpConfigured(smtpConfig),
-    predict: createPredictionFunction({ allowDevelopmentPlaceholder: placeholderEnabled }),
+  startControlPanel({ store, workerId, maxCollateralChanges, emailConfigured: smtpConfigured(smtpConfig),
+    predict: createPredictionFunction({ maxCollateralChanges }),
     notify: createPredictionReadyNotifier(smtpConfig), port: Number(process.env.SCHEDULE_ENGINE_GUI_PORT || 4174) })
 }
 

@@ -1,5 +1,5 @@
 begin;
-select plan(49);
+select plan(52);
 
 select ok(
   has_function_privilege('authenticated', 'public.create_schedule_engine_job(jsonb,boolean)', 'execute')
@@ -26,6 +26,7 @@ select ok(
       ('public.get_schedule_engine_worker_input(uuid,text)'),
       ('public.heartbeat_schedule_engine_job(uuid,text)'),
       ('public.complete_schedule_engine_job(uuid,text,jsonb)'),
+      ('public.complete_schedule_engine_job(uuid,text,jsonb,text)'),
       ('public.fail_schedule_engine_job(uuid,text,text)'),
       ('public.record_schedule_engine_notification(uuid,text,boolean,text)'),
       ('public.list_schedule_engine_jobs_for_worker(integer)')
@@ -76,15 +77,37 @@ insert into public.classes (id, course_name_id, teacher_last_name, default_acade
 select '98100000-0000-4000-8000-000000000002', id, 'Patel', 'full_year', false, '98000000-0000-4000-8000-000000000001'
 from public.course_names where normalized_name = 'algebra 1';
 
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '98100000-0000-4000-8000-000000000003', id, 'Diaz', 'full_year', false, '98000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'ap literature';
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '98100000-0000-4000-8000-000000000004', id, 'Nguyen', 'full_year', false, '98000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'ap us history';
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '98100000-0000-4000-8000-000000000005', id, 'Morgan', 'full_year', false, '98000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'gym';
+
 insert into public.class_meeting_slots (class_id, day_type, period_number) values
   ('98100000-0000-4000-8000-000000000001', 'A', 1),
   ('98100000-0000-4000-8000-000000000001', 'B', 1),
   ('98100000-0000-4000-8000-000000000002', 'A', 2),
-  ('98100000-0000-4000-8000-000000000002', 'B', 2);
+  ('98100000-0000-4000-8000-000000000002', 'B', 2),
+  ('98100000-0000-4000-8000-000000000003', 'A', 3),
+  ('98100000-0000-4000-8000-000000000003', 'B', 3),
+  ('98100000-0000-4000-8000-000000000004', 'A', 4),
+  ('98100000-0000-4000-8000-000000000004', 'B', 4),
+  ('98100000-0000-4000-8000-000000000005', 'A', 5),
+  ('98100000-0000-4000-8000-000000000005', 'B', 5);
 
 insert into public.class_enrollments (id, student_id, class_id, academic_term, active) values
   ('98200000-0000-4000-8000-000000000001', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000001', 'full_year', true),
-  ('98200000-0000-4000-8000-000000000002', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000002', 'full_year', true);
+  ('98200000-0000-4000-8000-000000000002', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000002', 'full_year', true),
+  ('98200000-0000-4000-8000-000000000003', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000005', 'full_year', true);
+
+delete from public.class_enrollment_meeting_slots
+where enrollment_id = '98200000-0000-4000-8000-000000000003' and day_type = 'B';
 
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001', true);
@@ -253,8 +276,23 @@ select is(
 
 select is(
   jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'current_schedule'),
-  2,
+  3,
   'worker input includes the complete active current schedule'
+);
+
+select ok(
+  exists (
+    select 1
+    from jsonb_array_elements(
+      public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'available_sections'
+    ) section
+    where section ->> 'class_id' = '98100000-0000-4000-8000-000000000005'
+      and section ->> 'pattern_source' = 'existing_enrollment'
+      and section ->> 'academic_term' = 'full_year'
+      and jsonb_array_length(section -> 'meeting_slots') = 1
+      and section -> 'meeting_slots' -> 0 ->> 'day_type' = 'A'
+  ),
+  'worker input includes an observed Gym attendance pattern without exposing a student ID'
 );
 
 select is(
@@ -282,15 +320,24 @@ select is(
 );
 
 select ok(
-  jsonb_typeof(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacement_course_sections') = 'array',
-  'worker input includes relevant existing catalog section context'
+  (
+    select count(*) = 2
+    from jsonb_array_elements(
+      public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'available_sections'
+    ) section
+    where section ->> 'class_id' in (
+      '98100000-0000-4000-8000-000000000003',
+      '98100000-0000-4000-8000-000000000004'
+    )
+  ),
+  'worker input includes every relevant existing replacement section'
 );
 
 select throws_ok(
   $$select public.complete_schedule_engine_job(
     current_setting('test.expected_engine_job')::uuid,
     'worker-two',
-    '[{"schedule":[{"enrollment_id":"prediction-1"}]}]'::jsonb
+    '[{"schedule":[{"enrollment_id":"prediction-1"}],"collateral_change_count":0,"search_stage":"direct_replacement","explanations":["Direct replacement."]}]'::jsonb
   )$$,
   '42501', 'schedule_engine_job_not_claimed_by_worker',
   'a different worker cannot complete the claimed job'
@@ -300,7 +347,8 @@ select lives_ok(
   $$select public.complete_schedule_engine_job(
     current_setting('test.expected_engine_job')::uuid,
     'worker-one',
-    '[{"schedule":[{"enrollment_id":"prediction-1","class_id":"predicted-class","course_id":"predicted-course","course_name":"AP Literature","teacher_last_name":"TBD","academic_term":"full_year","meeting_slots":[{"day_type":"A","period_number":1}]}]}]'::jsonb
+    '[{"schedule":[{"enrollment_id":"prediction-1","class_id":"98100000-0000-4000-8000-000000000003","course_id":"predicted-course","course_name":"AP Literature","teacher_last_name":"Diaz","academic_term":"full_year","meeting_slots":[{"day_type":"A","period_number":3},{"day_type":"B","period_number":3}]}],"collateral_change_count":0,"search_stage":"direct_replacement","explanations":["Direct replacement using an existing section."]}]'::jsonb,
+    null
   )$$,
   'the claiming worker can save ranked results and complete the job'
 );
@@ -318,6 +366,32 @@ select is(
   'completed',
   'completion updates the protected job status'
 );
+
+insert into public.schedule_engine_jobs (
+  id, user_id, status, worker_id, claimed_at, processing_started_at, heartbeat_at
+) values (
+  '98300000-0000-4000-8000-000000000001',
+  '98000000-0000-4000-8000-000000000001',
+  'processing', 'worker-one', now(), now(), now()
+);
+
+select lives_ok(
+  $$select public.complete_schedule_engine_job(
+    '98300000-0000-4000-8000-000000000001',
+    'worker-one',
+    '[]'::jsonb,
+    'No existing replacement section fits without an unresolved conflict.'
+  )$$,
+  'the worker can complete a job with an explained no-solution outcome'
+);
+
+select is(
+  (select no_valid_schedule_reason from public.schedule_engine_jobs where id = '98300000-0000-4000-8000-000000000001'),
+  'No existing replacement section fits without an unresolved conflict.',
+  'the no-solution explanation is stored on the protected job'
+);
+
+delete from public.schedule_engine_jobs where id = '98300000-0000-4000-8000-000000000001';
 
 reset role;
 select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001', true);
@@ -441,8 +515,12 @@ select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001
 set local role authenticated;
 
 select is(
-  jsonb_array_length(public.get_my_latest_schedule_engine_job() -> 'source_courses'),
-  1,
+  (
+    select jsonb_array_length(job -> 'source_courses')
+    from jsonb_array_elements(public.list_my_schedule_engine_jobs()) job
+    where job ->> 'id' = current_setting('test.expected_engine_job')
+  ),
+  2,
   'validated source snapshots remain readable after the enrollment is removed'
 );
 

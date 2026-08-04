@@ -1,5 +1,5 @@
 import { createPredictionReadyNotifier, smtpNotifierConfigFromEnvironment } from './notifier.js'
-import { createPredictionFunction, developmentPlaceholderAllowed } from './prediction-engine.js'
+import { createPredictionFunction, maxCollateralChangesFromEnvironment } from './prediction-engine.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import { processFullQueue, processNextJob } from './worker.js'
 
@@ -16,12 +16,9 @@ async function main() {
   const serviceRoleKey = requiredEnvironment('SUPABASE_SERVICE_ROLE_KEY')
   const workerId = process.env.SCHEDULE_ENGINE_WORKER_ID?.trim() || `laptop-${crypto.randomUUID()}`
   const store = createScheduleEngineStore(url, serviceRoleKey)
+  const maxCollateralChanges = maxCollateralChangesFromEnvironment(process.env.SCHEDULE_ENGINE_MAX_COLLATERAL_CHANGES)
   const predict = createPredictionFunction({
-    allowDevelopmentPlaceholder: developmentPlaceholderAllowed(
-      url,
-      process.env.SCHEDULE_ENGINE_ENABLE_PLACEHOLDER,
-      process.env.NODE_ENV,
-    ),
+    maxCollateralChanges,
   })
   const options = { store, workerId, predict, notify: createPredictionReadyNotifier(smtpNotifierConfigFromEnvironment()) }
 
