@@ -11,15 +11,23 @@ const MAX_REPLACEMENTS = 2
 const MAX_ACTIVE_REQUESTS = 5
 const JOB_POLL_INTERVAL_MS = 15_000
 
-interface ReplacementDraft {
+interface SourceCourseDraft {
   key: string
   enrollmentId: string
+}
+
+interface ReplacementCourseDraft {
+  key: string
   courseQuery: string
   replacementCourse: CourseNameSearchResult | null
 }
 
-function newDraft(): ReplacementDraft {
-  return { key: crypto.randomUUID(), enrollmentId: '', courseQuery: '', replacementCourse: null }
+function newSourceCourse(): SourceCourseDraft {
+  return { key: crypto.randomUUID(), enrollmentId: '' }
+}
+
+function newReplacementCourse(): ReplacementCourseDraft {
+  return { key: crypto.randomUUID(), courseQuery: '', replacementCourse: null }
 }
 
 function enrollmentLabel(enrollment: ScheduleEnrollment): string {
@@ -28,35 +36,34 @@ function enrollmentLabel(enrollment: ScheduleEnrollment): string {
   return `${enrollment.class.course_name} — ${enrollment.class.teacher_last_name} · ${termLabels[enrollment.academic_term]} · ${meetings}`
 }
 
-function formErrorFor(drafts: ReplacementDraft[], enrollments: ScheduleEnrollment[]): string | null {
-  if (drafts.length < 1 || drafts.length > MAX_REPLACEMENTS) return 'Choose one or two replacements.'
-  if (drafts.some((draft) => !draft.enrollmentId || !draft.replacementCourse)) return 'Complete every replacement before submitting.'
-  const enrollmentIds = drafts.map((draft) => draft.enrollmentId)
+function formErrorFor(sourceCourses: SourceCourseDraft[], replacementCourses: ReplacementCourseDraft[], enrollments: ScheduleEnrollment[]): string | null {
+  if (sourceCourses.length < 1 || sourceCourses.length > MAX_REPLACEMENTS) return 'Choose one or two current courses.'
+  if (replacementCourses.length < 1 || replacementCourses.length > MAX_REPLACEMENTS) return 'Choose one or two replacement courses.'
+  if (sourceCourses.some((draft) => !draft.enrollmentId) || replacementCourses.some((draft) => !draft.replacementCourse)) return 'Complete every course selection before submitting.'
+  const enrollmentIds = sourceCourses.map((draft) => draft.enrollmentId)
   if (new Set(enrollmentIds).size !== enrollmentIds.length) return 'Each current course can only be replaced once.'
-  const courseIds = drafts.map((draft) => draft.replacementCourse?.id ?? '')
-  if (new Set(courseIds).size !== courseIds.length) return 'Choose a different replacement course for each row.'
-  for (const draft of drafts) {
+  const courseIds = replacementCourses.map((draft) => draft.replacementCourse?.id ?? '')
+  if (new Set(courseIds).size !== courseIds.length) return 'Choose different replacement courses.'
+  for (const draft of sourceCourses) {
     const enrollment = enrollments.find((item) => item.id === draft.enrollmentId)
     if (!enrollment) return 'One of the selected current courses is no longer in your schedule.'
-    if (enrollment.class.course_name_id === draft.replacementCourse?.id) return 'A course cannot replace itself.'
+    if (courseIds.includes(enrollment.class.course_name_id)) return 'A course cannot replace itself.'
   }
   return null
 }
 
 function CourseCatalogPicker({
   draft,
-  currentCourseId,
   excludedCourseIds,
   onChange,
 }: {
-  draft: ReplacementDraft
-  currentCourseId: string | null
+  draft: ReplacementCourseDraft
   excludedCourseIds: ReadonlySet<string>
-  onChange: (next: Pick<ReplacementDraft, 'courseQuery' | 'replacementCourse'>) => void
+  onChange: (next: Pick<ReplacementCourseDraft, 'courseQuery' | 'replacementCourse'>) => void
 }) {
   const [open, setOpen] = useState(false)
   const search = useCourseNameSearch(draft.courseQuery)
-  const results = search.results.filter((course) => course.id !== currentCourseId && !excludedCourseIds.has(course.id)).slice(0, 6)
+  const results = search.results.filter((course) => !excludedCourseIds.has(course.id)).slice(0, 6)
   return (
     <div
       className="engine-course-picker"
@@ -111,7 +118,7 @@ function JobStatus({ job }: { job: ScheduleEngineJob }) {
   return (
     <section className={`engine-status engine-status-${job.status}`} role="status" aria-live="polite">
       {current.icon}
-      <div><strong>{current.label}</strong><span>{job.replacements.length} replacement{job.replacements.length === 1 ? '' : 's'}</span></div>
+      <div><strong>{current.label}</strong><span>{job.sourceCourses.length} course{job.sourceCourses.length === 1 ? '' : 's'} → {job.replacementCourses.length} course{job.replacementCourses.length === 1 ? '' : 's'}</span></div>
       {job.status === 'completed' ? <span>{job.predictions.length} predicted schedule{job.predictions.length === 1 ? '' : 's'}</span> : null}
     </section>
   )
@@ -150,7 +157,8 @@ function EngineNotes() {
 
 export function ScheduleEnginePage() {
   const { enrollments, loading: scheduleLoading, error: scheduleError } = useSchedule()
-  const [drafts, setDrafts] = useState<ReplacementDraft[]>(() => [newDraft()])
+  const [sourceCourses, setSourceCourses] = useState<SourceCourseDraft[]>(() => [newSourceCourse()])
+  const [replacementCourses, setReplacementCourses] = useState<ReplacementCourseDraft[]>(() => [newReplacementCourse()])
   const [emailNotification, setEmailNotification] = useState(true)
   const [jobs, setJobs] = useState<ScheduleEngineJob[]>([])
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
@@ -183,18 +191,23 @@ export function ScheduleEnginePage() {
 
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null
   const activeRequestCount = jobs.filter((job) => job.status === 'queued' || job.status === 'processing').length
-  const validationError = useMemo(() => formErrorFor(drafts, enrollments), [drafts, enrollments])
-  const selectedEnrollmentIds = useMemo(() => new Set(drafts.map((draft) => draft.enrollmentId).filter(Boolean)), [drafts])
-  const selectedReplacementCourseIds = useMemo(() => new Set(drafts.map((draft) => draft.replacementCourse?.id).filter((id): id is string => Boolean(id))), [drafts])
+  const validationError = useMemo(() => formErrorFor(sourceCourses, replacementCourses, enrollments), [sourceCourses, replacementCourses, enrollments])
+  const selectedEnrollmentIds = useMemo(() => new Set(sourceCourses.map((draft) => draft.enrollmentId).filter(Boolean)), [sourceCourses])
+  const selectedCurrentCourseIds = useMemo(() => new Set(sourceCourses.flatMap((draft) => {
+    const enrollment = enrollments.find((item) => item.id === draft.enrollmentId)
+    return enrollment ? [enrollment.class.course_name_id] : []
+  })), [sourceCourses, enrollments])
+  const selectedReplacementCourseIds = useMemo(() => new Set(replacementCourses.map((draft) => draft.replacementCourse?.id).filter((id): id is string => Boolean(id))), [replacementCourses])
 
-  function updateDraft(key: string, update: Partial<ReplacementDraft>) {
-    setDrafts((current) => current.map((draft) => draft.key === key ? { ...draft, ...update } : draft))
+  function updateReplacementCourse(key: string, update: Partial<ReplacementCourseDraft>) {
+    setReplacementCourses((current) => current.map((draft) => draft.key === key ? { ...draft, ...update } : draft))
     setSubmitError(null)
   }
 
   function resetForm() {
     if (activeRequestCount >= MAX_ACTIVE_REQUESTS) return
-    setDrafts([newDraft()])
+    setSourceCourses([newSourceCourse()])
+    setReplacementCourses([newReplacementCourse()])
     setEmailNotification(true)
     setSubmitError(null)
     setCreatingNew(true)
@@ -209,10 +222,10 @@ export function ScheduleEnginePage() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const jobId = await createScheduleEngineJob(drafts.map((draft) => ({
-        enrollmentId: draft.enrollmentId,
-        replacementCourseId: draft.replacementCourse!.id,
-      })), emailNotification)
+      const jobId = await createScheduleEngineJob({
+        enrollmentIds: sourceCourses.map((draft) => draft.enrollmentId),
+        replacementCourseIds: replacementCourses.map((draft) => draft.replacementCourse!.id),
+      }, emailNotification)
       setCreatingNew(false)
       await refreshJobs(jobId)
     } catch (caught) {
@@ -255,7 +268,7 @@ export function ScheduleEnginePage() {
             {jobs.map((job) => (
               <button className={job.id === selectedJobId ? 'is-selected' : ''} key={job.id} type="button" onClick={() => { setCreatingNew(false); setSelectedJobId(job.id) }}>
                 <span className={`engine-queue-dot status-${job.status}`} aria-hidden="true" />
-                <span><strong>{job.replacements.map((replacement) => replacement.replacementCourseName).join(' + ')}</strong><small>{new Date(job.createdAt).toLocaleString()} · {job.status}</small></span>
+                <span><strong>{job.replacementCourses.map((course) => course.courseName).join(' + ')}</strong><small>{new Date(job.createdAt).toLocaleString()} · {job.status}</small></span>
               </button>
             ))}
           </div>
@@ -267,7 +280,7 @@ export function ScheduleEnginePage() {
           <JobStatus job={selectedJob} />
           <section className="engine-request-details" aria-label="Requested course changes">
             <h2>Requested changes</h2>
-            {selectedJob.replacements.map((replacement) => <div key={replacement.position}><span>{replacement.currentCourseName}</span><ArrowRight size={17} aria-label="changed to" /><strong>{replacement.replacementCourseName}</strong></div>)}
+            <div><span>{selectedJob.sourceCourses.map((course) => course.courseName).join(' + ')}</span><ArrowRight size={17} aria-label="changed to" /><strong>{selectedJob.replacementCourses.map((course) => course.courseName).join(' + ')}</strong></div>
             <p>Email notification: <strong>{selectedJob.emailNotification ? 'On' : 'Off'}</strong></p>
           </section>
           {selectedJob.status === 'queued' || selectedJob.status === 'processing' ? (
@@ -299,37 +312,39 @@ export function ScheduleEnginePage() {
       ) : showForm ? (
         <div className="engine-request-layout">
           <form className="engine-request-form" onSubmit={(event) => void submit(event)}>
-            <div className="engine-form-heading"><h2>Course replacements</h2><p>Select up to two current courses to replace with a different course from the catalog.</p></div>
+            <div className="engine-form-heading"><h2>Course replacements</h2><p>Choose up to two courses from your schedule, then up to two catalog courses to replace them with.</p></div>
             {scheduleLoading ? <p className="engine-loading" role="status">Loading your current schedule…</p> : scheduleError ? <p className="form-error" role="alert">{scheduleError}</p> : enrollments.length === 0 ? <p className="notice-box"><Info aria-hidden="true" />Add classes to your schedule before creating a Schedule Engine request.</p> : (
-              <div className="engine-replacement-list">
-                {drafts.map((draft, index) => {
-                  const currentEnrollment = enrollments.find((enrollment) => enrollment.id === draft.enrollmentId)
-                  const excludedEnrollments = new Set(selectedEnrollmentIds)
-                  excludedEnrollments.delete(draft.enrollmentId)
-                  const excludedCourses = new Set(selectedReplacementCourseIds)
-                  if (draft.replacementCourse) excludedCourses.delete(draft.replacementCourse.id)
-                  return (
-                    <fieldset className="engine-replacement-row" key={draft.key}>
-                      <legend className="sr-only">Replacement {index + 1}</legend>
-                      <span className="engine-replacement-number" aria-hidden="true">{index + 1}</span>
-                      <label>Current course
-                        <select value={draft.enrollmentId} onChange={(event) => updateDraft(draft.key, { enrollmentId: event.target.value, replacementCourse: null, courseQuery: '' })}>
+              <div className="engine-replacement-list engine-selection-groups">
+                <section className="engine-selection-group" aria-labelledby="engine-current-courses-heading">
+                  <header><span className="engine-replacement-number" aria-hidden="true">1</span><div><h3 id="engine-current-courses-heading">Courses to replace</h3><p>From your current schedule</p></div></header>
+                  {sourceCourses.map((draft, index) => {
+                    const excludedEnrollments = new Set(selectedEnrollmentIds)
+                    excludedEnrollments.delete(draft.enrollmentId)
+                    return <div className="engine-selection-row" key={draft.key}>
+                      <label>Current course {sourceCourses.length > 1 ? index + 1 : ''}
+                        <select value={draft.enrollmentId} onChange={(event) => setSourceCourses((current) => current.map((item) => item.key === draft.key ? { ...item, enrollmentId: event.target.value } : item))}>
                           <option value="">Select a current course</option>
                           {enrollments.filter((enrollment) => !excludedEnrollments.has(enrollment.id)).map((enrollment) => <option key={enrollment.id} value={enrollment.id}>{enrollmentLabel(enrollment)}</option>)}
                         </select>
                       </label>
-                      <ArrowRight className="engine-replacement-arrow" aria-hidden="true" />
-                      <CourseCatalogPicker
-                        draft={draft}
-                        currentCourseId={currentEnrollment?.class.course_name_id ?? null}
-                        excludedCourseIds={excludedCourses}
-                        onChange={(update) => updateDraft(draft.key, update)}
-                      />
-                      <button className="button button-secondary engine-remove-row" type="button" disabled={drafts.length === 1} onClick={() => setDrafts((current) => current.filter((item) => item.key !== draft.key))}><Trash2 size={17} /><span>Remove</span></button>
-                    </fieldset>
-                  )
-                })}
-                {drafts.length < Math.min(MAX_REPLACEMENTS, enrollments.length) ? <button className="engine-add-row" type="button" onClick={() => setDrafts((current) => [...current, newDraft()])}><Plus size={18} /> Add another replacement <small>up to two total</small></button> : null}
+                      {sourceCourses.length > 1 ? <button className="engine-remove-selection" type="button" aria-label={`Remove current course ${index + 1}`} onClick={() => setSourceCourses((current) => current.filter((item) => item.key !== draft.key))}><Trash2 size={15} /></button> : null}
+                    </div>
+                  })}
+                  {sourceCourses.length < Math.min(MAX_REPLACEMENTS, enrollments.length) ? <button className="engine-add-selection" type="button" onClick={() => setSourceCourses((current) => [...current, newSourceCourse()])}><Plus size={14} /> Add another current course</button> : null}
+                </section>
+                <ArrowRight className="engine-selection-arrow" aria-hidden="true" />
+                <section className="engine-selection-group" aria-labelledby="engine-new-courses-heading">
+                  <header><span className="engine-replacement-number" aria-hidden="true">2</span><div><h3 id="engine-new-courses-heading">Replace with</h3><p>From the course catalog</p></div></header>
+                  {replacementCourses.map((draft, index) => {
+                    const excludedCourses = new Set([...selectedReplacementCourseIds, ...selectedCurrentCourseIds])
+                    if (draft.replacementCourse) excludedCourses.delete(draft.replacementCourse.id)
+                    return <div className="engine-selection-row" key={draft.key}>
+                      <CourseCatalogPicker draft={draft} excludedCourseIds={excludedCourses} onChange={(update) => updateReplacementCourse(draft.key, update)} />
+                      {replacementCourses.length > 1 ? <button className="engine-remove-selection" type="button" aria-label={`Remove replacement course ${index + 1}`} onClick={() => setReplacementCourses((current) => current.filter((item) => item.key !== draft.key))}><Trash2 size={15} /></button> : null}
+                    </div>
+                  })}
+                  {replacementCourses.length < MAX_REPLACEMENTS ? <button className="engine-add-selection" type="button" onClick={() => setReplacementCourses((current) => [...current, newReplacementCourse()])}><Plus size={14} /> Add another replacement course</button> : null}
+                </section>
               </div>
             )}
             <div className="engine-submit-area">
@@ -341,7 +356,7 @@ export function ScheduleEnginePage() {
           </form>
           <aside className="engine-about">
             <h2>About Schedule Engine</h2>
-            <div><Clock3 aria-hidden="true" /><p>Keep up to five active requests, with one or two changes in each.</p></div>
+            <div><Clock3 aria-hidden="true" /><p>Keep up to five active requests. Each can replace one or two current courses with one or two catalog courses.</p></div>
             <div><RefreshCw aria-hidden="true" /><p>Return to this page to see when processing is complete.</p></div>
             <EngineNotes />
           </aside>

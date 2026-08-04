@@ -25,4 +25,14 @@ describe('placeholder prediction boundary', () => {
     const predict = createPredictionFunction({ allowDevelopmentPlaceholder: false })
     await expect(predict(workerInput)).rejects.toBeInstanceOf(PredictionEngineNotImplementedError)
   })
+
+  it('does not invent a mapping for multi-course development requests', () => {
+    expect(() => createDevelopmentPlaceholder({
+      ...workerInput,
+      replacement_courses: [
+        ...workerInput.replacement_courses,
+        { course_id: 'course-3', course_name: 'History', course_term_policy: 'full_year' },
+      ],
+    })).toThrow(PredictionEngineNotImplementedError)
+  })
 })

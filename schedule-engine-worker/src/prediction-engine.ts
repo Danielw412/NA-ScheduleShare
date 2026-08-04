@@ -18,17 +18,20 @@ export function developmentPlaceholderAllowed(supabaseUrl: string, enabled: stri
 }
 
 export function createDevelopmentPlaceholder(input: ScheduleEngineInput): PredictedScheduleResult {
-  const replacements = new Map(input.replacements.map((replacement) => [replacement.enrollment_id, replacement]))
+  if (input.source_courses.length !== 1 || input.replacement_courses.length !== 1) {
+    throw new PredictionEngineNotImplementedError()
+  }
+  const source = input.source_courses[0]
+  const replacementCourse = input.replacement_courses[0]
   const schedule: PredictedScheduleEnrollment[] = input.current_schedule.map((enrollment) => {
-    const replacement = replacements.get(enrollment.enrollment_id)
-    if (!replacement) return { ...enrollment, changed_from_enrollment_id: null }
+    if (enrollment.enrollment_id !== source.enrollment_id) return { ...enrollment, changed_from_enrollment_id: null }
     return {
       ...enrollment,
-      enrollment_id: `development-placeholder-${replacement.position}`,
-      class_id: `development-placeholder-${replacement.replacement_course.course_id}`,
-      course_id: replacement.replacement_course.course_id,
-      course_name: replacement.replacement_course.course_name,
-      course_term_policy: replacement.replacement_course.course_term_policy,
+      enrollment_id: `development-placeholder-${source.position}`,
+      class_id: `development-placeholder-${replacementCourse.course_id}`,
+      course_id: replacementCourse.course_id,
+      course_name: replacementCourse.course_name,
+      course_term_policy: replacementCourse.course_term_policy,
       teacher_last_name: 'TBD',
       changed_from_enrollment_id: enrollment.enrollment_id,
     }

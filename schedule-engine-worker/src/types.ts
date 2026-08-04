@@ -33,11 +33,10 @@ export interface ReplacementCourse {
   course_term_policy: CourseTermPolicy
 }
 
-export interface RequestedReplacement {
+export interface RequestedSourceCourse {
   position: number
   enrollment_id: string
   current_course: CurrentScheduleEnrollment
-  replacement_course: ReplacementCourse
 }
 
 export interface ReplacementCourseSection {
@@ -66,7 +65,8 @@ export interface ScheduleEngineInput {
     email: string | null
   }
   current_schedule: CurrentScheduleEnrollment[]
-  replacements: RequestedReplacement[]
+  source_courses: RequestedSourceCourse[]
+  replacement_courses: ReplacementCourse[]
   replacement_course_sections: ReplacementCourseSection[]
 }
 
@@ -105,7 +105,8 @@ export interface WorkerJobSummary {
   cancelled_at?: string
   error_message?: string
   created_at: string
-  replacements: Array<{ position: number; current_course_name: string; replacement_course_name: string }>
+  source_courses: Array<{ position: number; enrollment_id: string; course_id: string; course_name: string }>
+  replacement_courses: Array<{ position: number; course_id: string; course_name: string }>
   results: Array<{ rank: number; development_placeholder: boolean }>
 }
 

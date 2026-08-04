@@ -314,7 +314,7 @@ function ScheduleEngineAdminPanel({ jobs, onRefresh }: { jobs: AdminScheduleEngi
       {jobs.map((job) => <details key={job.id} open={job.status === 'queued' || job.status === 'processing'}>
         <summary><span className={`engine-queue-dot status-${job.status}`} aria-hidden="true" /><strong>{job.userName}</strong><span>{job.status}</span><small>{new Date(job.createdAt).toLocaleString()}</small></summary>
         <div className="engine-admin-job-body">
-          <div className="engine-admin-replacements">{job.replacements.map((replacement) => <p key={replacement.position}><span>{replacement.currentCourseName}</span> → <strong>{replacement.replacementCourseName}</strong></p>)}</div>
+          <div className="engine-admin-replacements"><p><span>{job.sourceCourses.map((course) => course.courseName).join(' + ')}</span> → <strong>{job.replacementCourses.map((course) => course.courseName).join(' + ')}</strong></p></div>
           <dl>
             <div><dt>Request ID</dt><dd>{job.id}</dd></div>
             <div><dt>User ID</dt><dd>{job.userId}</dd></div>

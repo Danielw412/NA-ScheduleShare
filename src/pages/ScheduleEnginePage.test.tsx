@@ -99,27 +99,36 @@ describe('ScheduleEnginePage', () => {
     expect(submit).toBeEnabled()
     await user.click(submit)
 
-    await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith([
-      { enrollmentId: 'enrollment-english', replacementCourseId: 'course-literature' },
-    ], true))
+    await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith({
+      enrollmentIds: ['enrollment-english'],
+      replacementCourseIds: ['course-literature'],
+    }, true))
   })
 
-  it('prevents duplicate current courses and duplicate replacement courses across rows', async () => {
+  it('supports two independent current courses and two independent replacement courses', async () => {
     const user = userEvent.setup()
     renderPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: /Add another replacement/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add another current course' })).toBeInTheDocument())
     await user.selectOptions(screen.getByLabelText('Current course'), english.id)
-    await user.type(screen.getByRole('combobox', { name: 'Replacement course' }), 'Lit')
-    await user.click(screen.getByRole('option', { name: 'AP Literature' }))
-    await user.click(screen.getByRole('button', { name: /Add another replacement/ }))
-
-    const courseSelects = screen.getAllByLabelText('Current course')
+    await user.click(screen.getByRole('button', { name: 'Add another current course' }))
+    const courseSelects = screen.getAllByLabelText(/Current course/)
     expect(within(courseSelects[1]).queryByRole('option', { name: /AP English Language/ })).not.toBeInTheDocument()
     await user.selectOptions(courseSelects[1], chemistry.id)
+
+    await user.type(screen.getByRole('combobox', { name: 'Replacement course' }), 'Lit')
+    await user.click(screen.getByRole('option', { name: 'AP Literature' }))
+    await user.click(screen.getByRole('button', { name: 'Add another replacement course' }))
     const replacementInputs = screen.getAllByRole('combobox', { name: 'Replacement course' })
     await user.type(replacementInputs[1], 'History')
-    const secondRow = replacementInputs[1].closest<HTMLElement>('.engine-replacement-row')!
-    expect(within(secondRow).queryByRole('option', { name: 'AP Literature' })).not.toBeInTheDocument()
+    const secondTarget = replacementInputs[1].closest<HTMLElement>('.engine-selection-row')!
+    expect(within(secondTarget).queryByRole('option', { name: 'AP Literature' })).not.toBeInTheDocument()
+    await user.click(within(secondTarget).getByRole('option', { name: 'AP US History' }))
+    await user.click(screen.getByRole('button', { name: 'Submit request' }))
+
+    await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith({
+      enrollmentIds: ['enrollment-english', 'enrollment-chemistry'],
+      replacementCourseIds: ['course-literature', 'course-history'],
+    }, true))
   })
 
   it('keeps the catalog result mounted through a mobile pointer selection', async () => {
@@ -150,7 +159,8 @@ describe('ScheduleEnginePage', () => {
       errorMessage: null,
       createdAt: '2026-08-01T12:00:00Z',
       updatedAt: '2026-08-01T12:20:00Z',
-      replacements: [{ position: 1, enrollmentId: english.id, currentCourseId: 'course-english', currentCourseName: 'AP English Language', replacementCourseId: 'course-literature', replacementCourseName: 'AP Literature' }],
+      sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }],
+      replacementCourses: [{ position: 1, courseId: 'course-literature', courseName: 'AP Literature' }],
       predictions: [{
         rank: 1,
         developmentPlaceholder: false,
@@ -173,7 +183,7 @@ describe('ScheduleEnginePage', () => {
   })
 
   it('shows queued request details and lets the owner cancel', async () => {
-    const queued: ScheduleEngineJob = { id: 'job-queued', status: 'queued', emailNotification: true, notificationStatus: 'pending', queuedAt: '2026-08-01T12:00:00Z', processingStartedAt: null, completedAt: null, failedAt: null, cancelledAt: null, errorMessage: null, createdAt: '2026-08-01T12:00:00Z', updatedAt: '2026-08-01T12:00:00Z', replacements: [{ position: 1, enrollmentId: english.id, currentCourseId: 'course-english', currentCourseName: 'AP English Language', replacementCourseId: 'course-literature', replacementCourseName: 'AP Literature' }], predictions: [] }
+    const queued: ScheduleEngineJob = { id: 'job-queued', status: 'queued', emailNotification: true, notificationStatus: 'pending', queuedAt: '2026-08-01T12:00:00Z', processingStartedAt: null, completedAt: null, failedAt: null, cancelledAt: null, errorMessage: null, createdAt: '2026-08-01T12:00:00Z', updatedAt: '2026-08-01T12:00:00Z', sourceCourses: [{ position: 1, enrollmentId: english.id, courseId: 'course-english', courseName: 'AP English Language' }], replacementCourses: [{ position: 1, courseId: 'course-literature', courseName: 'AP Literature' }], predictions: [] }
     mocks.listScheduleEngineJobs.mockResolvedValue([queued])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()

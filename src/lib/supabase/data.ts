@@ -172,9 +172,11 @@ export async function searchCourseNames(query: string, signal?: AbortSignal): Pr
 function scheduleEngineError(caught: unknown): Error {
   const message = caught && typeof caught === 'object' && 'message' in caught ? String(caught.message) : ''
   if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose one or two course replacements.')
+  if (message.includes('schedule_engine_source_count_invalid')) return new Error('Choose one or two current courses.')
+  if (message.includes('schedule_engine_replacement_course_count_invalid')) return new Error('Choose one or two replacement courses.')
   if (message.includes('schedule_engine_too_many_active_jobs')) return new Error('You already have five active requests. Cancel a queued request or wait for one to finish.')
   if (message.includes('schedule_engine_duplicate_enrollment')) return new Error('Each current course can only be replaced once.')
-  if (message.includes('schedule_engine_duplicate_replacement_course')) return new Error('Choose a different replacement course for each row.')
+  if (message.includes('schedule_engine_duplicate_replacement_course')) return new Error('Choose different replacement courses.')
   if (message.includes('schedule_engine_same_course_replacement')) return new Error('A course cannot replace itself.')
   if (message.includes('schedule_engine_enrollment_not_owned')) return new Error('One of the selected current courses is no longer in your schedule.')
   if (message.includes('schedule_engine_replacement_course_invalid')) return new Error('One of the selected replacement courses is no longer available.')
@@ -186,18 +188,29 @@ function parseScheduleEngineJob(value: unknown): ScheduleEngineJob | null {
   if (!row) return null
   const status = row.status as ScheduleEngineJob['status']
   if (!['queued', 'processing', 'cancelled', 'completed', 'failed'].includes(status)) return null
-  const replacements = Array.isArray(row.replacements) ? row.replacements.flatMap((value) => {
-    const replacement = recordFrom(value)
-    if (!replacement) return []
+  const sourceValues = Array.isArray(row.source_courses) ? row.source_courses : Array.isArray(row.replacements) ? row.replacements : []
+  const sourceCourses = sourceValues.flatMap((value) => {
+    const source = recordFrom(value)
+    if (!source) return []
     return [{
-      position: Number(replacement.position),
-      enrollmentId: String(replacement.enrollment_id),
-      currentCourseId: String(replacement.current_course_id),
-      currentCourseName: String(replacement.current_course_name),
-      replacementCourseId: String(replacement.replacement_course_id),
-      replacementCourseName: String(replacement.replacement_course_name),
+      position: Number(source.position),
+      enrollmentId: String(source.enrollment_id),
+      courseId: String(source.course_id ?? source.current_course_id),
+      courseName: String(source.course_name ?? source.current_course_name),
     }]
-  }) : []
+  })
+  const replacementValues = Array.isArray(row.replacement_courses)
+    ? row.replacement_courses
+    : Array.isArray(row.replacements) ? row.replacements : []
+  const replacementCourses = replacementValues.flatMap((value) => {
+    const course = recordFrom(value)
+    if (!course) return []
+    return [{
+      position: Number(course.position),
+      courseId: String(course.course_id ?? course.replacement_course_id),
+      courseName: String(course.course_name ?? course.replacement_course_name),
+    }]
+  })
   const allowDevelopmentPlaceholder = import.meta.env.DEV || import.meta.env.MODE === 'test'
   const predictions = Array.isArray(row.results)
     ? row.results.map((item) => parseScheduleEnginePrediction(item, allowDevelopmentPlaceholder)).filter((item): item is ScheduleEnginePrediction => item !== null)
@@ -208,20 +221,20 @@ function parseScheduleEngineJob(value: unknown): ScheduleEngineJob | null {
     queuedAt: String(row.queued_at), processingStartedAt: stringOrNull(row.processing_started_at),
     completedAt: stringOrNull(row.completed_at), failedAt: stringOrNull(row.failed_at),
     cancelledAt: stringOrNull(row.cancelled_at), errorMessage: stringOrNull(row.error_message),
-    createdAt: String(row.created_at), updatedAt: String(row.updated_at), replacements, predictions,
+    createdAt: String(row.created_at), updatedAt: String(row.updated_at), sourceCourses, replacementCourses, predictions,
   }
 }
 
 export async function createScheduleEngineJob(
-  replacements: ScheduleEngineReplacementInput[],
+  request: ScheduleEngineReplacementInput,
   emailNotification: boolean,
 ): Promise<string> {
   try {
     const data = await callUntypedRpc('create_schedule_engine_job', {
-      p_replacements: replacements.map((replacement) => ({
-        enrollment_id: replacement.enrollmentId,
-        replacement_course_id: replacement.replacementCourseId,
-      })),
+      p_replacements: {
+        enrollment_ids: request.enrollmentIds,
+        replacement_course_ids: request.replacementCourseIds,
+      },
       p_email_notification: emailNotification,
     })
     if (typeof data !== 'string') throw new Error('invalid_schedule_engine_job_id')

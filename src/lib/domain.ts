@@ -40,17 +40,21 @@ export type ScheduleEngineJobStatus = 'queued' | 'processing' | 'cancelled' | 'c
 export type ScheduleEngineNotificationStatus = 'not_requested' | 'pending' | 'sent' | 'failed'
 
 export interface ScheduleEngineReplacementInput {
-  enrollmentId: string
-  replacementCourseId: string
+  enrollmentIds: string[]
+  replacementCourseIds: string[]
 }
 
-export interface ScheduleEngineReplacementSummary {
+export interface ScheduleEngineSourceCourseSummary {
   position: number
   enrollmentId: string
-  currentCourseId: string
-  currentCourseName: string
-  replacementCourseId: string
-  replacementCourseName: string
+  courseId: string
+  courseName: string
+}
+
+export interface ScheduleEngineReplacementCourseSummary {
+  position: number
+  courseId: string
+  courseName: string
 }
 
 export interface ScheduleEnginePredictedEnrollment extends ScheduleEnrollment {
@@ -76,7 +80,8 @@ export interface ScheduleEngineJob {
   errorMessage: string | null
   createdAt: string
   updatedAt: string
-  replacements: ScheduleEngineReplacementSummary[]
+  sourceCourses: ScheduleEngineSourceCourseSummary[]
+  replacementCourses: ScheduleEngineReplacementCourseSummary[]
   predictions: ScheduleEnginePrediction[]
 }
 

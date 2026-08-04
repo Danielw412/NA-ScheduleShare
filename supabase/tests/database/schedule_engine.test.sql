@@ -1,5 +1,5 @@
 begin;
-select plan(46);
+select plan(49);
 
 select ok(
   has_function_privilege('authenticated', 'public.create_schedule_engine_job(jsonb,boolean)', 'execute')
@@ -37,6 +37,8 @@ select ok(
 select ok(
   has_table_privilege('authenticated', 'public.schedule_engine_jobs', 'select')
   and not has_table_privilege('authenticated', 'public.schedule_engine_jobs', 'insert,update,delete')
+  and has_table_privilege('authenticated', 'public.schedule_engine_replacement_courses', 'select')
+  and not has_table_privilege('authenticated', 'public.schedule_engine_replacement_courses', 'insert,update,delete')
   and has_table_privilege('authenticated', 'public.schedule_engine_results', 'select')
   and not has_table_privilege('authenticated', 'public.schedule_engine_results', 'insert,update,delete'),
   'browser clients can read but cannot mutate queue or result tables'
@@ -48,7 +50,7 @@ select ok(
     from pg_class relation
     join pg_namespace namespace on namespace.oid = relation.relnamespace
     where namespace.nspname = 'public'
-      and relation.relname in ('schedule_engine_jobs', 'schedule_engine_replacements', 'schedule_engine_results')
+      and relation.relname in ('schedule_engine_jobs', 'schedule_engine_replacements', 'schedule_engine_replacement_courses', 'schedule_engine_results')
   ),
   'all Schedule Engine public tables have RLS enabled'
 );
@@ -90,13 +92,19 @@ set local role authenticated;
 
 select lives_ok(
   $$select public.create_schedule_engine_job(
-    jsonb_build_array(jsonb_build_object(
-      'enrollment_id', '98200000-0000-4000-8000-000000000001',
-      'replacement_course_id', (select id from public.course_names where normalized_name = 'ap literature')
-    )),
+    jsonb_build_object(
+      'enrollment_ids', jsonb_build_array(
+        '98200000-0000-4000-8000-000000000001',
+        '98200000-0000-4000-8000-000000000002'
+      ),
+      'replacement_course_ids', jsonb_build_array(
+        (select id from public.course_names where normalized_name = 'ap literature'),
+        (select id from public.course_names where normalized_name = 'ap us history')
+      )
+    ),
     false
   )$$,
-  'an owner can submit one valid replacement'
+  'an owner can submit two current and two replacement courses'
 );
 
 select is(
@@ -114,12 +122,21 @@ select is(
 select is(
   (
     select count(*)
-    from public.schedule_engine_replacements replacement
-    where replacement.enrollment_id = '98200000-0000-4000-8000-000000000001'
-      and replacement.replacement_course_name_id = (select id from public.course_names where normalized_name = 'ap literature')
+    from public.schedule_engine_replacements source
+    where source.job_id = (select id from public.schedule_engine_jobs limit 1)
   ),
-  1::bigint,
-  'the request stores enrollment and catalog course IDs'
+  2::bigint,
+  'the request stores both source enrollment IDs'
+);
+
+select is(
+  (
+    select count(*)
+    from public.schedule_engine_replacement_courses target
+    where target.job_id = (select id from public.schedule_engine_jobs limit 1)
+  ),
+  2::bigint,
+  'the request stores both replacement catalog course IDs independently'
 );
 
 select throws_ok(
@@ -157,7 +174,7 @@ select throws_ok(
 
 select throws_ok(
   $$select public.create_schedule_engine_job('[]'::jsonb, true)$$,
-  '23514', 'schedule_engine_replacement_count_invalid',
+  '23514', 'schedule_engine_source_count_invalid',
   'empty requests are rejected'
 );
 
@@ -169,8 +186,23 @@ select throws_ok(
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid())
     ), true
   )$$,
-  '23514', 'schedule_engine_replacement_count_invalid',
-  'requests with more than two replacements are rejected'
+  '23514', 'schedule_engine_source_count_invalid',
+  'requests with more than two current courses are rejected'
+);
+
+select throws_ok(
+  $$select public.create_schedule_engine_job(
+    jsonb_build_object(
+      'enrollment_ids', jsonb_build_array('98200000-0000-4000-8000-000000000001'),
+      'replacement_course_ids', jsonb_build_array(
+        (select id from public.course_names where normalized_name = 'ap literature'),
+        (select id from public.course_names where normalized_name = 'ap us history'),
+        (select id from public.course_names where normalized_name = 'ap biology')
+      )
+    ), true
+  )$$,
+  '23514', 'schedule_engine_replacement_course_count_invalid',
+  'requests with more than two replacement courses are rejected'
 );
 
 select throws_ok(
@@ -226,21 +258,27 @@ select is(
 );
 
 select is(
-  jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacements'),
-  1,
-  'worker input includes every requested replacement'
+  jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'source_courses'),
+  2,
+  'worker input includes every requested source course'
 );
 
 select is(
-  public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacements' -> 0 -> 'current_course' ->> 'enrollment_id',
+  public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'source_courses' -> 0 -> 'current_course' ->> 'enrollment_id',
   '98200000-0000-4000-8000-000000000001',
   'worker replacement input identifies the current enrollment'
 );
 
 select is(
-  jsonb_typeof(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacements' -> 0 -> 'current_course' -> 'is_double_period'),
+  jsonb_typeof(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'source_courses' -> 0 -> 'current_course' -> 'is_double_period'),
   'boolean',
   'worker replacement input includes typed double-period context'
+);
+
+select is(
+  jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacement_courses'),
+  2,
+  'worker input includes both independent replacement courses'
 );
 
 select ok(
@@ -403,9 +441,9 @@ select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001
 set local role authenticated;
 
 select is(
-  jsonb_array_length(public.get_my_latest_schedule_engine_job() -> 'replacements'),
+  jsonb_array_length(public.get_my_latest_schedule_engine_job() -> 'source_courses'),
   1,
-  'validated replacement snapshots remain readable after the source enrollment is removed'
+  'validated source snapshots remain readable after the enrollment is removed'
 );
 
 select * from finish();

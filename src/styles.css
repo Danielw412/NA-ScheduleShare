@@ -2109,6 +2109,104 @@ legend {
   padding: 8px 26px 22px;
 }
 
+.engine-selection-groups {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  padding-top: 24px;
+}
+
+.engine-selection-group {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.engine-selection-group>header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.engine-selection-group h3,
+.engine-selection-group p {
+  margin: 0;
+}
+
+.engine-selection-group h3 {
+  font-size: 16px;
+}
+
+.engine-selection-group p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.engine-selection-group .engine-replacement-number {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.engine-selection-arrow {
+  margin-top: 42px;
+  color: var(--muted);
+}
+
+.engine-selection-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+}
+
+.engine-selection-row>label,
+.engine-selection-row>.engine-course-picker {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.engine-remove-selection {
+  width: 34px;
+  height: 34px;
+  margin-top: 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--muted);
+}
+
+.engine-remove-selection:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.engine-add-selection {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+
+.engine-add-selection:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
 .engine-replacement-row {
   min-width: 0;
   margin: 0;
@@ -5792,6 +5890,15 @@ a.student-access-profile:hover strong {
 }
 
 @media (max-width: 900px) {
+  .engine-selection-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .engine-selection-arrow {
+    margin: 0 0 0 8px;
+    transform: rotate(90deg);
+  }
+
   .engine-replacement-row {
     grid-template-columns: 30px minmax(0, 1fr) auto;
   }

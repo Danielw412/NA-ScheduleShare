@@ -655,6 +655,41 @@ export type Database = {
           },
         ]
       }
+      schedule_engine_replacement_courses: {
+        Row: {
+          course_name: string
+          course_name_id: string
+          created_at: string
+          id: string
+          job_id: string
+          position: number
+        }
+        Insert: {
+          course_name: string
+          course_name_id: string
+          created_at?: string
+          id?: string
+          job_id: string
+          position: number
+        }
+        Update: {
+          course_name?: string
+          course_name_id?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_engine_replacement_courses_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_engine_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_engine_replacements: {
         Row: {
           created_at: string
@@ -664,8 +699,8 @@ export type Database = {
           id: string
           job_id: string
           position: number
-          replacement_course_name: string
-          replacement_course_name_id: string
+          replacement_course_name: string | null
+          replacement_course_name_id: string | null
         }
         Insert: {
           created_at?: string
@@ -675,8 +710,8 @@ export type Database = {
           id?: string
           job_id: string
           position: number
-          replacement_course_name: string
-          replacement_course_name_id: string
+          replacement_course_name?: string | null
+          replacement_course_name_id?: string | null
         }
         Update: {
           created_at?: string
@@ -686,8 +721,8 @@ export type Database = {
           id?: string
           job_id?: string
           position?: number
-          replacement_course_name?: string
-          replacement_course_name_id?: string
+          replacement_course_name?: string | null
+          replacement_course_name_id?: string | null
         }
         Relationships: [
           {

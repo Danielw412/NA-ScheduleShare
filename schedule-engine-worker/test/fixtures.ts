@@ -14,7 +14,7 @@ export const workerInput: ScheduleEngineInput = {
     is_double_period: false,
     meeting_slots: [{ day_type: 'A', period_number: 1 }, { day_type: 'B', period_number: 1 }],
   }],
-  replacements: [{
+  source_courses: [{
     position: 1,
     enrollment_id: 'enrollment-1',
     current_course: {
@@ -28,7 +28,7 @@ export const workerInput: ScheduleEngineInput = {
       is_double_period: false,
       meeting_slots: [{ day_type: 'A', period_number: 1 }, { day_type: 'B', period_number: 1 }],
     },
-    replacement_course: { course_id: 'course-2', course_name: 'Literature', course_term_policy: 'full_year' },
   }],
+  replacement_courses: [{ course_id: 'course-2', course_name: 'Literature', course_term_policy: 'full_year' }],
   replacement_course_sections: [],
 }
