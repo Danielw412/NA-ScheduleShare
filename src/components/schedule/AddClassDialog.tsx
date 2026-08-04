@@ -367,9 +367,11 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
       onClose()
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Could not create this class.'
-      setError(message.includes('conflict')
-        ? 'This entry conflicts with another class or lunch in the same semester and day.'
-        : message)
+      setError(message.includes('rate_limit_exceeded')
+        ? 'You have created many new class sections recently. Wait a little while, or choose an existing section if one matches.'
+        : message.includes('conflict')
+          ? 'This entry conflicts with another class or lunch in the same semester and day.'
+          : message)
     } finally {
       setSaving(false)
     }

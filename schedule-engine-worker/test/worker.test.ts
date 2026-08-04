@@ -6,6 +6,7 @@ import { workerInput } from './fixtures.js'
 
 function storeMock(): ScheduleEngineStore {
   return {
+    listJobs: vi.fn(),
     claimNext: vi.fn(),
     getWorkerInput: vi.fn(),
     complete: vi.fn(),

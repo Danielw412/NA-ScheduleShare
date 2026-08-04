@@ -3,6 +3,7 @@ import type {
   AdminClassRecord,
   AdminCourseNameRecord,
   AdminReportRecord,
+  AdminScheduleEngineJob,
   AdminUserRecord,
   ClassDefinition,
   ClassmateResult,
@@ -170,13 +171,45 @@ export async function searchCourseNames(query: string, signal?: AbortSignal): Pr
 
 function scheduleEngineError(caught: unknown): Error {
   const message = caught && typeof caught === 'object' && 'message' in caught ? String(caught.message) : ''
-  if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose between one and five course replacements.')
+  if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose one or two course replacements.')
+  if (message.includes('schedule_engine_too_many_active_jobs')) return new Error('You already have five active requests. Cancel a queued request or wait for one to finish.')
   if (message.includes('schedule_engine_duplicate_enrollment')) return new Error('Each current course can only be replaced once.')
   if (message.includes('schedule_engine_duplicate_replacement_course')) return new Error('Choose a different replacement course for each row.')
   if (message.includes('schedule_engine_same_course_replacement')) return new Error('A course cannot replace itself.')
   if (message.includes('schedule_engine_enrollment_not_owned')) return new Error('One of the selected current courses is no longer in your schedule.')
   if (message.includes('schedule_engine_replacement_course_invalid')) return new Error('One of the selected replacement courses is no longer available.')
   return new Error('The Schedule Engine request could not be submitted. Please try again.')
+}
+
+function parseScheduleEngineJob(value: unknown): ScheduleEngineJob | null {
+  const row = recordFrom(value)
+  if (!row) return null
+  const status = row.status as ScheduleEngineJob['status']
+  if (!['queued', 'processing', 'cancelled', 'completed', 'failed'].includes(status)) return null
+  const replacements = Array.isArray(row.replacements) ? row.replacements.flatMap((value) => {
+    const replacement = recordFrom(value)
+    if (!replacement) return []
+    return [{
+      position: Number(replacement.position),
+      enrollmentId: String(replacement.enrollment_id),
+      currentCourseId: String(replacement.current_course_id),
+      currentCourseName: String(replacement.current_course_name),
+      replacementCourseId: String(replacement.replacement_course_id),
+      replacementCourseName: String(replacement.replacement_course_name),
+    }]
+  }) : []
+  const allowDevelopmentPlaceholder = import.meta.env.DEV || import.meta.env.MODE === 'test'
+  const predictions = Array.isArray(row.results)
+    ? row.results.map((item) => parseScheduleEnginePrediction(item, allowDevelopmentPlaceholder)).filter((item): item is ScheduleEnginePrediction => item !== null)
+    : []
+  return {
+    id: String(row.id), status, emailNotification: Boolean(row.email_notification),
+    notificationStatus: String(row.notification_status) as ScheduleEngineNotificationStatus,
+    queuedAt: String(row.queued_at), processingStartedAt: stringOrNull(row.processing_started_at),
+    completedAt: stringOrNull(row.completed_at), failedAt: stringOrNull(row.failed_at),
+    cancelledAt: stringOrNull(row.cancelled_at), errorMessage: stringOrNull(row.error_message),
+    createdAt: String(row.created_at), updatedAt: String(row.updated_at), replacements, predictions,
+  }
 }
 
 export async function createScheduleEngineJob(
@@ -200,41 +233,36 @@ export async function createScheduleEngineJob(
 
 export async function getLatestScheduleEngineJob(): Promise<ScheduleEngineJob | null> {
   const data = await callUntypedRpc('get_my_latest_schedule_engine_job')
-  const row = recordFrom(data)
-  if (!row) return null
-  const status = row.status as ScheduleEngineJob['status']
-  if (!['queued', 'processing', 'completed', 'failed'].includes(status)) return null
-  const replacements = Array.isArray(row.replacements) ? row.replacements.flatMap((value) => {
-    const replacement = recordFrom(value)
-    if (!replacement) return []
-    return [{
-      position: Number(replacement.position),
-      enrollmentId: String(replacement.enrollment_id),
-      currentCourseId: String(replacement.current_course_id),
-      currentCourseName: String(replacement.current_course_name),
-      replacementCourseId: String(replacement.replacement_course_id),
-      replacementCourseName: String(replacement.replacement_course_name),
-    }]
-  }) : []
-  const allowDevelopmentPlaceholder = import.meta.env.DEV || import.meta.env.MODE === 'test'
-  const predictions = Array.isArray(row.results)
-    ? row.results.map((value) => parseScheduleEnginePrediction(value, allowDevelopmentPlaceholder)).filter((item): item is ScheduleEnginePrediction => item !== null)
-    : []
-  return {
-    id: String(row.id),
-    status,
-    emailNotification: Boolean(row.email_notification),
-    notificationStatus: String(row.notification_status) as ScheduleEngineNotificationStatus,
-    queuedAt: String(row.queued_at),
-    processingStartedAt: stringOrNull(row.processing_started_at),
-    completedAt: stringOrNull(row.completed_at),
-    failedAt: stringOrNull(row.failed_at),
-    errorMessage: stringOrNull(row.error_message),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-    replacements,
-    predictions,
+  return parseScheduleEngineJob(data)
+}
+
+export async function listScheduleEngineJobs(): Promise<ScheduleEngineJob[]> {
+  const data = await callUntypedRpc('list_my_schedule_engine_jobs', { p_limit: 25 })
+  return Array.isArray(data) ? data.map(parseScheduleEngineJob).filter((job): job is ScheduleEngineJob => job !== null) : []
+}
+
+export async function cancelScheduleEngineJob(jobId: string): Promise<void> {
+  try {
+    await callUntypedRpc('cancel_my_schedule_engine_job', { p_job_id: jobId })
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : ''
+    if (message.includes('schedule_engine_job_not_cancellable')) throw new Error('Only queued requests can be cancelled.', { cause: caught })
+    throw new Error('The request could not be cancelled. Please refresh and try again.', { cause: caught })
   }
+}
+
+export async function adminListScheduleEngineJobs(): Promise<AdminScheduleEngineJob[]> {
+  const data = await callUntypedRpc('admin_list_schedule_engine_jobs', { p_limit: 100 })
+  if (!Array.isArray(data)) return []
+  return data.flatMap((value) => {
+    const row = recordFrom(value)
+    const job = parseScheduleEngineJob(value)
+    if (!row || !job) return []
+    return [{ ...job, userId: String(row.user_id), userName: String(row.user_name ?? 'Unknown student'),
+      workerId: stringOrNull(row.worker_id), attemptCount: Number(row.attempt_count ?? 0),
+      claimedAt: stringOrNull(row.claimed_at), heartbeatAt: stringOrNull(row.heartbeat_at),
+      notificationSentAt: stringOrNull(row.notification_sent_at), notificationError: stringOrNull(row.notification_error) }]
+  })
 }
 
 export async function enrollInClass(classId: string, term: AcademicTerm, meetingSlots?: MeetingSlot[]): Promise<string> {

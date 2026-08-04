@@ -418,4 +418,15 @@ describe('AddClassDialog semester formats', () => {
     ))
     expect(mocks.createClassAndEnroll).not.toHaveBeenCalled()
   })
+
+  it('explains a class creation throttle instead of showing the raw backend error', async () => {
+    const user = userEvent.setup()
+    mocks.createClassAndEnroll.mockRejectedValue(new Error('rate_limit_exceeded'))
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: 'Create a new class' }))
+    await user.click(screen.getByRole('button', { name: 'Academic Physics' }))
+    await user.type(screen.getByRole('textbox', { name: /^Teacher Last Name/ }), 'Keats')
+    await user.click(screen.getByRole('button', { name: 'Create and add class' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('You have created many new class sections recently')
+  })
 })

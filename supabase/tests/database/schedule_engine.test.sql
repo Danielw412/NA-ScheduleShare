@@ -1,10 +1,17 @@
 begin;
-select plan(35);
+select plan(46);
 
 select ok(
   has_function_privilege('authenticated', 'public.create_schedule_engine_job(jsonb,boolean)', 'execute')
   and not has_function_privilege('anon', 'public.create_schedule_engine_job(jsonb,boolean)', 'execute'),
   'only authenticated users can submit Schedule Engine requests'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.list_my_schedule_engine_jobs(integer)', 'execute')
+  and has_function_privilege('authenticated', 'public.cancel_my_schedule_engine_job(uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.cancel_my_schedule_engine_job(uuid)', 'execute'),
+  'signed-in users can list and cancel only through protected RPCs'
 );
 
 select ok(
@@ -20,7 +27,8 @@ select ok(
       ('public.heartbeat_schedule_engine_job(uuid,text)'),
       ('public.complete_schedule_engine_job(uuid,text,jsonb)'),
       ('public.fail_schedule_engine_job(uuid,text,text)'),
-      ('public.record_schedule_engine_notification(uuid,text,boolean,text)')
+      ('public.record_schedule_engine_notification(uuid,text,boolean,text)'),
+      ('public.list_schedule_engine_jobs_for_worker(integer)')
     ) protected(function_name)
   ),
   'worker RPCs are service-role only'
@@ -158,14 +166,11 @@ select throws_ok(
     jsonb_build_array(
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
-      jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
-      jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
-      jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid())
     ), true
   )$$,
   '23514', 'schedule_engine_replacement_count_invalid',
-  'requests with more than five replacements are rejected'
+  'requests with more than two replacements are rejected'
 );
 
 select throws_ok(
@@ -292,12 +297,92 @@ select is(
   'the owner can read completed prediction results'
 );
 
+select lives_ok(
+  $$do $block$
+  begin
+    for request_number in 1..5 loop
+      perform public.create_schedule_engine_job(
+        jsonb_build_array(jsonb_build_object(
+          'enrollment_id', '98200000-0000-4000-8000-000000000001',
+          'replacement_course_id', (select id from public.course_names where normalized_name = 'ap literature')
+        )), true
+      );
+    end loop;
+  end
+  $block$;$$,
+  'an owner can keep up to five active requests in the queue'
+);
+
+select throws_ok(
+  $$select public.create_schedule_engine_job(
+    jsonb_build_array(jsonb_build_object(
+      'enrollment_id', '98200000-0000-4000-8000-000000000001',
+      'replacement_course_id', (select id from public.course_names where normalized_name = 'ap literature')
+    )), true
+  )$$,
+  '23514', 'schedule_engine_too_many_active_jobs',
+  'a sixth active request is rejected'
+);
+
+select is(jsonb_array_length(public.list_my_schedule_engine_jobs()), 6, 'the owner can inspect completed and queued request details');
+
+select set_config('test.cancel_engine_job', (
+  select id::text from public.schedule_engine_jobs where status = 'queued' order by created_at desc, id desc limit 1
+), true);
+
+select lives_ok(
+  $$select public.cancel_my_schedule_engine_job(current_setting('test.cancel_engine_job')::uuid)$$,
+  'the owner can cancel their queued request'
+);
+
+select is(
+  (select status::text from public.schedule_engine_jobs where id = current_setting('test.cancel_engine_job')::uuid),
+  'cancelled',
+  'cancellation records a terminal cancelled status'
+);
+
+select is(
+  (select count(*) from public.schedule_engine_jobs where status in ('queued', 'processing')),
+  4::bigint,
+  'a cancelled request frees one active request slot'
+);
+
 reset role;
 select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000002', true);
 set local role authenticated;
 
 select is(public.get_my_latest_schedule_engine_job(), null, 'a user with no jobs receives no other user data');
 select is((select count(*) from public.schedule_engine_results), 0::bigint, 'result RLS hides another user predictions');
+
+select throws_ok(
+  $$select public.cancel_my_schedule_engine_job(current_setting('test.cancel_engine_job')::uuid)$$,
+  '42501', 'schedule_engine_job_not_cancellable',
+  'another user cannot cancel the owner request'
+);
+
+select throws_ok(
+  $$select public.admin_list_schedule_engine_jobs()$$,
+  '42501', 'administrator_access_required',
+  'non-administrators cannot inspect the administrative queue'
+);
+
+reset role;
+insert into private.user_roles (user_id, role, granted_by)
+values ('98000000-0000-4000-8000-000000000002', 'administrator', '98000000-0000-4000-8000-000000000002');
+set local role authenticated;
+
+select ok(
+  jsonb_array_length(public.admin_list_schedule_engine_jobs()) >= 6,
+  'administrators can inspect queue and worker details'
+);
+
+reset role;
+set local role service_role;
+
+select ok(
+  jsonb_array_length(public.list_schedule_engine_jobs_for_worker()) >= 6,
+  'the service-role worker control panel can inspect the queue'
+);
 
 reset role;
 delete from public.class_enrollments where id = '98200000-0000-4000-8000-000000000001';

@@ -84,9 +84,35 @@ export interface NotificationDelivery {
   errorMessage?: string
 }
 
+export type WorkerJobStatus = 'queued' | 'processing' | 'cancelled' | 'completed' | 'failed'
+
+export interface WorkerJobSummary {
+  id: string
+  user_id: string
+  user_name: string
+  status: WorkerJobStatus
+  email_notification: boolean
+  notification_status: string
+  notification_error?: string
+  worker_id?: string
+  attempt_count: number
+  queued_at: string
+  claimed_at?: string
+  processing_started_at?: string
+  heartbeat_at?: string
+  completed_at?: string
+  failed_at?: string
+  cancelled_at?: string
+  error_message?: string
+  created_at: string
+  replacements: Array<{ position: number; current_course_name: string; replacement_course_name: string }>
+  results: Array<{ rank: number; development_placeholder: boolean }>
+}
+
 export type PredictionFunction = (input: ScheduleEngineInput) => Promise<PredictedScheduleResult[]>
 
 export interface ScheduleEngineStore {
+  listJobs(limit?: number): Promise<WorkerJobSummary[]>
   claimNext(workerId: string): Promise<ClaimedScheduleEngineJob | null>
   getWorkerInput(jobId: string, workerId: string): Promise<ScheduleEngineInput>
   complete(jobId: string, workerId: string, results: PredictedScheduleResult[]): Promise<void>

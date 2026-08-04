@@ -1,4 +1,4 @@
-import { notifyPredictionReady } from './notifier.js'
+import { createPredictionReadyNotifier, smtpNotifierConfigFromEnvironment } from './notifier.js'
 import { createPredictionFunction, developmentPlaceholderAllowed } from './prediction-engine.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import { processFullQueue, processNextJob } from './worker.js'
@@ -23,7 +23,7 @@ async function main() {
       process.env.NODE_ENV,
     ),
   })
-  const options = { store, workerId, predict, notify: notifyPredictionReady }
+  const options = { store, workerId, predict, notify: createPredictionReadyNotifier(smtpNotifierConfigFromEnvironment()) }
 
   if (mode === '--once') {
     const outcome = await processNextJob(options)

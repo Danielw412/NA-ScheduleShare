@@ -1,21 +1,22 @@
-import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Database, FileClock, Flag, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Database, FileClock, Flag, Gauge, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
+import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type AdminScheduleEngineJob, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
 import { adminRemoveProfilePicture } from '../lib/profile'
 import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
+type AdminTab = 'users' | 'reports' | 'classes' | 'engine' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
 
 const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'users', label: 'User management', icon: Users },
   { id: 'reports', label: 'Reports', icon: Flag },
   { id: 'classes', label: 'Class management', icon: GraduationCap },
+  { id: 'engine', label: 'Schedule Engine', icon: Gauge },
   { id: 'homepage', label: 'Homepage', icon: BarChart3 },
   { id: 'ai', label: 'AI importer', icon: BrainCircuit },
   { id: 'admins', label: 'Admin management', icon: ShieldCheck },
@@ -114,6 +115,7 @@ export function AdminPage() {
   const [reports, setReports] = useState<AdminReportRecord[]>(isDemo ? demoReports : [])
   const [classes, setClasses] = useState<AdminClassRecord[]>(isDemo ? demoClasses : [])
   const [courseNames, setCourseNames] = useState<AdminCourseNameRecord[]>(isDemo ? demoCourseNames : [])
+  const [engineJobs, setEngineJobs] = useState<AdminScheduleEngineJob[]>([])
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState(0)
   const [query, setQuery] = useState('')
@@ -132,16 +134,18 @@ export function AdminPage() {
   const load = useCallback(async () => {
     if (isDemo || !supabase) return
     try {
-      const [nextUsers, nextReports, nextClasses, nextCourseNames] = await Promise.all([
+      const [nextUsers, nextReports, nextClasses, nextCourseNames, nextEngineJobs] = await Promise.all([
         adminListUsers(query, grade || undefined, status || undefined),
         adminListReports(),
         adminListClasses(),
         adminListCourseNames(),
+        adminListScheduleEngineJobs(),
       ])
       setUsers(nextUsers)
       setReports(nextReports)
       setClasses(nextClasses)
       setCourseNames(nextCourseNames)
+      setEngineJobs(nextEngineJobs)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load administrative data.')
     }
@@ -240,7 +244,7 @@ export function AdminPage() {
   return (
     <div className="admin-page">
       <header className="page-heading"><div><h1>Administration</h1><p>Protected user, class, report, schedule, role, and audit operations.</p></div><span className="admin-lock"><ShieldCheck /> Admin only</span></header>
-      <div className="admin-tabs" role="tablist">{[...tabs, ...(isSuperAdmin ? [{ id: 'logs' as const, label: 'Logs', icon: FileClock }, { id: 'protected' as const, label: 'Protected tools', icon: Database }] : [])].map((item) => { const Icon = item.icon; return <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setTab(item.id)}><Icon size={17} /> {item.label}</button> })}</div>
+      <div className="admin-tabs" role="tablist">{[...tabs, ...(isSuperAdmin ? [{ id: 'logs' as const, label: 'Logs', icon: FileClock }, { id: 'protected' as const, label: 'Protected tools', icon: Database }] : [])].map((item) => { const Icon = item.icon; const queuedCount = item.id === 'engine' ? engineJobs.filter((job) => job.status === 'queued').length : null; return <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setTab(item.id)}><Icon size={17} /> {item.label}{queuedCount !== null ? <span className="admin-tab-count" aria-label={`${queuedCount} queued`}>{queuedCount}</span> : null}</button> })}</div>
       {message ? <div className="toast-message" role="status">{message}<button onClick={() => setMessage(null)}>×</button></div> : null}{error ? <p className="form-error" role="alert">{error}</p> : null}
 
       {tab === 'users' ? <section className="admin-section">
@@ -263,6 +267,8 @@ export function AdminPage() {
         onPermanentDelete={permanentlyDeleteClass}
         onAdminAction={adminAction}
       /> : null}
+
+      {tab === 'engine' ? <ScheduleEngineAdminPanel jobs={engineJobs} onRefresh={() => void load()} /> : null}
 
       {tab === 'homepage' ? <HomepageStatisticPanel isDemo={isDemo} /> : null}
 
@@ -289,6 +295,39 @@ const homepageStatisticLabels: Record<HomepageStatisticKey, string> = {
   students_joined: 'NA students joined',
   schedules_uploaded: 'Schedules uploaded',
   class_connections: 'Class connections found',
+}
+
+function ScheduleEngineAdminPanel({ jobs, onRefresh }: { jobs: AdminScheduleEngineJob[]; onRefresh: () => void }) {
+  const queued = jobs.filter((job) => job.status === 'queued')
+  const processing = jobs.filter((job) => job.status === 'processing')
+  return <section className="admin-section engine-admin-panel">
+    <header className="engine-admin-heading">
+      <div><h2>Schedule Engine queue</h2><p>Request details and worker diagnostics. Processing controls remain in the laptop worker console.</p></div>
+      <button className="button button-secondary" type="button" onClick={onRefresh}><RefreshCw size={17} /> Refresh</button>
+    </header>
+    <div className="engine-admin-stats">
+      <div><strong>{queued.length}</strong><span>Queued</span></div>
+      <div><strong>{processing.length}</strong><span>Processing</span></div>
+      <div><strong>{jobs.length}</strong><span>Recent requests</span></div>
+    </div>
+    {jobs.length === 0 ? <p className="notice-box">No Schedule Engine requests have been submitted.</p> : <div className="engine-admin-jobs">
+      {jobs.map((job) => <details key={job.id} open={job.status === 'queued' || job.status === 'processing'}>
+        <summary><span className={`engine-queue-dot status-${job.status}`} aria-hidden="true" /><strong>{job.userName}</strong><span>{job.status}</span><small>{new Date(job.createdAt).toLocaleString()}</small></summary>
+        <div className="engine-admin-job-body">
+          <div className="engine-admin-replacements">{job.replacements.map((replacement) => <p key={replacement.position}><span>{replacement.currentCourseName}</span> → <strong>{replacement.replacementCourseName}</strong></p>)}</div>
+          <dl>
+            <div><dt>Request ID</dt><dd>{job.id}</dd></div>
+            <div><dt>User ID</dt><dd>{job.userId}</dd></div>
+            <div><dt>Worker</dt><dd>{job.workerId ?? 'Unclaimed'}</dd></div>
+            <div><dt>Attempts</dt><dd>{job.attemptCount}</dd></div>
+            <div><dt>Heartbeat</dt><dd>{activityTimestamp(job.heartbeatAt)}</dd></div>
+            <div><dt>Email</dt><dd>{job.emailNotification ? job.notificationStatus : 'Not requested'}</dd></div>
+          </dl>
+          {job.errorMessage || job.notificationError ? <p className="form-error">{job.errorMessage ?? job.notificationError}</p> : null}
+        </div>
+      </details>)}
+    </div>}
+  </section>
 }
 
 export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {

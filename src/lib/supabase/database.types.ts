@@ -584,6 +584,7 @@ export type Database = {
       schedule_engine_jobs: {
         Row: {
           attempt_count: number
+          cancelled_at: string | null
           claimed_at: string | null
           completed_at: string | null
           created_at: string
@@ -604,6 +605,7 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
+          cancelled_at?: string | null
           claimed_at?: string | null
           completed_at?: string | null
           created_at?: string
@@ -624,6 +626,7 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
+          cancelled_at?: string | null
           claimed_at?: string | null
           completed_at?: string | null
           created_at?: string
@@ -853,6 +856,10 @@ export type Database = {
           status: Database["public"]["Enums"]["report_status"]
         }[]
       }
+      admin_list_schedule_engine_jobs: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
       admin_list_schedule_import_diagnostics: {
         Args: never
         Returns: {
@@ -1013,6 +1020,10 @@ export type Database = {
       }
       allow_schedule_access: {
         Args: { p_viewer_id: string }
+        Returns: undefined
+      }
+      cancel_my_schedule_engine_job: {
+        Args: { p_job_id: string }
         Returns: undefined
       }
       cancel_schedule_access_request: {
@@ -1203,6 +1214,14 @@ export type Database = {
       }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_super_admin: { Args: never; Returns: boolean }
+      list_my_schedule_engine_jobs: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      list_schedule_engine_jobs_for_worker: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
       mark_schedule_access_notifications_read: {
         Args: never
         Returns: undefined
@@ -1532,6 +1551,7 @@ export type Database = {
       schedule_engine_job_status:
         | "queued"
         | "processing"
+        | "cancelled"
         | "completed"
         | "failed"
       schedule_engine_notification_status:
@@ -1708,6 +1728,7 @@ export const Constants = {
       schedule_engine_job_status: [
         "queued",
         "processing",
+        "cancelled",
         "completed",
         "failed",
       ],

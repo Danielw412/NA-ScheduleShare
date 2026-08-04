@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { ClaimedScheduleEngineJob, NotificationDelivery, PredictedScheduleResult, ScheduleEngineInput, ScheduleEngineStore } from './types.js'
+import type { ClaimedScheduleEngineJob, NotificationDelivery, PredictedScheduleResult, ScheduleEngineInput, ScheduleEngineStore, WorkerJobSummary } from './types.js'
 
 interface RpcResponse {
   data: unknown
@@ -25,6 +25,12 @@ function assertWorkerInput(value: unknown): ScheduleEngineInput {
 
 export class SupabaseScheduleEngineStore implements ScheduleEngineStore {
   constructor(private readonly client: SupabaseClient) {}
+
+  async listJobs(limit = 100): Promise<WorkerJobSummary[]> {
+    const data = await this.rpc('list_schedule_engine_jobs_for_worker', { p_limit: limit })
+    if (!Array.isArray(data)) throw new Error('Supabase returned an invalid Schedule Engine job list.')
+    return data as WorkerJobSummary[]
+  }
 
   private async rpc(name: string, args: Record<string, unknown>): Promise<unknown> {
     const call = this.client.rpc.bind(this.client) as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<RpcResponse>

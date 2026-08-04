@@ -36,7 +36,7 @@ export interface ScheduleEnrollment {
   class: ClassDefinition
 }
 
-export type ScheduleEngineJobStatus = 'queued' | 'processing' | 'completed' | 'failed'
+export type ScheduleEngineJobStatus = 'queued' | 'processing' | 'cancelled' | 'completed' | 'failed'
 export type ScheduleEngineNotificationStatus = 'not_requested' | 'pending' | 'sent' | 'failed'
 
 export interface ScheduleEngineReplacementInput {
@@ -72,11 +72,23 @@ export interface ScheduleEngineJob {
   processingStartedAt: string | null
   completedAt: string | null
   failedAt: string | null
+  cancelledAt: string | null
   errorMessage: string | null
   createdAt: string
   updatedAt: string
   replacements: ScheduleEngineReplacementSummary[]
   predictions: ScheduleEnginePrediction[]
+}
+
+export interface AdminScheduleEngineJob extends ScheduleEngineJob {
+  userId: string
+  userName: string
+  workerId: string | null
+  attemptCount: number
+  claimedAt: string | null
+  heartbeatAt: string | null
+  notificationSentAt: string | null
+  notificationError: string | null
 }
 
 export interface Profile {
