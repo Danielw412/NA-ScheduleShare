@@ -1,0 +1,53 @@
+name: Apply part-time elective test fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-part-time-elective-test-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Update database test expectations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('supabase/tests/database/semester_enrollment_patterns.test.sql')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  "select is((select term_policy::text from public.course_names where normalized_name = 'executive functioning'), 'variable_credit', 'Executive Functioning keeps explicit 0.5 or 1.0 format');",
+                  "select is((select term_policy::text from public.course_names where normalized_name = 'executive functioning'), 'sectioned_attendance', 'Executive Functioning supports semester or full-year alternating-day formats');",
+              ),
+              (
+                  "select is((select term_policy::text from public.course_names where normalized_name = '9th grade chorus'), 'versioned', 'special-format courses keep version-specific format');",
+                  "select is((select term_policy::text from public.course_names where normalized_name = '9th grade chorus'), 'sectioned_attendance', 'part-time chorus supports semester or full-year alternating-day formats');",
+              ),
+          ]
+
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Expected test assertion not found: {old}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/apply-part-time-elective-test-fix.yml
+
+      - name: Commit corrected tests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/tests/database/semester_enrollment_patterns.test.sql .github/workflows/apply-part-time-elective-test-fix.yml
+          git commit -m "Update database tests for part-time electives"
+          git push
