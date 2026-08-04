@@ -26,8 +26,8 @@ select is(
 );
 select is((select term_policy::text from public.course_names where normalized_name = 'creative writing'), 'semester', 'listed half-credit courses are semester-selectable');
 select is((select term_policy::text from public.course_names where normalized_name = 'gym'), 'flexible_attendance', 'Gym uses flexible attendance policy');
-select is((select term_policy::text from public.course_names where normalized_name = 'executive functioning'), 'variable_credit', 'Executive Functioning keeps explicit 0.5 or 1.0 format');
-select is((select term_policy::text from public.course_names where normalized_name = '9th grade chorus'), 'versioned', 'special-format courses keep version-specific format');
+select is((select term_policy::text from public.course_names where normalized_name = 'executive functioning'), 'sectioned_attendance', 'Executive Functioning supports semester or full-year alternating-day formats');
+select is((select term_policy::text from public.course_names where normalized_name = '9th grade chorus'), 'sectioned_attendance', 'part-time chorus supports semester or full-year alternating-day formats');
 
 select throws_ok(
   $$insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period)
