@@ -36,6 +36,49 @@ export interface ScheduleEnrollment {
   class: ClassDefinition
 }
 
+export type ScheduleEngineJobStatus = 'queued' | 'processing' | 'completed' | 'failed'
+export type ScheduleEngineNotificationStatus = 'not_requested' | 'pending' | 'sent' | 'failed'
+
+export interface ScheduleEngineReplacementInput {
+  enrollmentId: string
+  replacementCourseId: string
+}
+
+export interface ScheduleEngineReplacementSummary {
+  position: number
+  enrollmentId: string
+  currentCourseId: string
+  currentCourseName: string
+  replacementCourseId: string
+  replacementCourseName: string
+}
+
+export interface ScheduleEnginePredictedEnrollment extends ScheduleEnrollment {
+  changedFromEnrollmentId: string | null
+}
+
+export interface ScheduleEnginePrediction {
+  rank: number
+  schedule: ScheduleEnginePredictedEnrollment[]
+  developmentPlaceholder: boolean
+}
+
+export interface ScheduleEngineJob {
+  id: string
+  status: ScheduleEngineJobStatus
+  emailNotification: boolean
+  notificationStatus: ScheduleEngineNotificationStatus
+  queuedAt: string
+  processingStartedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  replacements: ScheduleEngineReplacementSummary[]
+  predictions: ScheduleEnginePrediction[]
+}
+
 export interface Profile {
   id: string
   full_name: string

@@ -60,6 +60,8 @@ describe('HomePage hero', () => {
     expect(screen.getByText('Upload a picture of your schedule, find classmates, and share schedules with friends.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
     expect(screen.getByRole('link', { name: "Why we're better than Saturn" })).toHaveAttribute('href', '/why-scheduleshare')
+    expect(screen.getByRole('link', { name: /Schedule Engine/ })).toHaveAttribute('href', '/schedule-engine')
+    expect(screen.getByText('See how your schedule might change if you replace one or more courses.')).toBeInTheDocument()
   })
 
   it('takes an authenticated user directly to the Schedule tab', () => {

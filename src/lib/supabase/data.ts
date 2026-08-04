@@ -21,6 +21,11 @@ import type {
   ScheduleAccessNotification,
   ScheduleAccessNotifications,
   ScheduleEnrollment,
+  ScheduleEngineJob,
+  ScheduleEngineNotificationStatus,
+  ScheduleEnginePrediction,
+  ScheduleEnginePredictedEnrollment,
+  ScheduleEngineReplacementInput,
   ScheduleImportDiagnosticLog,
   ScheduleImportModelRecord,
   ScheduleImportUiSettings,
@@ -42,6 +47,66 @@ function slotsFrom(value: unknown): MeetingSlot[] {
     const row = slot as Record<string, unknown>
     return { day_type: row.day_type as DayType, period_number: Number(row.period_number) }
   })
+}
+
+function recordFrom(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function parseScheduleEnginePredictedEnrollment(value: unknown): ScheduleEnginePredictedEnrollment | null {
+  const row = recordFrom(value)
+  if (!row) return null
+  const enrollmentId = stringOrNull(row.enrollment_id)
+  const classId = stringOrNull(row.class_id)
+  const courseId = stringOrNull(row.course_id)
+  const courseName = stringOrNull(row.course_name)
+  const teacherLastName = stringOrNull(row.teacher_last_name)
+  const academicTerm = row.academic_term as AcademicTerm
+  if (!enrollmentId || !classId || !courseId || !courseName || !teacherLastName) return null
+  if (!['full_year', 'semester_1', 'semester_2'].includes(academicTerm)) return null
+  const meetingSlots = slotsFrom(row.meeting_slots)
+  if (meetingSlots.length === 0) return null
+  return {
+    id: enrollmentId,
+    student_id: '',
+    class_id: classId,
+    academic_term: academicTerm,
+    active: true,
+    created_at: '',
+    updated_at: '',
+    meeting_slots: meetingSlots,
+    changedFromEnrollmentId: stringOrNull(row.changed_from_enrollment_id),
+    class: {
+      id: classId,
+      course_name_id: courseId,
+      course_name: courseName,
+      course_term_policy: row.course_term_policy as CourseTermPolicy,
+      teacher_last_name: teacherLastName,
+      default_academic_term: academicTerm,
+      is_double_period: Boolean(row.is_double_period),
+      meeting_slots: meetingSlots,
+    },
+  }
+}
+
+function parseScheduleEnginePrediction(value: unknown, allowDevelopmentPlaceholder: boolean): ScheduleEnginePrediction | null {
+  const row = recordFrom(value)
+  const payload = recordFrom(row?.prediction)
+  const developmentPlaceholder = Boolean(row?.development_placeholder)
+  if (!row || !payload || (developmentPlaceholder && !allowDevelopmentPlaceholder)) return null
+  const schedule = Array.isArray(payload.schedule)
+    ? payload.schedule.map(parseScheduleEnginePredictedEnrollment).filter((item): item is ScheduleEnginePredictedEnrollment => item !== null)
+    : []
+  if (schedule.length === 0) return null
+  return {
+    rank: Number(row.rank),
+    schedule,
+    developmentPlaceholder,
+  }
 }
 
 export interface ClassSearchInput {
@@ -101,6 +166,75 @@ export async function searchCourseNames(query: string, signal?: AbortSignal): Pr
     course_term_policy: row.course_term_policy as CourseTermPolicy,
     score: Number(row.score),
   }))
+}
+
+function scheduleEngineError(caught: unknown): Error {
+  const message = caught && typeof caught === 'object' && 'message' in caught ? String(caught.message) : ''
+  if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose between one and five course replacements.')
+  if (message.includes('schedule_engine_duplicate_enrollment')) return new Error('Each current course can only be replaced once.')
+  if (message.includes('schedule_engine_duplicate_replacement_course')) return new Error('Choose a different replacement course for each row.')
+  if (message.includes('schedule_engine_same_course_replacement')) return new Error('A course cannot replace itself.')
+  if (message.includes('schedule_engine_enrollment_not_owned')) return new Error('One of the selected current courses is no longer in your schedule.')
+  if (message.includes('schedule_engine_replacement_course_invalid')) return new Error('One of the selected replacement courses is no longer available.')
+  return new Error('The Schedule Engine request could not be submitted. Please try again.')
+}
+
+export async function createScheduleEngineJob(
+  replacements: ScheduleEngineReplacementInput[],
+  emailNotification: boolean,
+): Promise<string> {
+  try {
+    const data = await callUntypedRpc('create_schedule_engine_job', {
+      p_replacements: replacements.map((replacement) => ({
+        enrollment_id: replacement.enrollmentId,
+        replacement_course_id: replacement.replacementCourseId,
+      })),
+      p_email_notification: emailNotification,
+    })
+    if (typeof data !== 'string') throw new Error('invalid_schedule_engine_job_id')
+    return data
+  } catch (caught) {
+    throw scheduleEngineError(caught)
+  }
+}
+
+export async function getLatestScheduleEngineJob(): Promise<ScheduleEngineJob | null> {
+  const data = await callUntypedRpc('get_my_latest_schedule_engine_job')
+  const row = recordFrom(data)
+  if (!row) return null
+  const status = row.status as ScheduleEngineJob['status']
+  if (!['queued', 'processing', 'completed', 'failed'].includes(status)) return null
+  const replacements = Array.isArray(row.replacements) ? row.replacements.flatMap((value) => {
+    const replacement = recordFrom(value)
+    if (!replacement) return []
+    return [{
+      position: Number(replacement.position),
+      enrollmentId: String(replacement.enrollment_id),
+      currentCourseId: String(replacement.current_course_id),
+      currentCourseName: String(replacement.current_course_name),
+      replacementCourseId: String(replacement.replacement_course_id),
+      replacementCourseName: String(replacement.replacement_course_name),
+    }]
+  }) : []
+  const allowDevelopmentPlaceholder = import.meta.env.DEV || import.meta.env.MODE === 'test'
+  const predictions = Array.isArray(row.results)
+    ? row.results.map((value) => parseScheduleEnginePrediction(value, allowDevelopmentPlaceholder)).filter((item): item is ScheduleEnginePrediction => item !== null)
+    : []
+  return {
+    id: String(row.id),
+    status,
+    emailNotification: Boolean(row.email_notification),
+    notificationStatus: String(row.notification_status) as ScheduleEngineNotificationStatus,
+    queuedAt: String(row.queued_at),
+    processingStartedAt: stringOrNull(row.processing_started_at),
+    completedAt: stringOrNull(row.completed_at),
+    failedAt: stringOrNull(row.failed_at),
+    errorMessage: stringOrNull(row.error_message),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    replacements,
+    predictions,
+  }
 }
 
 export async function enrollInClass(classId: string, term: AcademicTerm, meetingSlots?: MeetingSlot[]): Promise<string> {

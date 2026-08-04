@@ -581,6 +581,156 @@ export type Database = {
           },
         ]
       }
+      schedule_engine_jobs: {
+        Row: {
+          attempt_count: number
+          claimed_at: string | null
+          completed_at: string | null
+          created_at: string
+          email_notification: boolean
+          error_message: string | null
+          failed_at: string | null
+          heartbeat_at: string | null
+          id: string
+          notification_error: string | null
+          notification_sent_at: string | null
+          notification_status: Database["public"]["Enums"]["schedule_engine_notification_status"]
+          processing_started_at: string | null
+          queued_at: string
+          status: Database["public"]["Enums"]["schedule_engine_job_status"]
+          updated_at: string
+          user_id: string
+          worker_id: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          claimed_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          email_notification?: boolean
+          error_message?: string | null
+          failed_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          notification_error?: string | null
+          notification_sent_at?: string | null
+          notification_status?: Database["public"]["Enums"]["schedule_engine_notification_status"]
+          processing_started_at?: string | null
+          queued_at?: string
+          status?: Database["public"]["Enums"]["schedule_engine_job_status"]
+          updated_at?: string
+          user_id: string
+          worker_id?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          claimed_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          email_notification?: boolean
+          error_message?: string | null
+          failed_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          notification_error?: string | null
+          notification_sent_at?: string | null
+          notification_status?: Database["public"]["Enums"]["schedule_engine_notification_status"]
+          processing_started_at?: string | null
+          queued_at?: string
+          status?: Database["public"]["Enums"]["schedule_engine_job_status"]
+          updated_at?: string
+          user_id?: string
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_engine_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_engine_replacements: {
+        Row: {
+          created_at: string
+          current_course_name: string
+          current_course_name_id: string
+          enrollment_id: string
+          id: string
+          job_id: string
+          position: number
+          replacement_course_name: string
+          replacement_course_name_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_course_name: string
+          current_course_name_id: string
+          enrollment_id: string
+          id?: string
+          job_id: string
+          position: number
+          replacement_course_name: string
+          replacement_course_name_id: string
+        }
+        Update: {
+          created_at?: string
+          current_course_name?: string
+          current_course_name_id?: string
+          enrollment_id?: string
+          id?: string
+          job_id?: string
+          position?: number
+          replacement_course_name?: string
+          replacement_course_name_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_engine_replacements_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_engine_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_engine_results: {
+        Row: {
+          created_at: string
+          development_placeholder: boolean
+          id: string
+          job_id: string
+          prediction: Json
+          rank: number
+        }
+        Insert: {
+          created_at?: string
+          development_placeholder?: boolean
+          id?: string
+          job_id: string
+          prediction: Json
+          rank: number
+        }
+        Update: {
+          created_at?: string
+          development_placeholder?: boolean
+          id?: string
+          job_id?: string
+          prediction?: Json
+          rank?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_engine_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_engine_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_share_links: {
         Row: {
           created_at: string
@@ -869,7 +1019,21 @@ export type Database = {
         Args: { p_owner_id: string }
         Returns: undefined
       }
+      claim_next_schedule_engine_job: {
+        Args: { p_worker_id: string }
+        Returns: {
+          attempt_count: number
+          claimed_at: string
+          email_notification: boolean
+          job_id: string
+          user_id: string
+        }[]
+      }
       clear_my_schedule: { Args: never; Returns: number }
+      complete_schedule_engine_job: {
+        Args: { p_job_id: string; p_results: Json; p_worker_id: string }
+        Returns: undefined
+      }
       create_class_and_enroll: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -904,6 +1068,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_schedule_engine_job: {
+        Args: { p_email_notification?: boolean; p_replacements: Json }
+        Returns: string
+      }
       enroll_in_class: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -912,6 +1080,10 @@ export type Database = {
           p_meeting_slots?: Json
         }
         Returns: string
+      }
+      fail_schedule_engine_job: {
+        Args: { p_error_message: string; p_job_id: string; p_worker_id: string }
+        Returns: undefined
       }
       get_class_members: {
         Args: {
@@ -955,10 +1127,15 @@ export type Database = {
           suspension_reason: string
         }[]
       }
+      get_my_latest_schedule_engine_job: { Args: never; Returns: Json }
       get_or_create_schedule_share: { Args: never; Returns: string }
       get_public_schedule_share: { Args: { p_token: string }; Returns: Json }
       get_schedule_access_notifications: {
         Args: { p_limit?: number }
+        Returns: Json
+      }
+      get_schedule_engine_worker_input: {
+        Args: { p_job_id: string; p_worker_id: string }
         Returns: Json
       }
       get_schedule_import_ui_settings: {
@@ -1020,6 +1197,10 @@ export type Database = {
           last_initial: string
         }[]
       }
+      heartbeat_schedule_engine_job: {
+        Args: { p_job_id: string; p_worker_id: string }
+        Returns: boolean
+      }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_super_admin: { Args: never; Returns: boolean }
       mark_schedule_access_notifications_read: {
@@ -1038,6 +1219,15 @@ export type Database = {
       }
       record_authenticated_event: {
         Args: { p_event_type: string; p_metadata?: Json; p_result?: string }
+        Returns: undefined
+      }
+      record_schedule_engine_notification: {
+        Args: {
+          p_error_message?: string
+          p_job_id: string
+          p_sent: boolean
+          p_worker_id: string
+        }
         Returns: undefined
       }
       record_schedule_import_diagnostic: {
@@ -1276,6 +1466,20 @@ export type Database = {
           target_type: string
         }[]
       }
+      super_admin_list_logs_page: {
+        Args: {
+          p_category?: string
+          p_created_from?: string
+          p_created_to?: string
+          p_event?: string
+          p_limit?: number
+          p_offset?: number
+          p_result?: string
+          p_target?: string
+          p_user?: string
+        }
+        Returns: Json
+      }
       update_enrollment_schedule: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -1325,6 +1529,16 @@ export type Database = {
         | "term_changed"
         | "meeting_slots_changed"
         | "admin_schedule_change"
+      schedule_engine_job_status:
+        | "queued"
+        | "processing"
+        | "completed"
+        | "failed"
+      schedule_engine_notification_status:
+        | "not_requested"
+        | "pending"
+        | "sent"
+        | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1490,6 +1704,18 @@ export const Constants = {
         "term_changed",
         "meeting_slots_changed",
         "admin_schedule_change",
+      ],
+      schedule_engine_job_status: [
+        "queued",
+        "processing",
+        "completed",
+        "failed",
+      ],
+      schedule_engine_notification_status: [
+        "not_requested",
+        "pending",
+        "sent",
+        "failed",
       ],
     },
   },

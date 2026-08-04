@@ -13,6 +13,7 @@ const PasswordResetPage = lazy(() => import('./pages/PasswordResetPage').then((m
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 const ReportPage = lazy(() => import('./pages/ReportPage').then((module) => ({ default: module.ReportPage })))
 const SchedulePage = lazy(() => import('./pages/SchedulePage').then((module) => ({ default: module.SchedulePage })))
+const ScheduleEnginePage = lazy(() => import('./pages/ScheduleEnginePage').then((module) => ({ default: module.ScheduleEnginePage })))
 const SharedSchedulePage = lazy(() => import('./pages/SharedSchedulePage').then((module) => ({ default: module.SharedSchedulePage })))
 const StudentDetailPage = lazy(() => import('./pages/StudentDetailPage').then((module) => ({ default: module.StudentDetailPage })))
 const StudentsPage = lazy(() => import('./pages/StudentsPage').then((module) => ({ default: module.StudentsPage })))
@@ -43,6 +44,7 @@ export function App() {
           <Route path="why-scheduleshare" element={deferredPage(<WhyScheduleSharePage />)} />
           <Route element={<RequireAuth />}>
             <Route path="students" element={deferredPage(<StudentsPage />)} />
+            <Route path="schedule-engine" element={deferredPage(<ScheduleEnginePage />)} />
             <Route path="students/:studentId" element={deferredPage(<StudentDetailPage />)} />
             <Route path="directory" element={deferredPage(<StudentsPage />)} />
             <Route path="classmates" element={<Navigate to="/students" replace />} />

@@ -158,6 +158,15 @@ describe('ScheduleGrid borders', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('marks changed predicted courses without enabling edit actions', () => {
+    const changed = new Set([doublePeriod.id])
+    const { container } = render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" changedEnrollmentIds={changed} readOnly {...callbacks} />)
+
+    expect(container.querySelectorAll('[data-predicted-change="true"]')).not.toHaveLength(0)
+    expect(screen.getAllByText('Changed')).not.toHaveLength(0)
+    expect(screen.queryByRole('button', { name: `Actions for ${doublePeriod.class.course_name}` })).not.toBeInTheDocument()
+  })
+
   it('supports arrow-key menu navigation and restores focus on Escape', async () => {
     const user = userEvent.setup()
     render(<ScheduleGrid enrollments={[doublePeriod]} selectedTerm="semester_1" {...callbacks} />)

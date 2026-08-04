@@ -2,6 +2,7 @@ node_modules/
 package-lock.json
 .pnpm-store/
 dist/
+schedule-engine-worker/dist/
 .env
 .env.local
 .env.*.local

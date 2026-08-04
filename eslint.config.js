@@ -3,7 +3,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', '**/.wrangler/**', 'src/lib/supabase/database.types.ts'] },
+  { ignores: ['dist', '**/dist/**', 'coverage', '**/.wrangler/**', 'src/lib/supabase/database.types.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, ChevronRight, Search, Users } from 'lucide-react'
+import { ArrowRight, CalendarDays, ChevronRight, RefreshCw, Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
@@ -101,6 +101,7 @@ export function HomePage() {
         <Link to="/classes"><span className="home-link-icon"><Search aria-hidden="true" /></span><span className="home-link-copy"><h2>View Classes</h2><p>Find out who's in each class</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link>
         <Link to="/students"><span className="home-link-icon"><Users aria-hidden="true" /></span><span className="home-link-copy"><h2>Students</h2><p>Find who you share a class with</p></span><ChevronRight className="home-link-arrow" aria-hidden="true" /></Link>
       </section>
+      <Link className="home-engine-link" to="/schedule-engine"><span><RefreshCw aria-hidden="true" /></span><span><strong>Schedule Engine</strong><small>See how your schedule might change if you replace one or more courses.</small></span><ChevronRight aria-hidden="true" /></Link>
     </div>
   )
 }

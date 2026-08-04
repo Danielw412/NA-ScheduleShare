@@ -11,6 +11,7 @@ interface ScheduleGridProps {
   onRemove: (enrollment: ScheduleEnrollment) => void
   onReplace: (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => void
   readOnly?: boolean
+  changedEnrollmentIds?: ReadonlySet<string>
 }
 
 interface CellMenuState {
@@ -21,7 +22,7 @@ interface CellMenuState {
   style: CSSProperties
 }
 
-export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, readOnly = false }: ScheduleGridProps) {
+export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, readOnly = false, changedEnrollmentIds }: ScheduleGridProps) {
   const conflicts = findScheduleConflicts(enrollments)
   const conflictedIds = new Set(conflicts.flatMap((pair) => pair.map((enrollment) => enrollment.id)))
   const [openMenu, setOpenMenu] = useState<CellMenuState | null>(null)
@@ -129,11 +130,12 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
               const isDoublePeriod = enrollment.class.is_double_period || hasMultiplePeriodsOnAnyDay(attendanceSlots)
               const continuation = isMeetingSlotContinuation(attendanceSlots, { day_type: dayType, period_number: period })
               const conflicted = conflictedIds.has(enrollment.id)
+              const changed = changedEnrollmentIds?.has(enrollment.id) ?? false
               return (
-                <div className={`schedule-cell filled-cell ${isDoublePeriod ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} key={dayType}>
+                <div className={`schedule-cell filled-cell ${isDoublePeriod ? 'is-multi-period' : ''} ${continuation ? 'is-continuation' : ''} ${conflicted ? 'has-conflict' : ''} ${changed ? 'is-predicted-change' : ''}`} role="gridcell" data-day={dayType} data-period={period} data-continuation={continuation || undefined} data-predicted-change={changed || undefined} key={dayType}>
                   {conflicted ? <AlertTriangle className="conflict-icon" size={18} aria-label="Schedule conflict" /> : null}
                   <div className="class-cell-copy">
-                    <strong>{continuation ? `${enrollment.class.course_name} - continues` : enrollment.class.course_name}</strong>
+                    <strong>{continuation ? `${enrollment.class.course_name} - continues` : enrollment.class.course_name}{changed && !continuation ? <span className="predicted-change-label">Changed</span> : null}</strong>
                     <span>{continuation ? 'Continues from previous period' : enrollment.class.teacher_last_name}</span>
                     {hasMultiplePeriods && !continuation ? <small>{dayType} Day · {daySlots.map((slot) => `P${slot.period_number}`).join(' + ')}</small> : null}
                   </div>
