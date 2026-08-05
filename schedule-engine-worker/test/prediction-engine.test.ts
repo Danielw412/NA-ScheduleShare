@@ -87,6 +87,28 @@ describe('Schedule Engine prediction search', () => {
     })])
   })
 
+  it('supports three source courses and three independent replacement courses', () => {
+    const current = [
+      enrollment('drop-1', 'course-old-1', 'Old One', everyDay(1)),
+      enrollment('drop-2', 'course-old-2', 'Old Two', everyDay(2)),
+      enrollment('drop-3', 'course-old-3', 'Old Three', everyDay(3)),
+    ]
+    const input = request(current, current.map((item) => item.enrollment_id), [
+      replacement('course-new-1', 'New One'),
+      replacement('course-new-2', 'New Two'),
+      replacement('course-new-3', 'New Three'),
+    ], [
+      section('new-1', 'course-new-1', 'New One', everyDay(4)),
+      section('new-2', 'course-new-2', 'New Two', everyDay(5)),
+      section('new-3', 'course-new-3', 'New Three', everyDay(6)),
+    ])
+
+    const result = predictSchedules(input).results[0]
+    expect(result).toMatchObject({ collateral_change_count: 0, search_stage: 'direct_replacement' })
+    expect(result.schedule).toHaveLength(3)
+    expect(result.schedule.map((item) => item.changed_from_enrollment_id)).toEqual(['drop-1', 'drop-2', 'drop-3'])
+  })
+
   it('ranks a direct fit ahead of a more popular section that needs a collateral move', () => {
     const dropped = enrollment('drop', 'course-drop', 'Dropped', everyDay(1))
     const math = enrollment('math', 'course-math', 'Math', everyDay(2))

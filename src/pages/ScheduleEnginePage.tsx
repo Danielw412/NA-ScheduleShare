@@ -1,13 +1,13 @@
-import { AlertCircle, ArrowRight, CheckCircle2, Clock3, Info, Plus, RefreshCw, Trash2, Users, XCircle } from 'lucide-react'
+import { AlertCircle, ArrowRight, CheckCircle2, Clock3, History, Info, Lightbulb, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { TermSelector } from '../components/schedule/TermSelector'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
 import { useCourseNameSearch } from '../hooks/useCourseNameSearch'
 import { useSchedule } from '../hooks/useSchedule'
-import { termLabels, type CourseNameSearchResult, type ScheduleEngineJob, type ScheduleEnginePrediction, type ScheduleEnrollment, type SemesterTerm } from '../lib/domain'
-import { cancelScheduleEngineJob, createScheduleEngineJob, listScheduleEngineJobs } from '../lib/supabase/data'
+import { termLabels, type CourseNameSearchResult, type DayType, type ScheduleEngineJob, type ScheduleEnginePrediction, type ScheduleEnrollment, type SemesterTerm } from '../lib/domain'
+import { applyScheduleEnginePrediction, cancelScheduleEngineJob, createScheduleEngineJob, listScheduleEngineJobs } from '../lib/supabase/data'
 
-const MAX_REPLACEMENTS = 2
+const MAX_REPLACEMENTS = 3
 const MAX_ACTIVE_REQUESTS = 5
 const JOB_POLL_INTERVAL_MS = 15_000
 
@@ -37,8 +37,8 @@ function enrollmentLabel(enrollment: ScheduleEnrollment): string {
 }
 
 function formErrorFor(sourceCourses: SourceCourseDraft[], replacementCourses: ReplacementCourseDraft[], enrollments: ScheduleEnrollment[]): string | null {
-  if (sourceCourses.length < 1 || sourceCourses.length > MAX_REPLACEMENTS) return 'Choose one or two current courses.'
-  if (replacementCourses.length < 1 || replacementCourses.length > MAX_REPLACEMENTS) return 'Choose one or two replacement courses.'
+  if (sourceCourses.length < 1 || sourceCourses.length > MAX_REPLACEMENTS) return 'Choose up to three current courses.'
+  if (replacementCourses.length < 1 || replacementCourses.length > MAX_REPLACEMENTS) return 'Choose up to three replacement courses.'
   if (sourceCourses.some((draft) => !draft.enrollmentId) || replacementCourses.some((draft) => !draft.replacementCourse)) return 'Complete every course selection before submitting.'
   const enrollmentIds = sourceCourses.map((draft) => draft.enrollmentId)
   if (new Set(enrollmentIds).size !== enrollmentIds.length) return 'Each current course can only be replaced once.'
@@ -50,6 +50,16 @@ function formErrorFor(sourceCourses: SourceCourseDraft[], replacementCourses: Re
     if (courseIds.includes(enrollment.class.course_name_id)) return 'A course cannot replace itself.'
   }
   return null
+}
+
+function predictionLabel(rank: number): string {
+  return rank === 1 ? 'Most likely' : `Alternative ${rank}`
+}
+
+function predictionReason(prediction: ScheduleEnginePrediction): string {
+  if (prediction.collateralChangeCount === 0) return 'Your requested courses fit without moving any unrelated courses.'
+  if (prediction.collateralChangeCount === 1) return 'Your requested courses fit by moving one other course to an existing section.'
+  return `Your requested courses fit by moving ${prediction.collateralChangeCount} other courses to existing sections.`
 }
 
 function CourseCatalogPicker({
@@ -124,48 +134,67 @@ function JobStatus({ job }: { job: ScheduleEngineJob }) {
   )
 }
 
-function PredictionCard({ prediction, selectedTerm }: { prediction: ScheduleEnginePrediction; selectedTerm: SemesterTerm }) {
+function PredictionCard({
+  prediction,
+  selectedTerm,
+  mobileDay,
+  onMobileDayChange,
+  onApply,
+  applying,
+  applied,
+}: {
+  prediction: ScheduleEnginePrediction
+  selectedTerm: SemesterTerm
+  mobileDay: DayType
+  onMobileDayChange: (day: DayType) => void
+  onApply: () => void
+  applying: boolean
+  applied: boolean
+}) {
   const changedEnrollmentIds = useMemo(
     () => new Set(prediction.schedule.filter((enrollment) => enrollment.changedFromEnrollmentId).map((enrollment) => enrollment.id)),
     [prediction.schedule],
   )
-  const rankLabel = prediction.rank === 1 ? 'Best fit' : `Alternative ${prediction.rank}`
+  const rankLabel = predictionLabel(prediction.rank)
   const collateralLabel = prediction.collateralChangeCount === 0
     ? 'No unrelated courses moved'
     : `${prediction.collateralChangeCount} unrelated course${prediction.collateralChangeCount === 1 ? '' : 's'} moved`
   return (
     <article className="engine-prediction-card">
-      <header><span>{prediction.rank}</span><h2>{rankLabel}</h2><small className={prediction.developmentPlaceholder ? 'is-placeholder' : ''}>{prediction.developmentPlaceholder ? 'Development placeholder' : collateralLabel}</small></header>
+      <header className="engine-selected-result-heading">
+        <div className="engine-selected-result-title"><CheckCircle2 aria-hidden="true" /><span>Selected result: <strong>{rankLabel}</strong></span></div>
+        <span className={prediction.developmentPlaceholder ? 'engine-collateral-summary is-placeholder' : 'engine-collateral-summary'}>{prediction.developmentPlaceholder ? 'Development placeholder' : collateralLabel}</span>
+        <div className="engine-result-actions">
+          <button className="button button-primary" type="button" disabled={applying || applied || prediction.developmentPlaceholder} onClick={onApply}>
+            <CheckCircle2 size={18} aria-hidden="true" />{applying ? 'Updating your schedule…' : applied ? 'Schedule updated' : 'Make this my schedule'}
+          </button>
+          <span><Info size={16} aria-hidden="true" />Predictions are estimates</span>
+        </div>
+      </header>
+      <div className="engine-mobile-day-selector" role="group" aria-label="Predicted schedule day">
+        {(['A', 'B'] as DayType[]).map((day) => <button className={mobileDay === day ? 'is-active' : ''} aria-pressed={mobileDay === day} key={day} type="button" onClick={() => onMobileDayChange(day)}>{day} Day</button>)}
+      </div>
       <ScheduleGrid
         enrollments={prediction.schedule}
         selectedTerm={selectedTerm}
         changedEnrollmentIds={changedEnrollmentIds}
+        mobileDay={mobileDay}
         readOnly
         onAdd={() => undefined}
         onRemove={() => undefined}
         onReplace={() => undefined}
       />
-      {prediction.explanations.length > 0 ? (
-        <section className="engine-prediction-explanations" aria-label={`Explanation for ${rankLabel}`}>
-          <h3>Why this schedule works</h3>
-          <ul>{prediction.explanations.map((explanation, index) => <li key={`${prediction.rank}-${index}`}>{explanation}</li>)}</ul>
-        </section>
-      ) : null}
+      <section className="engine-prediction-explanations" aria-label={`Explanation for ${rankLabel}`}>
+        <Lightbulb aria-hidden="true" />
+        <strong>Why it works</strong>
+        <p>{predictionReason(prediction)}</p>
+      </section>
     </article>
   )
 }
 
-function EngineNotes() {
-  return (
-    <div className="engine-notes">
-      <div><Info aria-hidden="true" /><p>Predictions are estimates and may not match the schedule produced by the school.</p></div>
-      <div><Users aria-hidden="true" /><p>Schedule Engine becomes more accurate as more students join ScheduleShare. Ask your friends to add their schedules.</p></div>
-    </div>
-  )
-}
-
 export function ScheduleEnginePage() {
-  const { enrollments, loading: scheduleLoading, error: scheduleError } = useSchedule()
+  const { enrollments, loading: scheduleLoading, error: scheduleError, reload: reloadSchedule } = useSchedule()
   const [sourceCourses, setSourceCourses] = useState<SourceCourseDraft[]>(() => [newSourceCourse()])
   const [replacementCourses, setReplacementCourses] = useState<ReplacementCourseDraft[]>(() => [newReplacementCourse()])
   const [emailNotification, setEmailNotification] = useState(true)
@@ -177,6 +206,10 @@ export function ScheduleEnginePage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [creatingNew, setCreatingNew] = useState(false)
   const [selectedTerm, setSelectedTerm] = useState<SemesterTerm>('semester_1')
+  const [selectedPredictionRank, setSelectedPredictionRank] = useState(1)
+  const [mobileDay, setMobileDay] = useState<DayType>('A')
+  const [applyingPredictionKey, setApplyingPredictionKey] = useState<string | null>(null)
+  const [appliedPredictionKey, setAppliedPredictionKey] = useState<string | null>(null)
 
   const refreshJobs = useCallback(async (preferredJobId?: string) => {
     try {
@@ -199,6 +232,8 @@ export function ScheduleEnginePage() {
   }, [jobs, refreshJobs])
 
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null
+  const selectedPrediction = selectedJob?.predictions.find((prediction) => prediction.rank === selectedPredictionRank) ?? selectedJob?.predictions[0] ?? null
+  const selectedPredictionKey = selectedJob && selectedPrediction ? `${selectedJob.id}:${selectedPrediction.rank}` : null
   const activeRequestCount = jobs.filter((job) => job.status === 'queued' || job.status === 'processing').length
   const validationError = useMemo(() => formErrorFor(sourceCourses, replacementCourses, enrollments), [sourceCourses, replacementCourses, enrollments])
   const selectedEnrollmentIds = useMemo(() => new Set(sourceCourses.map((draft) => draft.enrollmentId).filter(Boolean)), [sourceCourses])
@@ -258,44 +293,76 @@ export function ScheduleEnginePage() {
     }
   }
 
+  async function applyPrediction(job: ScheduleEngineJob, prediction: ScheduleEnginePrediction) {
+    if (!window.confirm(`Replace your current schedule with ${predictionLabel(prediction.rank).toLowerCase()} prediction?`)) return
+    const predictionKey = `${job.id}:${prediction.rank}`
+    setApplyingPredictionKey(predictionKey)
+    setSubmitError(null)
+    try {
+      await applyScheduleEnginePrediction(job.id, prediction.rank)
+      await reloadSchedule()
+      setAppliedPredictionKey(predictionKey)
+    } catch (caught) {
+      setSubmitError(caught instanceof Error ? caught.message : 'Your schedule could not be updated.')
+    } finally {
+      setApplyingPredictionKey(null)
+    }
+  }
+
   const showForm = creatingNew || (!jobLoading && jobs.length === 0)
   return (
     <div className="schedule-engine-page">
-      <header className="page-heading">
+      <header className="page-heading engine-page-heading">
         <div><h1>Schedule Engine</h1><p>See how your schedule might change if you replace one or more courses.</p></div>
+        {!jobLoading && jobs.length > 0 ? (
+          <div className="engine-page-actions">
+            <label className="engine-history-select">
+              <History size={17} aria-hidden="true" />
+              <span>Request history</span>
+              <select aria-label="Request history" value={selectedJobId ?? ''} onChange={(event) => { setCreatingNew(false); setSelectedJobId(event.target.value); setSubmitError(null) }}>
+                {jobs.map((job) => <option value={job.id} key={job.id}>{job.replacementCourses.map((course) => course.courseName).join(' + ')} · {job.status}</option>)}
+              </select>
+            </label>
+            <button className="button button-primary" type="button" disabled={activeRequestCount >= MAX_ACTIVE_REQUESTS || creatingNew} onClick={resetForm}><Plus size={18} /> New request</button>
+          </div>
+        ) : null}
       </header>
 
       {jobLoading ? <div className="engine-loading" role="status"><span className="loader" aria-hidden="true" /> Loading your requests…</div> : null}
 
-      {!jobLoading && jobs.length > 0 ? (
-        <section className="engine-queue-browser" aria-labelledby="engine-queue-heading">
-          <header>
-            <div><h2 id="engine-queue-heading">Your requests</h2><p>{activeRequestCount} of {MAX_ACTIVE_REQUESTS} active request slots used</p></div>
-            <button className="button button-primary" type="button" disabled={activeRequestCount >= MAX_ACTIVE_REQUESTS || creatingNew} onClick={resetForm}><Plus size={18} /> New request</button>
-          </header>
-          <div className="engine-request-tabs" role="list" aria-label="Schedule Engine request history">
-            {jobs.map((job) => (
-              <button className={job.id === selectedJobId ? 'is-selected' : ''} key={job.id} type="button" onClick={() => { setCreatingNew(false); setSelectedJobId(job.id) }}>
-                <span className={`engine-queue-dot status-${job.status}`} aria-hidden="true" />
-                <span><strong>{job.replacementCourses.map((course) => course.courseName).join(' + ')}</strong><small>{new Date(job.createdAt).toLocaleString()} · {job.status}</small></span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {!showForm && selectedJob ? (
         <>
-          <JobStatus job={selectedJob} />
-          <section className="engine-request-details" aria-label="Requested course changes">
-            <h2>Requested changes</h2>
-            <div><span>{selectedJob.sourceCourses.map((course) => course.courseName).join(' + ')}</span><ArrowRight size={17} aria-label="changed to" /><strong>{selectedJob.replacementCourses.map((course) => course.courseName).join(' + ')}</strong></div>
-            <p>Email notification: <strong>{selectedJob.emailNotification ? 'On' : 'Off'}</strong></p>
+          {selectedJob.status !== 'completed' ? <JobStatus job={selectedJob} /> : null}
+          <section className="engine-request-overview" aria-label="Requested course changes">
+            <div className="engine-request-summary">
+              <span className="engine-section-label">Your requested changes</span>
+              <div className="engine-request-flow"><span>{selectedJob.sourceCourses.map((course) => course.courseName).join(' + ')}</span><ArrowRight size={19} aria-label="changed to" /><strong>{selectedJob.replacementCourses.map((course) => course.courseName).join(' + ')}</strong></div>
+              <p>{new Date(selectedJob.createdAt).toLocaleString()} · Email notification: <strong>{selectedJob.emailNotification ? 'On' : 'Off'}</strong></p>
+            </div>
+            {selectedJob.status === 'completed' && selectedJob.predictions.length > 0 ? (
+              <div className="engine-result-controls">
+                <section aria-labelledby="engine-result-picker-heading">
+                  <h2 id="engine-result-picker-heading">Choose a predicted schedule</h2>
+                  <div className="engine-result-picker" role="radiogroup" aria-label="Predicted schedules">
+                    {selectedJob.predictions.map((prediction) => (
+                      <button className={selectedPrediction?.rank === prediction.rank ? 'is-selected' : ''} role="radio" aria-checked={selectedPrediction?.rank === prediction.rank} key={prediction.rank} type="button" onClick={() => { setSelectedPredictionRank(prediction.rank); setSubmitError(null) }}>
+                        <span className="engine-result-radio" aria-hidden="true" />
+                        <strong>{predictionLabel(prediction.rank)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section className="engine-term-control" aria-labelledby="engine-semester-heading">
+                  <h2 id="engine-semester-heading">Semester</h2>
+                  <TermSelector value={selectedTerm} onChange={setSelectedTerm} label="Predicted schedule semester" />
+                </section>
+              </div>
+            ) : null}
           </section>
           {selectedJob.status === 'queued' || selectedJob.status === 'processing' ? (
             <section className="engine-waiting-panel">
               <Clock3 aria-hidden="true" />
-              <div><h2>{selectedJob.status === 'queued' ? 'Your request is in the queue' : 'Your request is being processed'}</h2><p>Your request will usually be processed within a couple of hours.</p></div>
+              <div><h2>{selectedJob.status === 'queued' ? 'Your request is in the queue' : 'Your request is being processed'}</h2><p>{selectedJob.emailNotification ? 'You can leave this page. We’ll email you when your schedules are ready.' : 'You can leave this page and check back for your results.'}</p></div>
               {selectedJob.status === 'queued' ? <button className="button button-secondary" disabled={cancellingJobId === selectedJob.id} type="button" onClick={() => void cancelJob(selectedJob.id)}>{cancellingJobId === selectedJob.id ? 'Cancelling…' : 'Cancel request'}</button> : null}
             </section>
           ) : null}
@@ -305,23 +372,31 @@ export function ScheduleEnginePage() {
           ) : null}
           {selectedJob.status === 'completed' ? (
             <section className="engine-results">
-              {selectedJob.predictions.length > 0 ? (
-                <>
-                  <div className="engine-results-toolbar"><TermSelector value={selectedTerm} onChange={setSelectedTerm} label="Predicted schedule semester" /></div>
-                  <div className={`engine-prediction-grid result-count-${selectedJob.predictions.length}`}>
-                    {selectedJob.predictions.map((prediction) => <PredictionCard key={prediction.rank} prediction={prediction} selectedTerm={selectedTerm} />)}
+              {selectedPrediction ? <PredictionCard
+                prediction={selectedPrediction}
+                selectedTerm={selectedTerm}
+                mobileDay={mobileDay}
+                onMobileDayChange={setMobileDay}
+                onApply={() => void applyPrediction(selectedJob, selectedPrediction)}
+                applying={applyingPredictionKey === selectedPredictionKey}
+                applied={appliedPredictionKey === selectedPredictionKey}
+              /> : (
+                <section className="engine-no-result" role="status">
+                  <Info aria-hidden="true" />
+                  <div><h2>No valid schedule yet</h2><p>Try again in a couple of hours as more students join, or ask your friends to add their schedules. Schedule Engine gets more accurate over time.</p>
+                    {selectedJob.noValidScheduleReason ? <details><summary>What blocked this request?</summary><p>{selectedJob.noValidScheduleReason}</p></details> : null}
                   </div>
-                </>
-              ) : <p className="notice-box"><Info aria-hidden="true" />{selectedJob.noValidScheduleReason ?? 'No valid schedule could be built from the existing sections and meeting patterns.'}</p>}
+                </section>
+              )}
             </section>
           ) : null}
+          {selectedPredictionKey && appliedPredictionKey === selectedPredictionKey ? <p className="form-success engine-apply-success" role="status">This prediction is now your schedule.</p> : null}
           {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
-          <EngineNotes />
         </>
       ) : showForm ? (
         <div className="engine-request-layout">
           <form className="engine-request-form" onSubmit={(event) => void submit(event)}>
-            <div className="engine-form-heading"><h2>Course replacements</h2><p>Choose up to two courses from your schedule, then up to two catalog courses to replace them with.</p></div>
+            <div className="engine-form-heading"><h2>Course replacements</h2><p>Choose up to three courses from your schedule, then up to three catalog courses to replace them with.</p></div>
             {scheduleLoading ? <p className="engine-loading" role="status">Loading your current schedule…</p> : scheduleError ? <p className="form-error" role="alert">{scheduleError}</p> : enrollments.length === 0 ? <p className="notice-box"><Info aria-hidden="true" />Add classes to your schedule before creating a Schedule Engine request.</p> : (
               <div className="engine-replacement-list engine-selection-groups">
                 <section className="engine-selection-group" aria-labelledby="engine-current-courses-heading">
@@ -358,17 +433,11 @@ export function ScheduleEnginePage() {
             )}
             <div className="engine-submit-area">
               <label className="checkbox-row"><input type="checkbox" checked={emailNotification} onChange={(event) => setEmailNotification(event.target.checked)} /><span>Email me when my predicted schedules are ready.</span></label>
-              <p>Your request will usually be processed within a couple of hours.</p>
+              <p>You can leave this page after submitting and return when your results are ready.</p>
               {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
               <button className="button button-primary" disabled={submitting || scheduleLoading || enrollments.length === 0 || Boolean(validationError)} type="submit">{submitting ? 'Submitting…' : 'Submit request'}</button>
             </div>
           </form>
-          <aside className="engine-about">
-            <h2>About Schedule Engine</h2>
-            <div><Clock3 aria-hidden="true" /><p>Keep up to five active requests. Each can replace one or two current courses with one or two catalog courses.</p></div>
-            <div><RefreshCw aria-hidden="true" /><p>Return to this page to see when processing is complete.</p></div>
-            <EngineNotes />
-          </aside>
         </div>
       ) : null}
     </div>

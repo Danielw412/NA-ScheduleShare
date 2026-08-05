@@ -11,7 +11,7 @@ The engine never creates a section or meeting pattern. It tries direct replaceme
 3. Optionally set a stable `SCHEDULE_ENGINE_WORKER_ID` for this laptop.
 4. Optionally set `SCHEDULE_ENGINE_MAX_COLLATERAL_CHANGES`. It defaults to `5` and accepts `0` through `20`; increasing it permits a deeper rearrangement search.
 5. Copy the SMTP settings already used by Supabase Auth into `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. Supabase does not expose those saved secrets to this program.
-6. Open the web control panel with `pnpm schedule-engine:gui`, then visit `http://127.0.0.1:4174`. It shows queue details, worker state, configured search depth, errors, raw debug data, and buttons to process one job or the full queue.
+6. Open the web control panel with `pnpm schedule-engine:gui`, then visit `http://127.0.0.1:4174`. It shows queue details, worker state, configured search depth, errors, raw debug data, and controls to process jobs manually or automatically as they arrive. Set `SCHEDULE_ENGINE_AUTO_PROCESS=true` to start the control panel in automatic mode; the on-screen switch can still change it for the current run.
 
 The command-line alternatives remain `pnpm schedule-engine:one` for one job and `pnpm schedule-engine:queue` for the full queue.
 

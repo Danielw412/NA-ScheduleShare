@@ -179,9 +179,9 @@ export async function searchCourseNames(query: string, signal?: AbortSignal): Pr
 
 function scheduleEngineError(caught: unknown): Error {
   const message = caught && typeof caught === 'object' && 'message' in caught ? String(caught.message) : ''
-  if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose one or two course replacements.')
-  if (message.includes('schedule_engine_source_count_invalid')) return new Error('Choose one or two current courses.')
-  if (message.includes('schedule_engine_replacement_course_count_invalid')) return new Error('Choose one or two replacement courses.')
+  if (message.includes('schedule_engine_replacement_count_invalid')) return new Error('Choose up to three course replacements.')
+  if (message.includes('schedule_engine_source_count_invalid')) return new Error('Choose up to three current courses.')
+  if (message.includes('schedule_engine_replacement_course_count_invalid')) return new Error('Choose up to three replacement courses.')
   if (message.includes('schedule_engine_too_many_active_jobs')) return new Error('You already have five active requests. Cancel a queued request or wait for one to finish.')
   if (message.includes('schedule_engine_duplicate_enrollment')) return new Error('Each current course can only be replaced once.')
   if (message.includes('schedule_engine_duplicate_replacement_course')) return new Error('Choose different replacement courses.')
@@ -270,6 +270,22 @@ export async function cancelScheduleEngineJob(jobId: string): Promise<void> {
     const message = caught instanceof Error ? caught.message : ''
     if (message.includes('schedule_engine_job_not_cancellable')) throw new Error('Only queued requests can be cancelled.', { cause: caught })
     throw new Error('The request could not be cancelled. Please refresh and try again.', { cause: caught })
+  }
+}
+
+export async function applyScheduleEnginePrediction(jobId: string, rank: number): Promise<number> {
+  try {
+    const appliedCount = Number(await callUntypedRpc('apply_schedule_engine_prediction', {
+      p_job_id: jobId,
+      p_rank: rank,
+    }))
+    if (!Number.isSafeInteger(appliedCount) || appliedCount < 1) throw new Error('invalid_schedule_engine_applied_count')
+    return appliedCount
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : ''
+    if (message.includes('schedule_engine_prediction_stale')) throw new Error('Your schedule changed after this prediction was created. Submit a new request for an up-to-date result.', { cause: caught })
+    if (message.includes('schedule_engine_prediction_not_found') || message.includes('schedule_engine_job_not_completed')) throw new Error('This prediction is no longer available. Refresh the page and try again.', { cause: caught })
+    throw new Error('Your schedule could not be updated from this prediction. Please try again.', { cause: caught })
   }
 }
 

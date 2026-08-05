@@ -12,6 +12,7 @@ interface ScheduleGridProps {
   onReplace: (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => void
   readOnly?: boolean
   changedEnrollmentIds?: ReadonlySet<string>
+  mobileDay?: DayType
 }
 
 interface CellMenuState {
@@ -22,7 +23,7 @@ interface CellMenuState {
   style: CSSProperties
 }
 
-export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, readOnly = false, changedEnrollmentIds }: ScheduleGridProps) {
+export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onReplace, readOnly = false, changedEnrollmentIds, mobileDay }: ScheduleGridProps) {
   const conflicts = findScheduleConflicts(enrollments)
   const conflictedIds = new Set(conflicts.flatMap((pair) => pair.map((enrollment) => enrollment.id)))
   const [openMenu, setOpenMenu] = useState<CellMenuState | null>(null)
@@ -105,7 +106,7 @@ export function ScheduleGrid({ enrollments, selectedTerm, onAdd, onRemove, onRep
   return (
     <>
       <div className="schedule-grid-wrap">
-      <div className="schedule-grid" role="grid" aria-label={`${termLabels[selectedTerm]} A/B-day schedule`}>
+      <div className={`schedule-grid${mobileDay ? ` mobile-day-${mobileDay.toLowerCase()}` : ''}`} role="grid" aria-label={`${termLabels[selectedTerm]} A/B-day schedule`}>
         <div className="schedule-corner" role="columnheader" />
         {(['A', 'B'] as DayType[]).map((day) => <div className={`day-header day-${day.toLowerCase()}`} role="columnheader" key={day}>{day} Day</div>)}
         {PERIOD_NUMBERS.map((period) => (
