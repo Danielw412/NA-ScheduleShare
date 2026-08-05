@@ -7696,3 +7696,624 @@ a.student-access-profile:hover strong {
     animation-duration: .01ms !important;
   }
 }
+
+/* Schedule Engine redesign */
+.schedule-engine-page {
+  width: min(100%, 1348px);
+  padding-bottom: 24px;
+}
+
+.engine-page-heading {
+  margin-bottom: 20px;
+  align-items: flex-end;
+}
+
+.engine-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.engine-history-select {
+  position: relative;
+  min-height: 44px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.engine-history-select::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.engine-history-select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.engine-request-overview {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--white);
+}
+
+.engine-request-summary {
+  padding: 18px 20px 16px;
+}
+
+.engine-section-label {
+  display: block;
+  margin-bottom: 11px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.engine-request-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.engine-request-flow svg {
+  color: var(--muted);
+}
+
+.engine-request-summary>p {
+  margin: 13px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.engine-result-controls {
+  padding: 15px 20px 17px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 28px;
+  border-top: 1px solid var(--border);
+}
+
+.engine-result-controls h2 {
+  margin: 0 0 9px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.engine-result-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.engine-result-picker button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--white);
+  font-size: 12px;
+  text-align: left;
+}
+
+.engine-result-picker button:hover {
+  border-color: var(--brand-gold-dark);
+  background: #fffcf4;
+}
+
+.engine-result-picker button.is-selected {
+  border-color: var(--brand-gold-dark);
+  background: #fffaf0;
+  box-shadow: inset 0 0 0 1px var(--brand-gold);
+}
+
+.engine-result-radio {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #8a8a8a;
+  border-radius: 50%;
+}
+
+.engine-result-picker button.is-selected .engine-result-radio {
+  border-color: var(--ink);
+}
+
+.engine-result-picker button.is-selected .engine-result-radio::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-gold);
+}
+
+.engine-term-control .term-selector {
+  width: 100%;
+  margin: 0;
+}
+
+.engine-results {
+  min-width: 0;
+}
+
+.engine-prediction-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--white);
+}
+
+.schedule-engine-page .engine-prediction-card>.engine-selected-result-heading {
+  min-height: 66px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.engine-selected-result-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+}
+
+.engine-selected-result-title>svg {
+  width: 25px;
+  height: 25px;
+  color: var(--success);
+}
+
+.schedule-engine-page .engine-prediction-card>.engine-selected-result-heading>.engine-collateral-summary {
+  width: auto;
+  height: auto;
+  padding: 6px 11px;
+  display: inline-flex;
+  place-items: unset;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eaf8ee;
+  color: #116f2d;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.schedule-engine-page .engine-prediction-card>.engine-selected-result-heading>.engine-collateral-summary.is-placeholder {
+  background: #fff1f1;
+  color: var(--danger);
+}
+
+.engine-result-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.engine-result-actions>span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.engine-mobile-day-selector {
+  display: none;
+}
+
+.schedule-engine-page .engine-prediction-card .schedule-grid-wrap {
+  margin: 0;
+  overflow: visible;
+}
+
+.schedule-engine-page .engine-prediction-card .schedule-grid {
+  min-width: 0;
+  grid-template-columns: 70px repeat(2, minmax(0, 1fr));
+  border-width: 0 0 1px;
+}
+
+.schedule-engine-page .engine-prediction-card .period-label,
+.schedule-engine-page .engine-prediction-card .schedule-cell {
+  min-height: 54px;
+}
+
+.schedule-engine-page .engine-prediction-card .class-cell-copy strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.schedule-engine-page .predicted-change-label {
+  display: inline-block;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.engine-prediction-explanations {
+  margin: 0;
+  padding: 14px 17px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--white);
+}
+
+.engine-prediction-explanations>svg {
+  width: 29px;
+  height: 29px;
+  padding: 6px;
+  border-radius: 50%;
+  background: #fff1c9;
+  color: #5a3a00;
+}
+
+.engine-prediction-explanations strong {
+  font-size: 12px;
+}
+
+.engine-prediction-explanations p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.engine-no-result {
+  min-height: 220px;
+  padding: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 600px);
+  justify-content: center;
+  align-content: center;
+  gap: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--white);
+}
+
+.engine-no-result>svg {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 50%;
+  background: #fff1c9;
+  color: #5a3a00;
+}
+
+.engine-no-result h2,
+.engine-no-result p {
+  margin: 0;
+}
+
+.engine-no-result h2 {
+  font-size: 20px;
+}
+
+.engine-no-result p {
+  margin-top: 7px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.engine-no-result details {
+  margin-top: 16px;
+  font-size: 12px;
+}
+
+.engine-no-result summary {
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.engine-no-result details p {
+  margin-top: 8px;
+}
+
+.engine-apply-success {
+  margin-top: 12px;
+}
+
+.engine-request-layout {
+  display: block;
+}
+
+.engine-request-form {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+  border-radius: 10px;
+}
+
+.engine-selection-groups {
+  gap: 22px;
+}
+
+.engine-waiting-panel {
+  min-height: 230px;
+  border-radius: 10px;
+  background: var(--white);
+}
+
+@media (max-width: 760px) {
+  .schedule-engine-page {
+    width: 100%;
+    max-width: 100%;
+    contain: inline-size;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+
+  .engine-page-heading {
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .engine-page-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .engine-history-select,
+  .engine-page-actions>.button {
+    min-height: 46px;
+    justify-content: center;
+  }
+
+  .engine-request-summary {
+    padding: 16px;
+  }
+
+  .engine-request-flow {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px 12px;
+    font-size: 15px;
+  }
+
+  .engine-request-flow>span {
+    grid-column: 1 / -1;
+  }
+
+  .engine-request-flow>svg {
+    align-self: start;
+    margin-top: 2px;
+    transform: rotate(90deg);
+  }
+
+  .engine-result-controls {
+    padding: 15px 16px 17px;
+    display: block;
+  }
+
+  .engine-result-picker {
+    display: flex;
+    gap: 9px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .engine-result-picker::-webkit-scrollbar {
+    display: none;
+  }
+
+  .engine-result-picker button {
+    min-height: 52px;
+    flex: 0 0 170px;
+    scroll-snap-align: start;
+  }
+
+  .engine-term-control {
+    margin-top: 18px;
+  }
+
+  .schedule-engine-page .term-long {
+    display: inline;
+  }
+
+  .schedule-engine-page .term-short {
+    display: none;
+  }
+
+  .schedule-engine-page .engine-prediction-card>.engine-selected-result-heading {
+    padding: 15px 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .engine-selected-result-title {
+    min-height: 30px;
+  }
+
+  .schedule-engine-page .engine-prediction-card>.engine-selected-result-heading>.engine-collateral-summary {
+    margin-left: auto;
+  }
+
+  .engine-result-actions {
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .engine-result-actions>.button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  .engine-result-actions>span {
+    justify-content: center;
+  }
+
+  .engine-mobile-day-selector {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  .engine-mobile-day-selector button {
+    min-height: 48px;
+    border: 0;
+    border-right: 1px solid var(--border-strong);
+    background: var(--white);
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .engine-mobile-day-selector button:last-child {
+    border-right: 0;
+  }
+
+  .engine-mobile-day-selector button.is-active {
+    background: var(--ink);
+    color: var(--white);
+    box-shadow: inset 0 4px var(--brand-gold);
+  }
+
+  .schedule-engine-page .engine-prediction-card .schedule-grid-wrap {
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .schedule-engine-page .engine-prediction-card .schedule-grid.mobile-day-a,
+  .schedule-engine-page .engine-prediction-card .schedule-grid.mobile-day-b {
+    min-width: 0;
+    grid-template-columns: 62px minmax(0, 1fr);
+    border: 0;
+  }
+
+  .schedule-engine-page .engine-prediction-card .schedule-corner,
+  .schedule-engine-page .engine-prediction-card .day-header,
+  .schedule-engine-page .engine-prediction-card .mobile-day-a .schedule-cell[data-day="B"],
+  .schedule-engine-page .engine-prediction-card .mobile-day-b .schedule-cell[data-day="A"] {
+    display: none;
+  }
+
+  .schedule-engine-page .engine-prediction-card .period-label,
+  .schedule-engine-page .engine-prediction-card .schedule-cell {
+    min-height: 68px;
+  }
+
+  .schedule-engine-page .engine-prediction-card .period-label {
+    font-size: 15px;
+  }
+
+  .schedule-engine-page .engine-prediction-card .filled-cell {
+    padding: 10px 13px 10px 16px;
+  }
+
+  .schedule-engine-page .engine-prediction-card .class-cell-copy strong {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  .schedule-engine-page .predicted-change-label {
+    margin-top: 3px;
+  }
+
+  .engine-prediction-explanations {
+    padding: 15px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .engine-prediction-explanations p {
+    grid-column: 2;
+  }
+
+  .engine-no-result {
+    min-height: 260px;
+    padding: 28px 20px;
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .schedule-engine-page .engine-request-form {
+    width: 100%;
+    margin-inline: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+  }
+
+  .engine-selection-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .engine-selection-arrow {
+    margin: -2px auto;
+    transform: rotate(90deg);
+  }
+
+  .engine-selection-row select,
+  .engine-course-picker input {
+    width: 100%;
+  }
+
+  .engine-waiting-panel {
+    min-height: 260px;
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 430px) {
+  .engine-page-heading h1 {
+    font-size: 30px;
+  }
+
+  .engine-page-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .engine-history-select,
+  .engine-page-actions>.button {
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+
+  .schedule-engine-page .engine-prediction-card>.engine-selected-result-heading>.engine-collateral-summary {
+    width: auto;
+    height: auto;
+    max-width: calc(100% - 34px);
+    flex-basis: auto;
+    margin-left: 34px;
+  }
+}

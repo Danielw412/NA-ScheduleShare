@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   createScheduleEngineJob: vi.fn(),
   listScheduleEngineJobs: vi.fn(),
   cancelScheduleEngineJob: vi.fn(),
+  applyScheduleEnginePrediction: vi.fn(),
+  reloadSchedule: vi.fn(),
 }))
 
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
@@ -20,6 +22,7 @@ vi.mock('../lib/supabase/data', () => ({
   createScheduleEngineJob: mocks.createScheduleEngineJob,
   listScheduleEngineJobs: mocks.listScheduleEngineJobs,
   cancelScheduleEngineJob: mocks.cancelScheduleEngineJob,
+  applyScheduleEnginePrediction: mocks.applyScheduleEnginePrediction,
 }))
 
 const english: ScheduleEnrollment = {
@@ -58,12 +61,27 @@ const chemistry: ScheduleEnrollment = {
   meeting_slots: [{ day_type: 'A', period_number: 2 }, { day_type: 'B', period_number: 2 }],
 }
 
+const biology: ScheduleEnrollment = {
+  ...chemistry,
+  id: 'enrollment-biology',
+  class_id: 'class-biology',
+  class: {
+    ...chemistry.class,
+    id: 'class-biology',
+    course_name_id: 'course-biology',
+    course_name: 'Biology',
+    teacher_last_name: 'Nguyen',
+    meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }],
+  },
+  meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }],
+}
+
 function renderPage() {
   return render(<MemoryRouter><ScheduleEnginePage /></MemoryRouter>)
 }
 
 beforeEach(() => {
-  mocks.useSchedule.mockReturnValue({ enrollments: [english, chemistry], loading: false, error: null })
+  mocks.useSchedule.mockReturnValue({ enrollments: [english, chemistry, biology], loading: false, error: null, reload: mocks.reloadSchedule })
   mocks.useCourseNameSearch.mockReturnValue({
     loading: false,
     error: null,
@@ -71,11 +89,14 @@ beforeEach(() => {
       { id: 'course-english', course_name: 'AP English Language', course_term_policy: 'full_year', score: 100 },
       { id: 'course-literature', course_name: 'AP Literature', course_term_policy: 'full_year', score: 95 },
       { id: 'course-history', course_name: 'AP US History', course_term_policy: 'full_year', score: 90 },
+      { id: 'course-economics', course_name: 'AP Economics', course_term_policy: 'full_year', score: 85 },
     ],
   })
   mocks.listScheduleEngineJobs.mockResolvedValue([])
   mocks.cancelScheduleEngineJob.mockResolvedValue(undefined)
   mocks.createScheduleEngineJob.mockResolvedValue('job-1')
+  mocks.applyScheduleEnginePrediction.mockResolvedValue(3)
+  mocks.reloadSchedule.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -105,7 +126,7 @@ describe('ScheduleEnginePage', () => {
     }, true))
   })
 
-  it('supports two independent current courses and two independent replacement courses', async () => {
+  it('supports three independent current courses and three independent replacement courses', async () => {
     const user = userEvent.setup()
     renderPage()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add another current course' })).toBeInTheDocument())
@@ -114,6 +135,9 @@ describe('ScheduleEnginePage', () => {
     const courseSelects = screen.getAllByLabelText(/Current course/)
     expect(within(courseSelects[1]).queryByRole('option', { name: /AP English Language/ })).not.toBeInTheDocument()
     await user.selectOptions(courseSelects[1], chemistry.id)
+    await user.click(screen.getByRole('button', { name: 'Add another current course' }))
+    const allCourseSelects = screen.getAllByLabelText(/Current course/)
+    await user.selectOptions(allCourseSelects[2], biology.id)
 
     await user.type(screen.getByRole('combobox', { name: 'Replacement course' }), 'Lit')
     await user.click(screen.getByRole('option', { name: 'AP Literature' }))
@@ -123,11 +147,16 @@ describe('ScheduleEnginePage', () => {
     const secondTarget = replacementInputs[1].closest<HTMLElement>('.engine-selection-row')!
     expect(within(secondTarget).queryByRole('option', { name: 'AP Literature' })).not.toBeInTheDocument()
     await user.click(within(secondTarget).getByRole('option', { name: 'AP US History' }))
+    await user.click(screen.getByRole('button', { name: 'Add another replacement course' }))
+    const thirdReplacement = screen.getAllByRole('combobox', { name: 'Replacement course' })[2]
+    await user.type(thirdReplacement, 'Economics')
+    const thirdTarget = thirdReplacement.closest<HTMLElement>('.engine-selection-row')!
+    await user.click(within(thirdTarget).getByRole('option', { name: 'AP Economics' }))
     await user.click(screen.getByRole('button', { name: 'Submit request' }))
 
     await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith({
-      enrollmentIds: ['enrollment-english', 'enrollment-chemistry'],
-      replacementCourseIds: ['course-literature', 'course-history'],
+      enrollmentIds: ['enrollment-english', 'enrollment-chemistry', 'enrollment-biology'],
+      replacementCourseIds: ['course-literature', 'course-history', 'course-economics'],
     }, true))
   })
 
@@ -145,7 +174,7 @@ describe('ScheduleEnginePage', () => {
     expect(screen.getByText(/Selected catalog course:/)).toHaveTextContent('AP Literature')
   })
 
-  it('shows completed ranked predictions and marks changed courses', async () => {
+  it('shows a readable most-likely prediction and can make it the current schedule', async () => {
     const completed: ScheduleEngineJob = {
       id: 'job-complete',
       status: 'completed',
@@ -178,14 +207,19 @@ describe('ScheduleEnginePage', () => {
       }],
     }
     mocks.listScheduleEngineJobs.mockResolvedValue([completed])
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
     renderPage()
 
-    expect(await screen.findByText('Completed')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Best fit' })).toBeInTheDocument()
+    expect(await screen.findByText(/Selected result:/)).toHaveTextContent('Most likely')
     expect(screen.getByText('No unrelated courses moved')).toBeInTheDocument()
-    expect(screen.getByText(/Requested change: dropped AP English Language/)).toBeInTheDocument()
+    expect(screen.getByText('Your requested courses fit without moving any unrelated courses.')).toBeInTheDocument()
     expect(screen.getAllByText('Changed')).not.toHaveLength(0)
     expect(screen.getByRole('button', { name: /New request/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Make this my schedule' }))
+    await waitFor(() => expect(mocks.applyScheduleEnginePrediction).toHaveBeenCalledWith('job-complete', 1))
+    expect(mocks.reloadSchedule).toHaveBeenCalled()
+    expect(await screen.findByText('This prediction is now your schedule.')).toBeInTheDocument()
   })
 
   it('shows queued request details and lets the owner cancel', async () => {
@@ -194,7 +228,7 @@ describe('ScheduleEnginePage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderPage()
-    expect(await screen.findByText('Requested changes')).toBeInTheDocument()
+    expect(await screen.findByText('Your requested changes')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Cancel request' }))
     await waitFor(() => expect(mocks.cancelScheduleEngineJob).toHaveBeenCalledWith('job-queued'))
   })
@@ -212,6 +246,7 @@ describe('ScheduleEnginePage', () => {
     mocks.listScheduleEngineJobs.mockResolvedValue([completedWithoutResult])
     renderPage()
     expect(await screen.findByText(completedWithoutResult.noValidScheduleReason!)).toBeInTheDocument()
-    expect(screen.getByText('No valid schedule found')).toBeInTheDocument()
+    expect(screen.getByText('No valid schedule yet')).toBeInTheDocument()
+    expect(screen.getByText(/ask your friends to add their schedules/i)).toBeInTheDocument()
   })
 })

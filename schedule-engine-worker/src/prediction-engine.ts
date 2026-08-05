@@ -572,8 +572,8 @@ function resultFor(solution: RankedSolution, input: ScheduleEngineInput, targets
 }
 
 function validateInput(input: ScheduleEngineInput): void {
-  if (input.source_courses.length < 1 || input.source_courses.length > 2 || input.replacement_courses.length < 1 || input.replacement_courses.length > 2) {
-    throw new Error('Schedule Engine input must contain one or two dropped courses and one or two replacement courses.')
+  if (input.source_courses.length < 1 || input.source_courses.length > 3 || input.replacement_courses.length < 1 || input.replacement_courses.length > 3) {
+    throw new Error('Schedule Engine input must contain one to three dropped courses and one to three replacement courses.')
   }
   const currentById = new Map(input.current_schedule.map((enrollment) => [enrollment.enrollment_id, enrollment]))
   for (const source of input.source_courses) {

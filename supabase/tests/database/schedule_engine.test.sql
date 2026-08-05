@@ -1,5 +1,5 @@
 begin;
-select plan(52);
+select plan(56);
 
 select ok(
   has_function_privilege('authenticated', 'public.create_schedule_engine_job(jsonb,boolean)', 'execute')
@@ -10,8 +10,9 @@ select ok(
 select ok(
   has_function_privilege('authenticated', 'public.list_my_schedule_engine_jobs(integer)', 'execute')
   and has_function_privilege('authenticated', 'public.cancel_my_schedule_engine_job(uuid)', 'execute')
+  and has_function_privilege('authenticated', 'public.apply_schedule_engine_prediction(uuid,smallint)', 'execute')
   and not has_function_privilege('anon', 'public.cancel_my_schedule_engine_job(uuid)', 'execute'),
-  'signed-in users can list and cancel only through protected RPCs'
+  'signed-in users can list, cancel, and apply results only through protected RPCs'
 );
 
 select ok(
@@ -89,6 +90,14 @@ insert into public.classes (id, course_name_id, teacher_last_name, default_acade
 select '98100000-0000-4000-8000-000000000005', id, 'Morgan', 'full_year', false, '98000000-0000-4000-8000-000000000001'
 from public.course_names where normalized_name = 'gym';
 
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '98100000-0000-4000-8000-000000000006', id, 'Kim', 'full_year', false, '98000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'ap biology';
+
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '98100000-0000-4000-8000-000000000007', id, 'Lee', 'full_year', false, '98000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'ap chemistry';
+
 insert into public.class_meeting_slots (class_id, day_type, period_number) values
   ('98100000-0000-4000-8000-000000000001', 'A', 1),
   ('98100000-0000-4000-8000-000000000001', 'B', 1),
@@ -99,12 +108,17 @@ insert into public.class_meeting_slots (class_id, day_type, period_number) value
   ('98100000-0000-4000-8000-000000000004', 'A', 4),
   ('98100000-0000-4000-8000-000000000004', 'B', 4),
   ('98100000-0000-4000-8000-000000000005', 'A', 5),
-  ('98100000-0000-4000-8000-000000000005', 'B', 5);
+  ('98100000-0000-4000-8000-000000000005', 'B', 5),
+  ('98100000-0000-4000-8000-000000000006', 'A', 6),
+  ('98100000-0000-4000-8000-000000000006', 'B', 6),
+  ('98100000-0000-4000-8000-000000000007', 'A', 7),
+  ('98100000-0000-4000-8000-000000000007', 'B', 7);
 
 insert into public.class_enrollments (id, student_id, class_id, academic_term, active) values
   ('98200000-0000-4000-8000-000000000001', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000001', 'full_year', true),
   ('98200000-0000-4000-8000-000000000002', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000002', 'full_year', true),
-  ('98200000-0000-4000-8000-000000000003', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000005', 'full_year', true);
+  ('98200000-0000-4000-8000-000000000003', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000005', 'full_year', true),
+  ('98200000-0000-4000-8000-000000000004', '98000000-0000-4000-8000-000000000001', '98100000-0000-4000-8000-000000000007', 'full_year', true);
 
 delete from public.class_enrollment_meeting_slots
 where enrollment_id = '98200000-0000-4000-8000-000000000003' and day_type = 'B';
@@ -118,16 +132,18 @@ select lives_ok(
     jsonb_build_object(
       'enrollment_ids', jsonb_build_array(
         '98200000-0000-4000-8000-000000000001',
-        '98200000-0000-4000-8000-000000000002'
+        '98200000-0000-4000-8000-000000000002',
+        '98200000-0000-4000-8000-000000000004'
       ),
       'replacement_course_ids', jsonb_build_array(
         (select id from public.course_names where normalized_name = 'ap literature'),
-        (select id from public.course_names where normalized_name = 'ap us history')
+        (select id from public.course_names where normalized_name = 'ap us history'),
+        (select id from public.course_names where normalized_name = 'ap biology')
       )
     ),
     false
   )$$,
-  'an owner can submit two current and two replacement courses'
+  'an owner can submit three current and three replacement courses'
 );
 
 select is(
@@ -148,8 +164,8 @@ select is(
     from public.schedule_engine_replacements source
     where source.job_id = (select id from public.schedule_engine_jobs limit 1)
   ),
-  2::bigint,
-  'the request stores both source enrollment IDs'
+  3::bigint,
+  'the request stores all three source enrollment IDs'
 );
 
 select is(
@@ -158,8 +174,8 @@ select is(
     from public.schedule_engine_replacement_courses target
     where target.job_id = (select id from public.schedule_engine_jobs limit 1)
   ),
-  2::bigint,
-  'the request stores both replacement catalog course IDs independently'
+  3::bigint,
+  'the request stores all three replacement catalog course IDs independently'
 );
 
 select throws_ok(
@@ -206,11 +222,12 @@ select throws_ok(
     jsonb_build_array(
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
+      jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid()),
       jsonb_build_object('enrollment_id', gen_random_uuid(), 'replacement_course_id', gen_random_uuid())
     ), true
   )$$,
   '23514', 'schedule_engine_source_count_invalid',
-  'requests with more than two current courses are rejected'
+  'requests with more than three current courses are rejected'
 );
 
 select throws_ok(
@@ -220,12 +237,13 @@ select throws_ok(
       'replacement_course_ids', jsonb_build_array(
         (select id from public.course_names where normalized_name = 'ap literature'),
         (select id from public.course_names where normalized_name = 'ap us history'),
-        (select id from public.course_names where normalized_name = 'ap biology')
+        (select id from public.course_names where normalized_name = 'ap biology'),
+        (select id from public.course_names where normalized_name = 'ap chemistry')
       )
     ), true
   )$$,
   '23514', 'schedule_engine_replacement_course_count_invalid',
-  'requests with more than two replacement courses are rejected'
+  'requests with more than three replacement courses are rejected'
 );
 
 select throws_ok(
@@ -276,7 +294,7 @@ select is(
 
 select is(
   jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'current_schedule'),
-  3,
+  4,
   'worker input includes the complete active current schedule'
 );
 
@@ -297,7 +315,7 @@ select ok(
 
 select is(
   jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'source_courses'),
-  2,
+  3,
   'worker input includes every requested source course'
 );
 
@@ -315,19 +333,20 @@ select is(
 
 select is(
   jsonb_array_length(public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'replacement_courses'),
-  2,
-  'worker input includes both independent replacement courses'
+  3,
+  'worker input includes all three independent replacement courses'
 );
 
 select ok(
   (
-    select count(*) = 2
+    select count(*) = 3
     from jsonb_array_elements(
       public.get_schedule_engine_worker_input(current_setting('test.expected_engine_job')::uuid, 'worker-one') -> 'available_sections'
     ) section
     where section ->> 'class_id' in (
       '98100000-0000-4000-8000-000000000003',
-      '98100000-0000-4000-8000-000000000004'
+      '98100000-0000-4000-8000-000000000004',
+      '98100000-0000-4000-8000-000000000006'
     )
   ),
   'worker input includes every relevant existing replacement section'
@@ -347,7 +366,64 @@ select lives_ok(
   $$select public.complete_schedule_engine_job(
     current_setting('test.expected_engine_job')::uuid,
     'worker-one',
-    '[{"schedule":[{"enrollment_id":"prediction-1","class_id":"98100000-0000-4000-8000-000000000003","course_id":"predicted-course","course_name":"AP Literature","teacher_last_name":"Diaz","academic_term":"full_year","meeting_slots":[{"day_type":"A","period_number":3},{"day_type":"B","period_number":3}]}],"collateral_change_count":0,"search_stage":"direct_replacement","explanations":["Direct replacement using an existing section."]}]'::jsonb,
+    jsonb_build_array(jsonb_build_object(
+      'schedule', jsonb_build_array(
+        jsonb_build_object(
+          'enrollment_id', 'predicted-literature',
+          'changed_from_enrollment_id', '98200000-0000-4000-8000-000000000001',
+          'class_id', '98100000-0000-4000-8000-000000000003',
+          'course_id', (select id from public.course_names where normalized_name = 'ap literature'),
+          'course_name', 'AP Literature',
+          'teacher_last_name', 'Diaz',
+          'academic_term', 'full_year',
+          'meeting_slots', jsonb_build_array(
+            jsonb_build_object('day_type', 'A', 'period_number', 3),
+            jsonb_build_object('day_type', 'B', 'period_number', 3)
+          )
+        ),
+        jsonb_build_object(
+          'enrollment_id', 'predicted-history',
+          'changed_from_enrollment_id', '98200000-0000-4000-8000-000000000002',
+          'class_id', '98100000-0000-4000-8000-000000000004',
+          'course_id', (select id from public.course_names where normalized_name = 'ap us history'),
+          'course_name', 'AP US History',
+          'teacher_last_name', 'Nguyen',
+          'academic_term', 'full_year',
+          'meeting_slots', jsonb_build_array(
+            jsonb_build_object('day_type', 'A', 'period_number', 4),
+            jsonb_build_object('day_type', 'B', 'period_number', 4)
+          )
+        ),
+        jsonb_build_object(
+          'enrollment_id', 'predicted-biology',
+          'changed_from_enrollment_id', '98200000-0000-4000-8000-000000000004',
+          'class_id', '98100000-0000-4000-8000-000000000006',
+          'course_id', (select id from public.course_names where normalized_name = 'ap biology'),
+          'course_name', 'AP Biology',
+          'teacher_last_name', 'Kim',
+          'academic_term', 'full_year',
+          'meeting_slots', jsonb_build_array(
+            jsonb_build_object('day_type', 'A', 'period_number', 6),
+            jsonb_build_object('day_type', 'B', 'period_number', 6)
+          )
+        ),
+        jsonb_build_object(
+          'enrollment_id', '98200000-0000-4000-8000-000000000003',
+          'changed_from_enrollment_id', null,
+          'class_id', '98100000-0000-4000-8000-000000000005',
+          'course_id', (select id from public.course_names where normalized_name = 'gym'),
+          'course_name', 'Gym',
+          'teacher_last_name', 'Morgan',
+          'academic_term', 'full_year',
+          'meeting_slots', jsonb_build_array(
+            jsonb_build_object('day_type', 'A', 'period_number', 5)
+          )
+        )
+      ),
+      'collateral_change_count', 0,
+      'search_stage', 'direct_replacement',
+      'explanations', jsonb_build_array('Direct replacements using existing sections.')
+    )),
     null
   )$$,
   'the claiming worker can save ranked results and complete the job'
@@ -365,6 +441,20 @@ select is(
   (select status::text from public.schedule_engine_jobs where id = current_setting('test.expected_engine_job')::uuid),
   'completed',
   'completion updates the protected job status'
+);
+
+select ok(
+  (
+    select count(*) = 3
+    from public.event_logs event_log
+    where event_log.target_id = current_setting('test.expected_engine_job')
+      and event_log.event_type in (
+        'schedule_engine_request_submitted',
+        'schedule_engine_processing_started',
+        'schedule_engine_processing_completed'
+      )
+  ),
+  'request, processing, and completion activity is written to the audit log'
 );
 
 insert into public.schedule_engine_jobs (
@@ -497,6 +587,44 @@ select ok(
 );
 
 reset role;
+select set_config('request.jwt.claim.sub', '98000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select lives_ok(
+  $$select public.apply_schedule_engine_prediction(current_setting('test.expected_engine_job')::uuid, 1::smallint)$$,
+  'the owner can atomically make a completed prediction their schedule'
+);
+
+reset role;
+
+select is(
+  (
+    select count(*)
+    from public.class_enrollments enrollment
+    where enrollment.student_id = '98000000-0000-4000-8000-000000000001'
+      and enrollment.active
+      and enrollment.class_id in (
+        '98100000-0000-4000-8000-000000000003',
+        '98100000-0000-4000-8000-000000000004',
+        '98100000-0000-4000-8000-000000000006'
+      )
+  ),
+  3::bigint,
+  'applying the prediction replaces the personal schedule with the selected existing sections'
+);
+
+select is(
+  (
+    select count(*)
+    from public.event_logs event_log
+    where event_log.target_id = current_setting('test.expected_engine_job')
+      and event_log.event_type = 'schedule_engine_prediction_applied'
+      and event_log.result = 'succeeded'
+  ),
+  1::bigint,
+  'applying a prediction is written to the audit log'
+);
+
 delete from public.class_enrollments where id = '98200000-0000-4000-8000-000000000001';
 
 select is(
@@ -520,7 +648,7 @@ select is(
     from jsonb_array_elements(public.list_my_schedule_engine_jobs()) job
     where job ->> 'id' = current_setting('test.expected_engine_job')
   ),
-  2,
+  3,
   'validated source snapshots remain readable after the enrollment is removed'
 );
 
