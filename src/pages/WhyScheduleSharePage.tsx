@@ -8,6 +8,7 @@ import {
   MapPin,
   MousePointerClick,
   ShieldCheck,
+  Sparkles
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -24,6 +25,11 @@ const reasons: ScheduleShareReason[] = [
     title: 'Just need a screenshot',
     description: 'Upload PowerSchool screenshots and we will turn them into a schedule. No more typing every class, teacher, period by hand. AI is really replacing everything...',
     Icon: ImagePlus,
+  }, 
+  {
+    title: 'Trick your counselor',
+    description: 'Want classes with your friends? See how your schedule will look when you drop a class',
+    Icon: Sparkles,
   },
   {
     title: 'Your actual schedule',
@@ -40,8 +46,8 @@ const reasons: ScheduleShareReason[] = [
     description: 'No random popups and no asking you to share the app with everyone you have ever met.',
     Icon: MousePointerClick,
   },
-    {
-    title: 'NAI and NASH are not the same building.',
+  {
+    title: 'NAI and NASH are not the same building',
     description: 'Now you wont find 9th graders and 12th graders in the same lunch.',
     Icon: MapPin,
   },
