@@ -313,7 +313,7 @@ export function ScheduleEnginePage() {
   return (
     <div className="schedule-engine-page">
       <header className="page-heading engine-page-heading">
-        <div><h1>Schedule Engine</h1><p>See how your schedule might change if you replace one or more courses.</p></div>
+        <div><h1>Schedule Engine</h1><p>See how your schedule will change if you replace one or more courses.</p></div>
         {!jobLoading && jobs.length > 0 ? (
           <div className="engine-page-actions">
             <label className="engine-history-select">
