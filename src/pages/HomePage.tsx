@@ -81,7 +81,7 @@ export function HomePage() {
           <p>Upload a picture of your schedule, find classmates, and share schedules with friends.</p>
           <p className="home-builder-credit" style={{ borderBottom: 0, paddingBottom: 0 }}>
             <span style={{ borderBottom: '2px solid var(--brand-gold)', paddingBottom: 4 }}>Built by the NA Computer and AI Club</span>
-            <button className="home-club-hint" style={{ filter: 'brightness(1.18)' }} type="button" onClick={openClubDialog} aria-label="Join the NA Computer and AI Club">Join <ArrowUpRight size={12} aria-hidden="true" /></button>
+            <button className="home-club-hint" style={{ opacity: 1, borderColor: 'var(--brand-gold)' }} type="button" onClick={openClubDialog} aria-label="Join the NA Computer and AI Club">Join <ArrowUpRight size={12} aria-hidden="true" /></button>
           </p>
           <div className="hero-actions">
             {user && scheduleLoading
