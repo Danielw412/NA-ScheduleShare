@@ -294,6 +294,5 @@ new_table = """    <div className=\"admin-table admin-course-table\"><div classN
 """
 replace_once("src/pages/AdminPage.tsx", old_table, new_table)
 
-# Remove the temporary patch mechanism from the resulting branch tree.
 Path("scripts/apply_course_alias_patch.py").unlink()
 Path(".github/workflows/apply-course-alias-patch.yml").unlink()
