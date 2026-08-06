@@ -78,7 +78,7 @@ function policyOf(course?: Pick<ClassDefinition, 'course_term_policy'> | Pick<Co
 }
 
 function termForPolicy(policy: CourseTermPolicy, semester: SemesterTerm): AcademicTerm {
-  return policy === 'full_year' ? 'full_year' : semester
+  return policy === 'full_year' || policy === 'lunch' ? 'full_year' : semester
 }
 
 function semesterEveryDaySlots(period: number): MeetingSlot[] {
@@ -283,7 +283,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
       setTerm(semester)
       setMeetingSlots(semesterEveryDaySlots(result.meeting_slots[0]?.period_number ?? period))
     } else if (policy === 'lunch') {
-      setTerm(semester)
+      setTerm('full_year')
       setMeetingSlots(semesterEveryDaySlots(period))
     } else {
       setTerm(result.default_academic_term)
