@@ -77,7 +77,14 @@ begin
     'schedule_import',
     import_id::text,
     event_result,
-    coalesce(event_metadata, '{}'::jsonb) || jsonb_build_object('import_id', import_id)
+    coalesce(event_metadata, '{}'::jsonb) || jsonb_build_object(
+      'import_id', import_id,
+      'input_image_count', case
+        when jsonb_typeof(event_metadata #> '{what_was_tried,image_metadata}') = 'array'
+          then jsonb_array_length(event_metadata #> '{what_was_tried,image_metadata}')
+        else 0
+      end
+    )
   );
 end;
 $$;
