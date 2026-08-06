@@ -63,35 +63,39 @@ describe('AppShell mobile navigation', () => {
     expect(within(primaryNavigation).queryByRole('link', { name: 'Report an issue' })).not.toBeInTheDocument()
     expect(within(footerNavigation).getByRole('link', { name: 'Why ScheduleShare?' })).toHaveAttribute('href', '/why-scheduleshare')
     expect(within(footerNavigation).getByRole('button', { name: 'Computer & AI Club' })).toBeInTheDocument()
+    expect(footerNavigation.closest('.site-footer-content')).toBeInTheDocument()
     expect(screen.queryByText(/Supabase row-level security enforces schedule privacy/i)).not.toBeInTheDocument()
     await user.click(within(primaryNavigation).getByRole('button', { name: 'Sign out' }))
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('opens an accessible club forms dialog with the correct destinations', async () => {
+  it('opens the simplified accessible club forms dialog with the correct destinations', async () => {
     const user = userEvent.setup()
     renderShell('/classes')
     const trigger = within(screen.getByRole('navigation', { name: 'Footer navigation' })).getByRole('button', { name: 'Computer & AI Club' })
 
     await user.click(trigger)
-    const dialog = screen.getByRole('dialog', { name: 'Which form do you need?' })
+    const dialog = screen.getByRole('dialog', { name: 'Join Computer and AI Club!' })
     const interestForm = within(dialog).getByRole('link', { name: /Interest form/i })
     const signUpForm = within(dialog).getByRole('link', { name: /Sign-up form/i })
 
     expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(within(dialog).getByText('Choose the form that fits you.')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Both forms open in a new tab.')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Which form do you need?')).not.toBeInTheDocument()
     expect(interestForm).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
     expect(signUpForm).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
     expect(interestForm).toHaveAttribute('target', '_blank')
     expect(signUpForm).toHaveAttribute('target', '_blank')
 
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog', { name: 'Which form do you need?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Join Computer and AI Club!' })).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
 
     await user.click(trigger)
-    const reopenedDialog = screen.getByRole('dialog', { name: 'Which form do you need?' })
+    const reopenedDialog = screen.getByRole('dialog', { name: 'Join Computer and AI Club!' })
     fireEvent.mouseDown(reopenedDialog.parentElement!)
-    expect(screen.queryByRole('dialog', { name: 'Which form do you need?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Join Computer and AI Club!' })).not.toBeInTheDocument()
   })
 
   it('closes the expandable navigation with Escape and restores focus', async () => {
