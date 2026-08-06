@@ -1,17 +1,15 @@
 name: Apply course alias patch
 
 on:
-  push:
-    branches: [course-name-aliases]
-    paths:
-      - scripts/apply_course_alias_patch.py
-      - .github/workflows/apply-course-alias-patch.yml
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == 'course-name-aliases'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
