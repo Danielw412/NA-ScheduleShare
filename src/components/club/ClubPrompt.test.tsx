@@ -57,7 +57,7 @@ describe('ClubJoinDialog', () => {
     const onClose = vi.fn()
     render(<ClubJoinDialog open onClose={onClose} />)
 
-    expect(screen.getByRole('heading', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Join the NA Computer and AI Club!' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Sign-up form/ })).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
     expect(screen.getByRole('link', { name: /Interest form/ })).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
 
