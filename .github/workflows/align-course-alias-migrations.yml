@@ -1,0 +1,29 @@
+name: Align course alias migrations
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.head_ref == 'align-course-alias-migrations'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: align-course-alias-migrations
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python scripts/align_course_alias_migrations.py
+      - name: Commit aligned migration filenames
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Align course alias migration history"
+          git push origin HEAD:align-course-alias-migrations
