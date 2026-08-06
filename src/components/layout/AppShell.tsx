@@ -1,12 +1,17 @@
-import { BookOpen, CalendarDays, Home, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ArrowRight, BookOpen, CalendarCheck2, CalendarDays, Home, LogOut, Menu, Sparkles, UserRound, Users, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
 import { BrandLogo } from '../ui/BrandLogo'
 import { ProfileAvatar } from '../ui/ProfileAvatar'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
+import './AppShell.css'
+
+const clubSignUpUrl = 'https://forms.gle/mHSP39B3FnKvCfsv6'
+const clubInterestUrl = 'https://forms.gle/p7xYrVRbx2AhWy2U7'
 
 const authenticatedNavigation = [
   { to: '/', label: 'Home', mobileBottomDuplicate: true },
@@ -35,14 +40,18 @@ export function pageTransitionKey(pathname: string): string {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [clubFormsOpen, setClubFormsOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { user, profile, avatarRevision, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
+  const closeClubForms = useCallback(() => setClubFormsOpen(false), [])
+  const clubFormsDialogRef = useDialogAccessibility(clubFormsOpen, closeClubForms)
 
   useEffect(() => {
     setMenuOpen(false)
+    setClubFormsOpen(false)
   }, [location.pathname])
 
   useEffect(() => {
@@ -86,13 +95,39 @@ export function AppShell() {
       <main className="page-container"><div className="page-transition" key={pageTransitionKey(location.pathname)}><Outlet /></div></main>
       <footer className="site-footer">
         <p>{brand.attribution}</p>
-        <p className="footer-security"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Security:</strong> Supabase row-level security enforces schedule privacy in the database, authenticated requests are permission-checked, and sensitive credentials stay server-side.</span></p>
         <nav aria-label="Footer navigation">
           {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
           {user ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
+          <button className="footer-link-button" type="button" onClick={() => setClubFormsOpen(true)}>Computer &amp; AI Club</button>
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>
+      {clubFormsOpen ? (
+        <div className="dialog-backdrop club-forms-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeClubForms() }}>
+          <section className="club-forms-dialog" ref={clubFormsDialogRef} role="dialog" aria-modal="true" aria-labelledby="club-forms-dialog-title" aria-describedby="club-forms-dialog-description" tabIndex={-1}>
+            <button className="icon-button club-forms-close" type="button" aria-label="Close Computer and AI Club forms" onClick={closeClubForms}><X aria-hidden="true" /></button>
+            <header>
+              <span className="club-forms-icon" aria-hidden="true"><Sparkles /></span>
+              <p className="club-forms-eyebrow">Computer &amp; AI Club</p>
+              <h2 id="club-forms-dialog-title">Which form do you need?</h2>
+              <p id="club-forms-dialog-description">Explore the club without committing, or officially join the 2026–2027 member roster.</p>
+            </header>
+            <div className="club-form-options">
+              <a className="club-form-option club-form-interest" href={clubInterestUrl} target="_blank" rel="noreferrer" onClick={closeClubForms}>
+                <span className="club-form-option-icon" aria-hidden="true"><Sparkles /></span>
+                <span className="club-form-option-copy"><strong>Interest form</strong><small>Nonbinding. Tell us what you want to learn or participate in.</small></span>
+                <ArrowRight aria-hidden="true" />
+              </a>
+              <a className="club-form-option club-form-sign-up" href={clubSignUpUrl} target="_blank" rel="noreferrer" onClick={closeClubForms}>
+                <span className="club-form-option-icon" aria-hidden="true"><CalendarCheck2 /></span>
+                <span className="club-form-option-copy"><strong>Sign-up form</strong><small>Officially join the club for the 2026–2027 school year.</small></span>
+                <ArrowRight aria-hidden="true" />
+              </a>
+            </div>
+            <p className="club-forms-note">Both forms open in a new tab.</p>
+          </section>
+        </div>
+      ) : null}
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         {mobileBottomNavigation.map(({ to, label, Icon }) => !user && to === '/students'
           ? <button key={to} type="button" onClick={() => openAccountPrompt(to)}>
