@@ -323,13 +323,23 @@ async function loadCatalog(token: string, config: ImportConfiguration): Promise<
   for (let offset = 0; offset < 20_000; offset += 1_000) {
     const { data, error } = await client
       .from('course_names')
-      .select('id, name, term_policy')
+      .select('id, name, term_policy, course_name_aliases(alias)')
       .eq('status', 'active')
       .order('name')
       .range(offset, offset + 999)
     if (error) throw error
-    const page = (data ?? []) as CourseRecord[]
-    records.push(...page)
+    const page = (data ?? []) as unknown as Array<Record<string, unknown>>
+    records.push(...page.map((row) => ({
+      id: String(row.id ?? ''),
+      name: String(row.name ?? ''),
+      term_policy: row.term_policy as CourseRecord['term_policy'],
+      aliases: Array.isArray(row.course_name_aliases)
+        ? row.course_name_aliases.flatMap((value) => {
+            const alias = isRecord(value) && typeof value.alias === 'string' ? value.alias.trim() : ''
+            return alias ? [alias] : []
+          })
+        : [],
+    })))
     if (page.length < 1_000) return records
   }
   throw new Error('Course catalogue exceeds the safe import limit.')

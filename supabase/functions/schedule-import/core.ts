@@ -30,6 +30,7 @@ export interface MeetingSlot {
 export interface CourseRecord {
   id: string
   name: string
+  aliases?: string[]
   term_policy?: CourseTermPolicy
 }
 
@@ -532,6 +533,7 @@ function validateBackendData(catalog: CourseRecord[], classes: ExistingClassReco
     !UUID_PATTERN.test(course.id)
     || typeof course.name !== 'string'
     || course.name.trim().length < 2
+    || (course.aliases !== undefined && (!Array.isArray(course.aliases) || course.aliases.some((alias) => typeof alias !== 'string' || alias.trim().length < 2)))
     || (course.term_policy !== undefined && !isCourseTermPolicy(course.term_policy))
   ))) {
     throw new HttpError(503, 'catalog_unavailable', 'The course catalogue is temporarily unavailable.')
@@ -1010,7 +1012,13 @@ function concealGuestCampusNames(rows: ImportReviewRow[]): ImportReviewRow[] {
 
 export function findCourseMatch(sourceName: string, catalog: CourseRecord[]): CourseMatch {
   const ranked = catalog
-    .map((course) => ({ course, score: courseSimilarity(sourceName, course.name) }))
+    .map((course) => ({
+      course,
+      score: Math.max(
+        courseSimilarity(sourceName, course.name),
+        ...(course.aliases ?? []).map((alias) => courseSimilarity(sourceName, alias)),
+      ),
+    }))
     .sort((left, right) => right.score - left.score || left.course.name.localeCompare(right.course.name))
   const best = ranked[0]
   const second = ranked[1]

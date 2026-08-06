@@ -630,18 +630,30 @@ export async function adminListClasses(): Promise<AdminClassRecord[]> {
 }
 
 export async function adminListCourseNames(): Promise<AdminCourseNameRecord[]> {
-  const client = requireClient()
-  const { data, error } = await client.rpc('admin_list_course_names')
-  if (error) throw error
-  return (data as unknown as Array<Record<string, unknown>>).map((row) => ({
-    id: row.course_name_id as string,
-    course_name: row.course_name as string,
-    status: row.status as AdminCourseNameRecord['status'],
-    source: row.source as AdminCourseNameRecord['source'],
+  const data = await callUntypedRpc('admin_list_course_names')
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.course_name_id),
+    course_name: String(row.course_name),
+    status: String(row.status) as AdminCourseNameRecord['status'],
+    source: String(row.source) as AdminCourseNameRecord['source'],
     section_count: Number(row.section_count),
     active_section_count: Number(row.active_section_count),
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
+    alias_count: Number(row.alias_count ?? 0),
+    aliases: (Array.isArray(row.aliases) ? row.aliases : []).flatMap((value) => {
+      const alias = recordFrom(value)
+      if (!alias || typeof alias.id !== 'string' || typeof alias.alias !== 'string') return []
+      return [{
+        id: alias.id,
+        alias: alias.alias,
+        source: String(alias.source) as AdminCourseNameRecord['aliases'][number]['source'],
+        source_import_id: stringOrNull(alias.source_import_id),
+        learned_count: Number(alias.learned_count ?? 1),
+        last_seen_at: String(alias.last_seen_at ?? ''),
+        created_at: String(alias.created_at ?? ''),
+      }]
+    }).sort((left, right) => left.alias.localeCompare(right.alias)),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
   }))
 }
 

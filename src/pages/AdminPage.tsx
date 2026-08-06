@@ -74,6 +74,8 @@ const demoCourseNames: AdminCourseNameRecord[] = [{
   source: 'approved',
   section_count: 1,
   active_section_count: 1,
+  alias_count: 0,
+  aliases: [],
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 }]
@@ -104,6 +106,10 @@ function adminActionErrorMessage(caught: unknown) {
   const message = caught instanceof Error ? caught.message : ''
   if (message.includes('class_not_found')) return 'That class section no longer exists. Refresh the class list and try again.'
   if (message.includes('not_admin') || message.includes('administrator')) return 'Administrator access is required for this action.'
+  if (message.includes('course_alias_already_exists')) return 'That possible name is already assigned to a course.'
+  if (message.includes('alias_conflicts_with_course_name') || message.includes('course_name_conflicts_with_alias')) return 'That name is already used by another catalogue course.'
+  if (message.includes('alias_matches_canonical_name')) return 'The possible name is already the course’s canonical name.'
+  if (message.includes('invalid_course_alias')) return 'Enter a possible course name between 2 and 160 characters.'
   if (message.includes('foreign key') || message.includes('violates')) return 'The class section could not be deleted because a related record was not handled safely. No changes were kept; refresh and try again.'
   return message || 'Admin action failed.'
 }
@@ -634,7 +640,9 @@ function ClassManagementPanel({
   const [canonicalCourseNameId, setCanonicalCourseNameId] = useState('')
   const [duplicateCourseNameId, setDuplicateCourseNameId] = useState('')
   const [courseCatalogExpanded, setCourseCatalogExpanded] = useState(false)
+  const [aliasCourseId, setAliasCourseId] = useState<string | null>(null)
   const visibleClasses = courseFilter ? classes.filter((course) => course.course_name_id === courseFilter) : classes
+  const selectedAliasCourse = courseNames.find((course) => course.id === aliasCourseId) ?? null
   const unusedClassCount = visibleClasses.filter((course) => course.active_enrollment_count === 0).length
 
   function addCourseName() {
@@ -649,10 +657,29 @@ function ClassManagementPanel({
     void onAdminAction('admin_rename_course_name', { p_course_name_id: courseName.id, p_name: name, p_reason: 'Renamed from admin course catalog' }, `${courseName.course_name} was renamed to ${name}.`)
   }
 
+  function addCourseAlias(courseName: AdminCourseNameRecord) {
+    const alias = window.prompt(`Add another possible name for ${courseName.course_name}`)?.trim()
+    if (!alias) return
+    void onAdminAction('admin_add_course_name_alias', {
+      p_course_name_id: courseName.id,
+      p_alias: alias,
+      p_reason: 'Added from admin course catalog',
+    }, `${alias} will now match ${courseName.course_name}.`)
+  }
+
+  function deleteCourseAlias(courseName: AdminCourseNameRecord, aliasId: string, alias: string) {
+    if (!window.confirm(`Remove “${alias}” as a possible name for ${courseName.course_name}?`)) return
+    void onAdminAction('admin_delete_course_name_alias', {
+      p_alias_id: aliasId,
+      p_reason: 'Removed from admin course catalog',
+    }, `${alias} was removed from ${courseName.course_name}.`)
+  }
+
   return <section className="admin-section class-management-section">
     <div className="section-heading course-catalog-heading"><div><h2>Course catalog <span className="section-count">({courseNames.length})</span></h2><p>Manage reusable course names separately from their teacher, period, day, and term sections.</p></div><div className="course-catalog-actions"><button className="button button-primary" type="button" onClick={addCourseName}><Plus size={17} /> Add course name</button><button className="button button-secondary catalog-toggle" type="button" aria-expanded={courseCatalogExpanded} aria-controls="admin-course-catalog-content" onClick={() => setCourseCatalogExpanded((expanded) => !expanded)}>{courseCatalogExpanded ? <ChevronDown size={17} aria-hidden="true" /> : <ChevronRight size={17} aria-hidden="true" />}{courseCatalogExpanded ? 'Hide catalog' : 'Show catalog'}</button></div></div>
     {courseCatalogExpanded ? <div id="admin-course-catalog-content">
-    <div className="admin-table admin-course-table"><div className="admin-table-head"><span>Course name</span><span>Source</span><span>Sections</span><span>Status</span><span>Actions</span></div>{courseNames.map((courseName) => <div className="admin-table-row" key={courseName.id}><span><strong>{courseName.course_name}</strong><small>{courseName.id}</small></span><span>{courseName.source}</span><span><strong>{courseName.active_section_count} active</strong><small>{courseName.section_count} total</small></span><span>{courseName.status}</span><span className="row-actions"><button type="button" onClick={() => onCourseFilter(courseName.id)}>View sections</button>{courseName.status !== 'merged' ? <button type="button" onClick={() => renameCourseName(courseName)}>Rename</button> : null}{courseName.status !== 'merged' ? <button className={courseName.status === 'active' ? 'danger-text' : ''} type="button" onClick={() => { const enabling = courseName.status !== 'active'; if (window.confirm(`${enabling ? 'Enable' : 'Disable'} ${courseName.course_name}? Existing schedules keep their linked name.`)) void onAdminAction('admin_set_course_name_enabled', { p_course_name_id: courseName.id, p_enabled: enabling, p_reason: `${enabling ? 'Enabled' : 'Disabled'} from admin course catalog` }, `${courseName.course_name} was ${enabling ? 'enabled' : 'disabled'}.`) }}>{courseName.status === 'active' ? 'Disable' : 'Enable'}</button> : null}</span></div>)}</div>
+    <div className="admin-table admin-course-table"><div className="admin-table-head"><span>Course name</span><span>Source</span><span>Sections</span><span>Status</span><span>Actions</span></div>{courseNames.map((courseName) => <div className="admin-table-row" key={courseName.id}><span><strong>{courseName.course_name}</strong><small>{courseName.alias_count > 0 ? `${courseName.alias_count} possible name${courseName.alias_count === 1 ? '' : 's'}` : 'No alternate names'}</small><small>{courseName.id}</small></span><span>{courseName.source}</span><span><strong>{courseName.active_section_count} active</strong><small>{courseName.section_count} total</small></span><span>{courseName.status}</span><span className="row-actions"><button type="button" onClick={() => onCourseFilter(courseName.id)}>View sections</button>{courseName.status !== 'merged' ? <button type="button" onClick={() => setAliasCourseId(courseName.id)}>Possible names</button> : null}{courseName.status !== 'merged' ? <button type="button" onClick={() => renameCourseName(courseName)}>Rename</button> : null}{courseName.status !== 'merged' ? <button className={courseName.status === 'active' ? 'danger-text' : ''} type="button" onClick={() => { const enabling = courseName.status !== 'active'; if (window.confirm(`${enabling ? 'Enable' : 'Disable'} ${courseName.course_name}? Existing schedules keep their linked name.`)) void onAdminAction('admin_set_course_name_enabled', { p_course_name_id: courseName.id, p_enabled: enabling, p_reason: `${enabling ? 'Enabled' : 'Disabled'} from admin course catalog` }, `${courseName.course_name} was ${enabling ? 'enabled' : 'disabled'}.`) }}>{courseName.status === 'active' ? 'Disable' : 'Enable'}</button> : null}</span></div>)}</div>
+    {selectedAliasCourse ? <div className="course-alias-manager"><div className="section-heading"><div><h3>Possible names for {selectedAliasCourse.course_name}</h3><p>The importer and catalogue search accept every name below but continue displaying the canonical course name.</p></div><div className="course-catalog-actions"><button className="button button-primary" type="button" onClick={() => addCourseAlias(selectedAliasCourse)}><Plus size={16} /> Add possible name</button><button className="button button-secondary" type="button" onClick={() => setAliasCourseId(null)}>Close</button></div></div>{selectedAliasCourse.aliases.length === 0 ? <p className="notice-box">No alternate names have been added or learned yet.</p> : <div className="admin-table admin-course-table"><div className="admin-table-head"><span>Possible name</span><span>Source</span><span>Learned</span><span>Last seen</span><span>Actions</span></div>{selectedAliasCourse.aliases.map((alias) => <div className="admin-table-row" key={alias.id}><span><strong>{alias.alias}</strong><small>{alias.id}</small></span><span>{alias.source.replaceAll('_', ' ')}</span><span>{alias.learned_count.toLocaleString()} time{alias.learned_count === 1 ? '' : 's'}</span><span>{alias.last_seen_at ? new Date(alias.last_seen_at).toLocaleString() : '—'}</span><span className="row-actions"><button className="danger-text" type="button" onClick={() => deleteCourseAlias(selectedAliasCourse, alias.id, alias.alias)}>Remove</button></span></div>)}</div>}</div> : null}
 
     <div className="merge-tool"><Merge /><label>Canonical course-name ID<input value={canonicalCourseNameId} onChange={(event) => setCanonicalCourseNameId(event.target.value)} /></label><label>Duplicate course-name ID<input value={duplicateCourseNameId} onChange={(event) => setDuplicateCourseNameId(event.target.value)} /></label><button className="button button-primary" disabled={!canonicalCourseNameId || !duplicateCourseNameId} onClick={() => { if (window.confirm('Relink every section to the canonical course name and mark the duplicate name as merged? Sections will remain separate.')) void onAdminAction('admin_merge_course_names', { p_canonical_course_name_id: canonicalCourseNameId, p_duplicate_course_name_id: duplicateCourseNameId, p_reason: 'Duplicate course-name merge' }, 'Course names merged without merging sections.') }}>Merge course names</button></div>
 

@@ -190,6 +190,16 @@ export interface AdminClassRecord extends ClassDefinition {
   updated_at: string
 }
 
+export interface AdminCourseAliasRecord {
+  id: string
+  alias: string
+  source: 'admin' | 'import_correction' | 'migration' | 'system'
+  source_import_id: string | null
+  learned_count: number
+  last_seen_at: string
+  created_at: string
+}
+
 export interface AdminCourseNameRecord {
   id: string
   course_name: string
@@ -197,6 +207,8 @@ export interface AdminCourseNameRecord {
   source: 'approved' | 'legacy' | 'user' | 'admin'
   section_count: number
   active_section_count: number
+  alias_count: number
+  aliases: AdminCourseAliasRecord[]
   created_at: string
   updated_at: string
 }

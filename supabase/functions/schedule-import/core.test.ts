@@ -325,6 +325,21 @@ describe('normalization and backend catalogue matching', () => {
     expect(() => normalizeSlots(['C2'])).toThrow('invalid meeting slots')
   })
 
+  it('matches an exact course alias to its canonical catalogue course', () => {
+    const canonical = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      name: 'AP Government',
+      aliases: ['AP US Government & Comparative Politics'],
+      term_policy: 'full_year' as const,
+    }
+    expect(findCourseMatch('AP US Government & Comparative Politics', [canonical])).toEqual({
+      kind: 'matched',
+      course: canonical,
+      score: 1,
+      alternatives: [],
+    })
+  })
+
   it('keeps the same course and teacher at different periods as separate rows', async () => {
     const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
       output: {
