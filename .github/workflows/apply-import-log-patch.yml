@@ -1,9 +1,10 @@
 name: Apply importer logging changes
 
 on:
-  push:
+  pull_request:
     branches:
-      - codex/import-log-details-20260806
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -14,13 +15,14 @@ concurrency:
 
 jobs:
   apply-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'codex/import-log-details-20260806'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
+          ref: codex/import-log-details-20260806
           fetch-depth: 0
 
       - name: Set up Node
