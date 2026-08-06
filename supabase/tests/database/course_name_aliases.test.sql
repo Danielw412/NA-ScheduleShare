@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(14);
 
 insert into public.course_names (id, name, normalized_name, source)
 values
