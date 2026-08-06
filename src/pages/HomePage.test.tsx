@@ -62,6 +62,7 @@ describe('HomePage hero', () => {
     expect(screen.getByRole('link', { name: "Why we're better than Saturn" })).toHaveAttribute('href', '/why-scheduleshare')
     expect(screen.getByRole('link', { name: /Schedule Engine/ })).toHaveAttribute('href', '/schedule-engine')
     expect(screen.getByText('Want classes with friends? See what your schedule would look like if you replace courses.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Join the NA Computer and AI Club' })).not.toBeInTheDocument()
   })
 
   it('takes an authenticated user directly to the Schedule tab', () => {
@@ -69,6 +70,7 @@ describe('HomePage hero', () => {
     renderPage()
     expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule')
     expect(screen.getByRole('heading', { name: 'Start your schedule' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: "Why we're better than Saturn" })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
   })
