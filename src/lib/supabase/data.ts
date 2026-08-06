@@ -1,6 +1,7 @@
 import type {
   AcademicTerm,
   AdminClassRecord,
+  AdminClubPromptSettings,
   AdminCourseNameRecord,
   AdminReportRecord,
   AdminScheduleEngineJob,
@@ -9,6 +10,7 @@ import type {
   ClassmateResult,
   ClassMemberResult,
   ClassSearchResult,
+  ClubPromptSettings,
   CourseNameSearchResult,
   CourseTermPolicy,
   DayType,
@@ -753,6 +755,33 @@ export async function adminUpdateHomepageStatisticSettings(input: Omit<HomepageS
     p_statistic_key: input.statistic_key,
     p_minimum_value: input.minimum_value,
     p_activity_scope: input.activity_scope,
+  })
+}
+
+export async function getClubPromptSettings(): Promise<ClubPromptSettings> {
+  const data = await callUntypedRpc('get_club_prompt_settings')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  return {
+    enabled: row?.enabled === undefined ? true : Boolean(row.enabled),
+    delay_seconds: Number(row?.delay_seconds ?? 180),
+  }
+}
+
+export async function adminGetClubPromptSettings(): Promise<AdminClubPromptSettings> {
+  const data = await callUntypedRpc('admin_get_club_prompt_settings')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) throw new Error('Club invitation settings are missing.')
+  return {
+    enabled: Boolean(row.enabled),
+    delay_seconds: Number(row.delay_seconds),
+    updated_at: String(row.updated_at),
+  }
+}
+
+export async function adminUpdateClubPromptSettings(input: ClubPromptSettings): Promise<void> {
+  await callUntypedRpc('admin_update_club_prompt_settings', {
+    p_enabled: input.enabled,
+    p_delay_seconds: input.delay_seconds,
   })
 }
 

@@ -3,11 +3,11 @@ import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'reac
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminCourseNameRecord, type AdminReportRecord, type AdminScheduleEngineJob, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
+import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminClubPromptSettings, type AdminCourseNameRecord, type AdminReportRecord, type AdminScheduleEngineJob, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
 import { adminRemoveProfilePicture } from '../lib/profile'
 import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
+import { adminDeleteScheduleImportDiagnostic, adminGetClubPromptSettings, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateClubPromptSettings, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
 type AdminTab = 'users' | 'reports' | 'classes' | 'engine' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
@@ -270,7 +270,7 @@ export function AdminPage() {
 
       {tab === 'engine' ? <ScheduleEngineAdminPanel jobs={engineJobs} onRefresh={() => void load()} /> : null}
 
-      {tab === 'homepage' ? <HomepageStatisticPanel isDemo={isDemo} /> : null}
+      {tab === 'homepage' ? <><HomepageStatisticPanel isDemo={isDemo} /><ClubPromptPanel isDemo={isDemo} /></> : null}
 
       {tab === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
 
@@ -395,6 +395,73 @@ export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {
       {isDemo ? <small className="muted">Connect Supabase to save or preview real statistics.</small> : null}
     </form>
   </section>
+}
+
+const defaultClubPromptSettings: AdminClubPromptSettings = { enabled: true, delay_seconds: 180, updated_at: '' }
+
+export function ClubPromptPanel({ isDemo }: { isDemo: boolean }) {
+  const [settings, setSettings] = useState<AdminClubPromptSettings>(defaultClubPromptSettings)
+  const [loading, setLoading] = useState(!isDemo)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (isDemo) return
+    setLoading(true)
+    setError(null)
+    try {
+      setSettings(await adminGetClubPromptSettings())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not load club invitation settings.')
+    } finally {
+      setLoading(false)
+    }
+  }, [isDemo])
+
+  useEffect(() => { void load() }, [load])
+
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    if (settings.delay_seconds < 30 || settings.delay_seconds > 3600) {
+      setError('The delay must be between 30 seconds and 60 minutes.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      if (!isDemo) await adminUpdateClubPromptSettings({ enabled: settings.enabled, delay_seconds: settings.delay_seconds })
+      setMessage('Club invitation settings saved.')
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not save club invitation settings.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <section className="admin-section"><p className="muted">Loading club invitation settings…</p></section>
+  return <section className="admin-section homepage-stat-settings">
+    <div><h2>Club invitation popup</h2><p>The timed “built by the NA Computer and AI Club” card. It appears once per student, only after they sign in, upload a schedule, visit at least three pages, and stay on the site for the delay below. The footer link and homepage button are always available.</p></div>
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    {message ? <p className="form-success" role="status">{message}</p> : null}
+    <form onSubmit={(event) => void save(event)}>
+      <label className="checkbox-row"><input type="checkbox" checked={settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))} /><span><strong>Show the timed invitation</strong><small>Turning this off hides the popup for everyone without touching the footer link.</small></span></label>
+      <label>Delay before it appears (seconds)<input min={30} max={3600} step={10} type="number" disabled={!settings.enabled} value={settings.delay_seconds} onChange={(event) => setSettings((current) => ({ ...current, delay_seconds: Math.round(Number(event.target.value)) }))} /></label>
+      <p className="muted club-prompt-delay-hint">{formatDelaySummary(settings.delay_seconds)} of active time on the site. Time paused in a background tab does not count.</p>
+      <button className="button button-primary" disabled={saving || isDemo}>{saving ? 'Saving…' : 'Save invitation settings'}</button>
+      {isDemo ? <small className="muted">Connect Supabase to save club invitation settings.</small> : null}
+    </form>
+  </section>
+}
+
+function formatDelaySummary(delaySeconds: number): string {
+  if (!Number.isFinite(delaySeconds) || delaySeconds <= 0) return 'No delay'
+  if (delaySeconds < 60) return `${Math.round(delaySeconds)} seconds`
+  const minutes = delaySeconds / 60
+  const rounded = Math.round(minutes * 10) / 10
+  return `${rounded} minute${rounded === 1 ? '' : 's'}`
 }
 
 const demoImportModels: ScheduleImportModelRecord[] = [

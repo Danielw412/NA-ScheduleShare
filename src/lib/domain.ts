@@ -249,6 +249,15 @@ export interface HomepageStatisticSettings {
   updated_at: string
 }
 
+export interface ClubPromptSettings {
+  enabled: boolean
+  delay_seconds: number
+}
+
+export interface AdminClubPromptSettings extends ClubPromptSettings {
+  updated_at: string
+}
+
 export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
 
 export interface ScheduleImportModelRecord {

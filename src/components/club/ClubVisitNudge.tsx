@@ -3,11 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
-import { fetchSchedule } from '../../lib/supabase/data'
+import { fetchSchedule, getClubPromptSettings } from '../../lib/supabase/data'
 
 const NUDGE_KEY_PREFIX = 'scheduleshare:club-nudge:v1:'
 const TICK_SECONDS = 10
-const REQUIRED_ACTIVE_SECONDS = 180
+const DEFAULT_DELAY_SECONDS = 180
 const REQUIRED_VISITED_PAGES = 3
 const RECHECK_SECONDS = 60
 
@@ -28,14 +28,16 @@ function rememberNudgeSeen(userId: string) {
 }
 
 // A quiet, one-time invitation for signed-in students who uploaded a schedule and stayed a while.
+// Administrators can disable it or change the delay from the admin homepage panel.
 export function ClubVisitNudge() {
   const { user, isDemo } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [activeSeconds, setActiveSeconds] = useState(0)
   const [visitedPages, setVisitedPages] = useState(0)
+  const [delaySeconds, setDelaySeconds] = useState<number | null>(null)
   const visitedPaths = useRef(new Set<string>())
-  const nextCheckSeconds = useRef(REQUIRED_ACTIVE_SECONDS)
+  const nextCheckSeconds = useRef(0)
   const checking = useRef(false)
   const settled = useRef(false)
 
@@ -47,10 +49,34 @@ export function ClubVisitNudge() {
   useEffect(() => {
     setOpen(false)
     setActiveSeconds(0)
-    nextCheckSeconds.current = REQUIRED_ACTIVE_SECONDS
+    setDelaySeconds(null)
+    nextCheckSeconds.current = 0
     checking.current = false
     settled.current = false
   }, [user?.id])
+
+  useEffect(() => {
+    if (!user || isDemo || nudgeAlreadySeen(user.id)) return
+    let active = true
+    void getClubPromptSettings()
+      .then((settings) => {
+        if (!active) return
+        if (!settings.enabled) {
+          settled.current = true
+          return
+        }
+        const seconds = Number.isFinite(settings.delay_seconds) ? settings.delay_seconds : DEFAULT_DELAY_SECONDS
+        nextCheckSeconds.current = seconds
+        setDelaySeconds(seconds)
+      })
+      .catch(() => {
+        // Fall back to the documented default rather than losing the invitation entirely.
+        if (!active) return
+        nextCheckSeconds.current = DEFAULT_DELAY_SECONDS
+        setDelaySeconds(DEFAULT_DELAY_SECONDS)
+      })
+    return () => { active = false }
+  }, [isDemo, user])
 
   useEffect(() => {
     if (!user || isDemo) return
@@ -62,7 +88,7 @@ export function ClubVisitNudge() {
   }, [isDemo, user])
 
   useEffect(() => {
-    if (!user || isDemo || settled.current || checking.current) return
+    if (!user || isDemo || delaySeconds === null || settled.current || checking.current) return
     if (activeSeconds < nextCheckSeconds.current || visitedPages < REQUIRED_VISITED_PAGES) return
     if (nudgeAlreadySeen(user.id)) {
       settled.current = true
@@ -86,7 +112,7 @@ export function ClubVisitNudge() {
       .catch(() => undefined)
       .finally(() => { checking.current = false })
     return () => { active = false }
-  }, [activeSeconds, isDemo, user, visitedPages])
+  }, [activeSeconds, delaySeconds, isDemo, user, visitedPages])
 
   if (!open) return null
   return (

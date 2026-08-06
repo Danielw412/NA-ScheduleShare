@@ -9,10 +9,11 @@ import { ClubVisitNudge } from './ClubVisitNudge'
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   fetchSchedule: vi.fn(),
+  getClubPromptSettings: vi.fn(),
 }))
 
 vi.mock('../../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
-vi.mock('../../lib/supabase/data', () => ({ fetchSchedule: mocks.fetchSchedule }))
+vi.mock('../../lib/supabase/data', () => ({ fetchSchedule: mocks.fetchSchedule, getClubPromptSettings: mocks.getClubPromptSettings }))
 
 const nudgeMessage = /This site was built by the NA Computer and AI Club\./
 let goTo: (path: string) => void = () => undefined
@@ -41,6 +42,7 @@ beforeEach(() => {
   localStorage.clear()
   mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false })
   mocks.fetchSchedule.mockResolvedValue([{ id: 'enrollment-1' }])
+  mocks.getClubPromptSettings.mockResolvedValue({ enabled: true, delay_seconds: 180 })
 })
 
 afterEach(() => {
@@ -96,6 +98,27 @@ describe('ClubVisitNudge', () => {
     expect(screen.queryByText(nudgeMessage)).not.toBeInTheDocument()
   })
 
+  it('honors the administrator toggle and delay', async () => {
+    vi.useFakeTimers()
+    mocks.getClubPromptSettings.mockResolvedValue({ enabled: false, delay_seconds: 180 })
+    renderNudge()
+    await browseTwoMorePages()
+    await act(async () => { vi.advanceTimersByTime(600_000) })
+
+    expect(screen.queryByText(nudgeMessage)).not.toBeInTheDocument()
+    expect(mocks.fetchSchedule).not.toHaveBeenCalled()
+
+    cleanup()
+    mocks.getClubPromptSettings.mockResolvedValue({ enabled: true, delay_seconds: 600 })
+    renderNudge()
+    await browseTwoMorePages()
+    await act(async () => { vi.advanceTimersByTime(300_000) })
+    expect(screen.queryByText(nudgeMessage)).not.toBeInTheDocument()
+
+    await act(async () => { vi.advanceTimersByTime(310_000) })
+    expect(screen.getByText(nudgeMessage)).toBeInTheDocument()
+  })
+
   it('stays hidden for students without an uploaded schedule and for guests', async () => {
     vi.useFakeTimers()
     mocks.fetchSchedule.mockResolvedValue([])
@@ -109,6 +132,7 @@ describe('ClubVisitNudge', () => {
     cleanup()
     mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
     mocks.fetchSchedule.mockClear()
+    mocks.getClubPromptSettings.mockClear()
     renderNudge()
     await browseTwoMorePages()
     await act(async () => { vi.advanceTimersByTime(200_000) })

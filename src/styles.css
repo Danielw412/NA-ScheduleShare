@@ -1620,7 +1620,7 @@ legend {
   max-width: 100%;
   margin: -8px 0 20px;
   padding-bottom: 4px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 10px;
   border-bottom: 2px solid var(--brand-gold);
@@ -1632,29 +1632,34 @@ legend {
 
 .home-club-hint {
   flex: 0 0 auto;
+  height: 19px;
   appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 2px 8px;
-  border: 1px solid rgb(255 255 255 / 30%);
+  padding: 0 8px;
+  border: 1px solid rgb(255 174 0 / 45%);
   border-radius: 99px;
   background: transparent;
-  color: #f0f0f0;
+  color: var(--brand-gold);
   font-size: 10px;
   font-weight: 750;
+  line-height: 1;
   letter-spacing: .06em;
   text-transform: uppercase;
-  opacity: .5;
-  transition: opacity 140ms ease, border-color 140ms ease, background 140ms ease;
+  opacity: .62;
+  transition: opacity 140ms ease, border-color 140ms ease;
+}
+
+.home-club-hint svg {
+  flex: 0 0 auto;
 }
 
 .home-club-hint:hover,
 .home-club-hint:focus-visible {
   opacity: 1;
   border-color: var(--brand-gold);
-  background: rgb(255 174 0 / 16%);
-  color: var(--white);
+  background: transparent;
 }
 
 .home-hero .home-statistic {
@@ -3070,7 +3075,9 @@ legend {
   gap: 13px;
   padding: clamp(24px, 5vw, 42px);
   background: var(--white);
-  border-top: 6px solid var(--brand-gold);
+  border: 1px solid var(--border);
+  border-top: 5px solid var(--brand-gold);
+  border-radius: 16px;
   box-shadow: var(--shadow-lg);
 }
 
@@ -5373,6 +5380,12 @@ a.student-access-profile:hover strong {
   gap: 6px;
 }
 
+.club-prompt-delay-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .homepage-stat-preview {
   display: grid;
   gap: 4px;
@@ -6665,10 +6678,15 @@ a.student-access-profile:hover strong {
   }
 
   .home-club-hint {
-    min-height: 24px;
-    padding: 2px 9px;
-    font-size: 9.5px;
-    opacity: .62;
+    height: 15px;
+    padding: 0 7px;
+    font-size: 9px;
+    opacity: .72;
+  }
+
+  .home-club-hint svg {
+    width: 10px;
+    height: 10px;
   }
 
   .hero-actions {
