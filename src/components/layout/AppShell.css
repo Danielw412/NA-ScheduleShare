@@ -1,117 +1,126 @@
 .site-footer {
-  grid-template-columns: auto minmax(0, 1fr);
+  display: block;
+}
+
+.site-footer-content {
+  width: min(100%, var(--max-width));
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.site-footer-content>p {
+  margin: 0;
+  line-height: 1.5;
 }
 
 .site-footer nav {
-  justify-self: end;
+  display: flex;
   align-items: center;
-  flex-wrap: wrap;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
+.site-footer nav>a,
 .footer-link-button {
-  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--white);
   font: inherit;
+  line-height: 1.5;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 
+.site-footer nav>a:hover,
 .footer-link-button:hover {
   color: var(--brand-gold);
 }
 
+.footer-link-button {
+  appearance: none;
+}
+
 .club-forms-backdrop {
   padding: 18px;
-  background: rgb(0 0 0 / 66%);
-  backdrop-filter: blur(4px);
+  background: rgb(0 0 0 / 62%);
+  backdrop-filter: blur(3px);
 }
 
 .club-forms-dialog {
   position: relative;
-  width: min(650px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
   max-height: calc(100dvh - 36px);
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
+  padding: 26px;
   border: 1px solid var(--border-strong);
-  border-top: 6px solid var(--brand-gold);
-  border-radius: 18px;
+  border-top: 5px solid var(--brand-gold);
+  border-radius: 16px;
   background: var(--white);
-  box-shadow: 0 28px 80px rgb(0 0 0 / 32%);
-  animation: dialog-rise 320ms cubic-bezier(.22, 1, .36, 1) both;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 28%);
+  animation: dialog-rise 260ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .club-forms-dialog>header {
-  position: relative;
-  overflow: hidden;
-  padding: 34px 78px 30px 32px;
-  background: var(--ink);
-  color: var(--white);
-}
-
-.club-forms-dialog>header::after {
-  content: "";
-  position: absolute;
-  right: -68px;
-  bottom: -86px;
-  width: 150px;
-  height: 150px;
-  border: 32px solid var(--brand-gold);
-  transform: rotate(45deg);
-  opacity: .95;
-  pointer-events: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 0 42px 20px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .club-forms-icon {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
-  margin-bottom: 18px;
-  border-radius: 12px;
-  background: var(--brand-gold);
-  color: var(--ink);
+  border: 1px solid #edc66e;
+  border-radius: 11px;
+  background: #fff4d7;
+  color: #8a5a00;
 }
 
 .club-forms-icon svg {
-  width: 25px;
-  height: 25px;
+  width: 22px;
+  height: 22px;
+}
+
+.club-forms-heading-copy {
+  min-width: 0;
 }
 
 .club-forms-eyebrow {
-  width: max-content;
-  margin: 0 0 9px;
-  padding-bottom: 5px;
-  border-bottom: 3px solid var(--brand-gold);
-  color: #eeeeee;
-  font-size: 11px;
+  margin: 0 0 5px;
+  color: var(--brand-gold-dark);
+  font-size: 10px;
   font-weight: 850;
-  letter-spacing: .09em;
+  letter-spacing: .08em;
   text-transform: uppercase;
 }
 
 .club-forms-dialog h2 {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 10px;
-  font-size: clamp(30px, 5vw, 42px);
-  line-height: 1;
-  letter-spacing: -.045em;
+  margin: 0 0 6px;
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.05;
+  letter-spacing: -.035em;
 }
 
-.club-forms-dialog>header>p:last-child {
-  position: relative;
-  z-index: 1;
-  max-width: 500px;
+.club-forms-dialog>header p:last-child {
   margin: 0;
-  color: #d7d7d7;
-  font-size: 14px;
-  line-height: 1.55;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .club-forms-close {
@@ -119,133 +128,126 @@
   z-index: 2;
   top: 16px;
   right: 16px;
-  border-color: #555;
-  background: #1f1f1f;
-  color: var(--white);
+  width: 36px;
+  height: 36px;
+  border-color: var(--border);
+  background: var(--white);
 }
 
 .club-forms-close:hover {
-  border-color: var(--brand-gold);
-  background: #2c2c2c;
+  border-color: #b88822;
+  background: #fff8e9;
+}
+
+.club-forms-close svg {
+  width: 18px;
+  height: 18px;
 }
 
 .club-form-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 24px 24px 10px;
+  gap: 10px;
+  padding-top: 18px;
 }
 
 .club-form-option {
   min-width: 0;
-  min-height: 178px;
+  min-height: 104px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 13px;
-  padding: 20px;
+  align-items: center;
+  gap: 11px;
+  padding: 14px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   color: var(--ink);
   text-decoration: none;
-  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease, background 150ms ease;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
 .club-form-option:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgb(0 0 0 / 12%);
+  transform: translateY(-1px);
+  box-shadow: 0 7px 18px rgb(0 0 0 / 9%);
 }
 
 .club-form-interest {
-  background: var(--surface-subtle);
+  background: var(--white);
 }
 
 .club-form-interest:hover {
-  border-color: #8a8a8a;
-  background: var(--white);
+  border-color: #8c8c8c;
+  background: var(--surface-subtle);
 }
 
 .club-form-sign-up {
-  border-color: #bd7e00;
-  background: var(--brand-gold);
-  box-shadow: 0 3px 0 #b47400;
+  border-color: #d09a2c;
+  background: #fff4d7;
 }
 
 .club-form-sign-up:hover {
-  border-color: #9b6600;
-  background: #ffb91f;
+  border-color: #a86f00;
+  background: #ffedbd;
 }
 
 .club-form-option-icon {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  background: var(--white);
+  border-radius: 9px;
+  background: var(--surface-subtle);
   color: var(--brand-gold-dark);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 }
 
 .club-form-sign-up .club-form-option-icon {
-  color: var(--ink);
+  background: var(--white);
+  color: #6f4800;
 }
 
 .club-form-option-icon svg {
-  width: 21px;
-  height: 21px;
+  width: 19px;
+  height: 19px;
 }
 
 .club-form-option-copy {
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: 5px;
 }
 
 .club-form-option-copy strong {
-  font-size: 18px;
-  line-height: 1.1;
+  font-size: 15px;
+  line-height: 1.15;
 }
 
 .club-form-option-copy small {
-  color: #505050;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.club-form-sign-up .club-form-option-copy small {
-  color: #342300;
+  color: #555;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .club-form-option>svg {
-  width: 20px;
-  height: 20px;
-  margin-top: 10px;
-  transition: transform 150ms ease;
+  width: 18px;
+  height: 18px;
+  transition: transform 140ms ease;
 }
 
 .club-form-option:hover>svg {
-  transform: translateX(3px);
-}
-
-.club-forms-note {
-  margin: 0;
-  padding: 10px 24px 22px;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
+  transform: translateX(2px);
 }
 
 @media (max-width: 760px) {
-  .site-footer {
-    grid-template-columns: 1fr;
-    justify-items: center;
+  .site-footer-content {
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
     text-align: center;
   }
 
   .site-footer nav {
-    justify-self: center;
     justify-content: center;
+    row-gap: 10px;
   }
 }
 
@@ -257,34 +259,49 @@
 
   .club-forms-dialog {
     width: 100%;
-    max-height: min(88dvh, 760px);
+    max-height: min(88dvh, 680px);
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
-    border-radius: 18px 18px 0 0;
+    border-radius: 16px 16px 0 0;
   }
 
   .club-forms-dialog>header {
-    padding: 28px 66px 24px 22px;
+    gap: 12px;
+    padding: 0 40px 18px 0;
   }
 
   .club-forms-icon {
-    width: 42px;
-    height: 42px;
-    margin-bottom: 14px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .club-forms-dialog h2 {
+    font-size: 27px;
   }
 
   .club-form-options {
     grid-template-columns: 1fr;
-    padding: 18px 18px 8px;
+    padding-top: 16px;
   }
 
   .club-form-option {
-    min-height: 126px;
-    padding: 17px;
+    min-height: 88px;
+    padding: 13px;
+  }
+}
+
+@media (max-width: 430px) {
+  .site-footer nav {
+    gap: 8px 14px;
   }
 
-  .club-forms-note {
-    padding: 8px 18px 18px;
+  .club-forms-dialog h2 {
+    font-size: 24px;
+  }
+
+  .club-forms-dialog>header p:last-child {
+    font-size: 12px;
   }
 }
