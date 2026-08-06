@@ -120,7 +120,7 @@ export function ClubVisitNudge() {
       <img className="club-nudge-logo" src={`${import.meta.env.BASE_URL}${brand.logoPath}`} alt="" width={34} height={34} />
       <div className="club-nudge-copy">
         <p><strong>This site was built by the NA Computer and AI Club.</strong></p>
-        <p>Come build the next one with us.</p>
+        <p>Join if you interested!</p>
         <div className="club-nudge-actions">
           <a href={brand.clubSignUpFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Sign-up form</a>
           <a href={brand.clubInterestFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Interest form</a>
