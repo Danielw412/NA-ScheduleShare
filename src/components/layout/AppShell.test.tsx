@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -55,14 +55,43 @@ describe('AppShell mobile navigation', () => {
     expect(within(navigation).getByRole('link', { name: 'Students' })).toHaveAttribute('href', '/students')
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    const footerNavigation = screen.getByRole('navigation', { name: 'Footer navigation' })
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open my profile' })).toHaveAttribute('href', '/profile')
     expect(within(primaryNavigation).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
     expect(within(primaryNavigation).queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
     expect(within(primaryNavigation).queryByRole('link', { name: 'Report an issue' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Footer navigation' })).getByRole('link', { name: 'Why ScheduleShare?' })).toHaveAttribute('href', '/why-scheduleshare')
+    expect(within(footerNavigation).getByRole('link', { name: 'Why ScheduleShare?' })).toHaveAttribute('href', '/why-scheduleshare')
+    expect(within(footerNavigation).getByRole('button', { name: 'Computer & AI Club' })).toBeInTheDocument()
+    expect(screen.queryByText(/Supabase row-level security enforces schedule privacy/i)).not.toBeInTheDocument()
     await user.click(within(primaryNavigation).getByRole('button', { name: 'Sign out' }))
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens an accessible club forms dialog with the correct destinations', async () => {
+    const user = userEvent.setup()
+    renderShell('/classes')
+    const trigger = within(screen.getByRole('navigation', { name: 'Footer navigation' })).getByRole('button', { name: 'Computer & AI Club' })
+
+    await user.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Which form do you need?' })
+    const interestForm = within(dialog).getByRole('link', { name: /Interest form/i })
+    const signUpForm = within(dialog).getByRole('link', { name: /Sign-up form/i })
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(interestForm).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
+    expect(signUpForm).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
+    expect(interestForm).toHaveAttribute('target', '_blank')
+    expect(signUpForm).toHaveAttribute('target', '_blank')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Which form do you need?' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    const reopenedDialog = screen.getByRole('dialog', { name: 'Which form do you need?' })
+    fireEvent.mouseDown(reopenedDialog.parentElement!)
+    expect(screen.queryByRole('dialog', { name: 'Which form do you need?' })).not.toBeInTheDocument()
   })
 
   it('closes the expandable navigation with Escape and restores focus', async () => {
@@ -94,7 +123,9 @@ describe('AppShell mobile navigation', () => {
     expect(screen.queryByRole('link', { name: 'Open my profile' })).not.toBeInTheDocument()
     const mobileCreateAccount = screen.getAllByRole('button', { name: 'Create account' }).find((button) => button.classList.contains('mobile-create-account-button'))
     expect(mobileCreateAccount).toBeDefined()
-    expect(within(screen.getByRole('navigation', { name: 'Footer navigation' })).queryByRole('link', { name: 'Why ScheduleShare?' })).not.toBeInTheDocument()
+    const footerNavigation = screen.getByRole('navigation', { name: 'Footer navigation' })
+    expect(within(footerNavigation).queryByRole('link', { name: 'Why ScheduleShare?' })).not.toBeInTheDocument()
+    expect(within(footerNavigation).getByRole('button', { name: 'Computer & AI Club' })).toBeInTheDocument()
     await user.click(mobileCreateAccount!)
     expect(mocks.openAccountPrompt).toHaveBeenCalledWith('/schedule')
   })
