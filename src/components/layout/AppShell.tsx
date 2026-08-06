@@ -1,43 +1,12 @@
-import { ArrowRight, BookOpen, CalendarDays, Code2, Home, Lightbulb, LogOut, Menu, UserPlus, UserRound, Users, X } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { BookOpen, CalendarDays, Home, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
-import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
 import { BrandLogo } from '../ui/BrandLogo'
 import { ProfileAvatar } from '../ui/ProfileAvatar'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
-import './AppShell.css'
-
-const clubSignUpUrl = 'https://forms.gle/mHSP39B3FnKvCfsv6'
-const clubInterestUrl = 'https://forms.gle/p7xYrVRbx2AhWy2U7'
-
-interface ClubFormOption {
-  href: string
-  title: string
-  description: string
-  className: string
-  Icon: LucideIcon
-}
-
-const clubFormOptions: ClubFormOption[] = [
-  {
-    href: clubInterestUrl,
-    title: 'Interest form',
-    description: 'Nonbinding. Share what you would like to learn or do.',
-    className: 'club-form-interest',
-    Icon: Lightbulb,
-  },
-  {
-    href: clubSignUpUrl,
-    title: 'Sign-up form',
-    description: 'Officially join for the 2026–2027 school year.',
-    className: 'club-form-sign-up',
-    Icon: UserPlus,
-  },
-]
 
 const authenticatedNavigation = [
   { to: '/', label: 'Home', mobileBottomDuplicate: true },
@@ -66,18 +35,14 @@ export function pageTransitionKey(pathname: string): string {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [clubFormsOpen, setClubFormsOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { user, profile, avatarRevision, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
-  const closeClubForms = useCallback(() => setClubFormsOpen(false), [])
-  const clubFormsDialogRef = useDialogAccessibility(clubFormsOpen, closeClubForms)
 
   useEffect(() => {
     setMenuOpen(false)
-    setClubFormsOpen(false)
   }, [location.pathname])
 
   useEffect(() => {
@@ -120,40 +85,14 @@ export function AppShell() {
       </header>
       <main className="page-container"><div className="page-transition" key={pageTransitionKey(location.pathname)}><Outlet /></div></main>
       <footer className="site-footer">
-        <div className="site-footer-content">
-          <p>{brand.attribution}</p>
-          <nav aria-label="Footer navigation">
-            {user ? <NavLink to="/profile">Profile &amp; privacy</NavLink> : null}
-            {user ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
-            <button className="footer-link-button" type="button" onClick={() => setClubFormsOpen(true)}>Computer &amp; AI Club</button>
-            <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
-          </nav>
-        </div>
+        <p>{brand.attribution}</p>
+        <p className="footer-security"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Security:</strong> Supabase row-level security enforces schedule privacy in the database, authenticated requests are permission-checked, and sensitive credentials stay server-side.</span></p>
+        <nav aria-label="Footer navigation">
+          {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
+          {user ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
+          <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
       </footer>
-      {clubFormsOpen ? (
-        <div className="dialog-backdrop club-forms-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeClubForms() }}>
-          <section className="club-forms-dialog" ref={clubFormsDialogRef} role="dialog" aria-modal="true" aria-labelledby="club-forms-dialog-title" aria-describedby="club-forms-dialog-description" tabIndex={-1}>
-            <button className="icon-button club-forms-close" type="button" aria-label="Close Computer and AI Club forms" onClick={closeClubForms}><X aria-hidden="true" /></button>
-            <header>
-              <span className="club-forms-icon" aria-hidden="true"><Code2 /></span>
-              <div className="club-forms-heading-copy">
-                <p className="club-forms-eyebrow">Computer &amp; AI Club</p>
-                <h2 id="club-forms-dialog-title">Join Computer and AI Club!</h2>
-                <p id="club-forms-dialog-description">Choose the form that fits you.</p>
-              </div>
-            </header>
-            <div className="club-form-options">
-              {clubFormOptions.map(({ href, title, description, className, Icon }) => (
-                <a key={href} className={`club-form-option ${className}`} href={href} target="_blank" rel="noreferrer" onClick={closeClubForms}>
-                  <span className="club-form-option-icon" aria-hidden="true"><Icon /></span>
-                  <span className="club-form-option-copy"><strong>{title}</strong><small>{description}</small></span>
-                  <ArrowRight aria-hidden="true" />
-                </a>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : null}
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         {mobileBottomNavigation.map(({ to, label, Icon }) => !user && to === '/students'
           ? <button key={to} type="button" onClick={() => openAccountPrompt(to)}>
