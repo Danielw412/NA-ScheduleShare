@@ -124,7 +124,7 @@ export function AuthForm({
       </div> : null}
 
       {mode !== 'forgot' ? <p className="google-note">
-        <strong>Use a personal Google account.</strong> I know this is annoying, but its the easiest way :(
+        <strong>Use a personal Google account.</strong> I know this is annoying, but its the easiest way...
       </p> : null}
 
       {mode !== 'forgot' ? <div className="form-divider">
