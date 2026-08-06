@@ -26,13 +26,21 @@ set grade = 11,
 where id = '99000000-0000-4000-8000-000000000001';
 
 insert into public.course_names (id, name, normalized_name, source, term_policy)
-values (
-  '99100000-0000-4000-8000-000000000001',
-  'Lunch - Paired Removal Test',
-  'lunch - paired removal test',
-  'admin',
-  'lunch'
-);
+values
+  (
+    '99100000-0000-4000-8000-000000000001',
+    'Lunch - Paired Removal Test A',
+    'lunch - paired removal test a',
+    'admin',
+    'lunch'
+  ),
+  (
+    '99100000-0000-4000-8000-000000000002',
+    'Lunch - Paired Removal Test B',
+    'lunch - paired removal test b',
+    'admin',
+    'lunch'
+  );
 
 insert into public.classes (
   id,
@@ -43,9 +51,9 @@ insert into public.classes (
   created_by
 ) values
   ('99200000-0000-4000-8000-000000000001', '99100000-0000-4000-8000-000000000001', 'N/A', 'semester_1', false, '99000000-0000-4000-8000-000000000001'),
-  ('99200000-0000-4000-8000-000000000002', '99100000-0000-4000-8000-000000000001', 'N/A', 'semester_2', false, '99000000-0000-4000-8000-000000000001'),
+  ('99200000-0000-4000-8000-000000000002', '99100000-0000-4000-8000-000000000002', 'N/A', 'semester_2', false, '99000000-0000-4000-8000-000000000001'),
   ('99200000-0000-4000-8000-000000000003', '99100000-0000-4000-8000-000000000001', 'N/A', 'semester_1', false, '99000000-0000-4000-8000-000000000001'),
-  ('99200000-0000-4000-8000-000000000004', '99100000-0000-4000-8000-000000000001', 'N/A', 'semester_2', false, '99000000-0000-4000-8000-000000000001');
+  ('99200000-0000-4000-8000-000000000004', '99100000-0000-4000-8000-000000000002', 'N/A', 'semester_2', false, '99000000-0000-4000-8000-000000000001');
 
 insert into public.class_meeting_slots (class_id, day_type, period_number)
 values
@@ -84,7 +92,7 @@ select is(
       and not active
   ),
   2::bigint,
-  'matching Semester 1 and Semester 2 lunches at the same period are both removed'
+  'same-period Semester 1 and Semester 2 lunches are removed even when their catalog labels differ'
 );
 
 select is(
