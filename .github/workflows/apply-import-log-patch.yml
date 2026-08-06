@@ -15,14 +15,14 @@ concurrency:
 
 jobs:
   apply-and-verify:
-    if: github.head_ref == 'codex/import-log-details-20260806'
+    if: github.head_ref == 'import-log-integration'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: codex/import-log-details-20260806
+          ref: import-log-integration
           fetch-depth: 0
 
       - name: Set up Node
@@ -54,9 +54,10 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
-      - name: Remove temporary branch files
+      - name: Remove temporary validation files
         run: |
           rm -f .github/scripts/apply_import_log_patch.py
+          rm -f .github/import-log-validation-trigger
           rm -f .github/workflows/apply-import-log-patch.yml
 
       - name: Commit verified changes
@@ -65,4 +66,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Add detailed schedule import failure and correction logs"
-          git push origin HEAD:codex/import-log-details-20260806
+          git push origin HEAD:import-log-integration
