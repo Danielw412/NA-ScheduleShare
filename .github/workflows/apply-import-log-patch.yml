@@ -1,7 +1,7 @@
 name: Apply importer logging changes
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - main
     types: [opened, synchronize, reopened]
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   apply-and-verify:
-    if: github.head_ref == 'codex/import-log-details-20260806'
+    if: github.event.pull_request.head.ref == 'codex/import-log-details-20260806'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
