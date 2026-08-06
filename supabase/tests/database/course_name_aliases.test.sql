@@ -29,11 +29,21 @@ select is(
   'Alias Canonical Regression',
   'authenticated catalogue search resolves an alias to the canonical name'
 );
+
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claim.role', 'anon', true);
+set local role anon;
 select is(
   (select course_name from public.guest_search_course_names('Alternate Canonical Name', 5) limit 1),
   'Alias Canonical Regression',
   'guest catalogue search resolves an alias to the canonical name'
 );
+
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
 select throws_ok(
   $$select public.admin_add_course_name_alias('97000000-0000-4000-8000-000000000001', 'Alternate Canonical Name', 'duplicate alias test')$$,
   '23505', 'course_alias_already_exists',
@@ -79,6 +89,7 @@ select ok(
 
 reset role;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
 select throws_ok(
   $$insert into public.course_name_aliases (course_name_id, alias, normalized_alias)
