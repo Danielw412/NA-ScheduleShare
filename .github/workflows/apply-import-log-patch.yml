@@ -1,4 +1,3 @@
-# Trigger validation from the base-branch workflow.
 name: Apply importer logging changes
 
 on:
@@ -55,7 +54,7 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
-      - name: Remove temporary patch machinery
+      - name: Remove temporary branch files
         run: |
           rm .github/scripts/apply_import_log_patch.py
           rm .github/workflows/apply-import-log-patch.yml
