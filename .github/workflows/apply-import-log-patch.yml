@@ -1,7 +1,7 @@
 name: Apply importer logging changes
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - main
     types: [opened, synchronize, reopened]
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   apply-and-verify:
-    if: github.event.pull_request.head.ref == 'codex/import-log-details-20260806'
+    if: github.head_ref == 'codex/import-log-details-20260806'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -56,8 +56,8 @@ jobs:
 
       - name: Remove temporary branch files
         run: |
-          rm .github/scripts/apply_import_log_patch.py
-          rm .github/workflows/apply-import-log-patch.yml
+          rm -f .github/scripts/apply_import_log_patch.py
+          rm -f .github/workflows/apply-import-log-patch.yml
 
       - name: Commit verified changes
         run: |
