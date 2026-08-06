@@ -79,8 +79,8 @@ export function HomePage() {
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and share schedules with friends.</p>
-          <p className="home-builder-credit">
-            Built by the NA Computer and AI Club
+          <p className="home-builder-credit" style={{ borderBottom: 0, paddingBottom: 0 }}>
+            <span style={{ borderBottom: '2px solid var(--brand-gold)', paddingBottom: 4 }}>Built by the NA Computer and AI Club</span>
             <button className="home-club-hint" type="button" onClick={openClubDialog} aria-label="Join the NA Computer and AI Club">Join <ArrowUpRight size={12} aria-hidden="true" /></button>
           </p>
           <div className="hero-actions">
