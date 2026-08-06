@@ -1,7 +1,8 @@
-import { ArrowRight, CalendarDays, ChevronRight, RefreshCw, Search, Users } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, CalendarDays, ChevronRight, RefreshCw, Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
+import { useClubPrompt } from '../components/club/ClubPromptProvider'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import { clearAuthDestination, hasPendingAuthDestination, pendingAuthDestination } from '../lib/authDestination'
@@ -19,6 +20,7 @@ function isMobileShareDevice(): boolean {
 
 export function HomePage() {
   const { user, isDemo } = useAuth()
+  const { openClubDialog } = useClubPrompt()
   const { enrollments, loading: scheduleLoading } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -77,7 +79,10 @@ export function HomePage() {
         <div>
           <h1>Find out who’s in your classes.</h1>
           <p>Upload a picture of your schedule, find classmates, and share schedules with friends.</p>
-          <p className="home-builder-credit">Built by the NA Computer and AI Club</p>
+          <p className="home-builder-credit">
+            Built by the NA Computer and AI Club
+            <button className="home-club-hint" type="button" onClick={openClubDialog} aria-label="Join the NA Computer and AI Club">Join <ArrowUpRight size={12} aria-hidden="true" /></button>
+          </p>
           <div className="hero-actions">
             {user && scheduleLoading
               ? <span className="button button-primary home-schedule-loading" aria-label="Loading schedule">Loading...</span>

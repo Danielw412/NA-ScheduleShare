@@ -1,9 +1,10 @@
-import { BookOpen, CalendarDays, Home, LogOut, Menu, ShieldCheck, UserRound, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, Home, LogOut, Menu, UserRound, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
+import { useClubPrompt } from '../club/ClubPromptProvider'
 import { BrandLogo } from '../ui/BrandLogo'
 import { ProfileAvatar } from '../ui/ProfileAvatar'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
@@ -38,6 +39,7 @@ export function AppShell() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { user, profile, avatarRevision, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
+  const { openClubDialog } = useClubPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
 
@@ -86,10 +88,10 @@ export function AppShell() {
       <main className="page-container"><div className="page-transition" key={pageTransitionKey(location.pathname)}><Outlet /></div></main>
       <footer className="site-footer">
         <p>{brand.attribution}</p>
-        <p className="footer-security"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Security:</strong> Supabase row-level security enforces schedule privacy in the database, authenticated requests are permission-checked, and sensitive credentials stay server-side.</span></p>
         <nav aria-label="Footer navigation">
           {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
           {user ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
+          <button className="footer-link-button" type="button" onClick={openClubDialog}>Join Computer and AI club</button>
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </footer>
