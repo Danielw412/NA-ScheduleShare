@@ -10,7 +10,7 @@ function hasControlCharacter(value: string): boolean {
 
 export function normalizeTeacherLastName(value: string): string {
   const normalized = value.trim().replace(/\s+/g, ' ')
-  if (OBVIOUSLY_INVALID_CHARACTERS.test(normalized) || hasControlCharacter(normalized)) return normalized
+  if (HONORIFIC_PREFIX.test(normalized) || OBVIOUSLY_INVALID_CHARACTERS.test(normalized) || hasControlCharacter(normalized)) return normalized
   const words = normalized.split(' ')
   return words.length === 2 ? words[1] : normalized
 }
