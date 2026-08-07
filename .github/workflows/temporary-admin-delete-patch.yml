@@ -1,0 +1,50 @@
+name: Temporary admin delete patch
+
+on:
+  push:
+    branches:
+      - fix/admin-class-cleanup-teacher-delete
+
+permissions:
+  contents: write
+
+jobs:
+  patch-admin-delete:
+    if: ${{ !contains(github.event.head_commit.message, '[agent-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-class-cleanup-teacher-delete
+      - name: Remove class delete prompt
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/AdminPage.tsx')
+          text = path.read_text()
+          old = '''  function permanentlyDeleteClass(course: AdminClassRecord) {
+            const typed = window.prompt(
+              `This permanently deletes ${course.course_name} with ${course.teacher_last_name}. ${course.total_enrollment_count} enrollment${course.total_enrollment_count === 1 ? '' : 's'} and ${course.meeting_slots.length} meeting slot${course.meeting_slots.length === 1 ? '' : 's'} will be deleted. ${course.report_count} report reference${course.report_count === 1 ? '' : 's'} will keep a course-name snapshot, and schedule/audit history will be retained. Type DELETE to continue.`,
+            )
+            if (typed?.trim() !== 'DELETE') return
+            void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
+          }
+          '''
+          # Keep the replacement exact while avoiding any broad AdminPage rewrite.
+          old = old.replace('          ', '')
+          new = '''  function permanentlyDeleteClass(course: AdminClassRecord) {
+            void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
+          }
+          '''.replace('          ', '')
+          if old not in text:
+            raise SystemExit('Expected permanentlyDeleteClass block not found; refusing broad patch')
+          path.write_text(text.replace(old, new, 1))
+      - name: Commit branch-only patch
+        run: |
+          git config user.name "ScheduleShare branch patch"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/pages/AdminPage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove admin class delete prompt [agent-patch]"
+          git push origin HEAD:fix/admin-class-cleanup-teacher-delete
