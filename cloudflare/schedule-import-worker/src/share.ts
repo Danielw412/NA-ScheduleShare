@@ -78,7 +78,6 @@ async function fetchPublicSchedule(token: string, env: ShareEnv, requestId?: str
       method: 'POST',
       headers: {
         apikey: publishableKey,
-        Authorization: `Bearer ${publishableKey}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
