@@ -1,14 +1,6 @@
 name: Test and deploy ScheduleShare Worker
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'cloudflare/schedule-import-worker/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
 permissions:
