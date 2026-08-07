@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  remote-worker-reproduction:
+  validate-minimal-fix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -29,7 +29,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Reproduce share handler in Cloudflare remote runtime
+      - name: Validate redirect manual in Cloudflare remote runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -38,10 +38,10 @@ jobs:
           from pathlib import Path
           path = Path('cloudflare/schedule-import-worker/src/share.ts')
           text = path.read_text(encoding='utf-8')
-          old = "      error_name: error instanceof Error ? error.name : 'UnknownError',\n"
-          new = old + "      error_message: error instanceof Error ? error.message : String(error),\n      error_stack: error instanceof Error ? error.stack?.slice(0, 1200) : undefined,\n"
-          if old not in text:
-              raise SystemExit('diagnostic patch target not found')
+          old = "      redirect: 'error',\n"
+          new = "      redirect: 'manual',\n"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one redirect:error, found {text.count(old)}')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
@@ -51,7 +51,7 @@ jobs:
           EOF
           chmod 600 cloudflare/schedule-import-worker/.dev.vars
 
-          rm -f /tmp/remote-worker.log /tmp/remote-body.txt /tmp/remote-headers.txt
+          rm -f /tmp/remote-worker.log /tmp/page-body.txt /tmp/page-headers.txt /tmp/image.bin /tmp/image-headers.txt
           timeout 60s pnpm exec wrangler dev --remote \
             --config cloudflare/schedule-import-worker/wrangler.toml \
             --ip 127.0.0.1 --port 8787 \
@@ -68,23 +68,31 @@ jobs:
           done
           echo "remote_ready=$ready"
           if [ "$ready" != 1 ]; then
-            echo '--- remote worker log ---'
             cat /tmp/remote-worker.log
             exit 1
           fi
 
-          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
-            --dump-header /tmp/remote-headers.txt \
-            --output /tmp/remote-body.txt \
-            --write-out '%{http_code}' \
+          page_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            --dump-header /tmp/page-headers.txt --output /tmp/page-body.txt --write-out '%{http_code}' \
             'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875')
-          echo "remote_share_http_status=$status"
-          echo '--- remote response title ---'
-          grep -o '<title>[^<]*</title>' /tmp/remote-body.txt || true
-          sleep 2
+          echo "page_status=$page_status"
+          grep -o '<title>[^<]*</title>' /tmp/page-body.txt || true
+
+          image_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            --dump-header /tmp/image-headers.txt --output /tmp/image.bin --write-out '%{http_code}' \
+            'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875/image.png')
+          echo "image_status=$image_status"
+          file /tmp/image.bin || true
+          wc -c /tmp/image.bin || true
+
           kill "$worker_pid" 2>/dev/null || true
           wait "$worker_pid" 2>/dev/null || true
           echo '--- remote worker log ---'
           cat /tmp/remote-worker.log
+
+          test "$page_status" = 200
+          test "$image_status" = 200
+          grep -q '<title>A/B-Day Schedule | NA ScheduleShare</title>' /tmp/page-body.txt
+          file /tmp/image.bin | grep -q 'PNG image data, 1200 x 630'
 
           rm -f cloudflare/schedule-import-worker/.dev.vars
