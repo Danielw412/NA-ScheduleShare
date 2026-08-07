@@ -1,0 +1,63 @@
+name: Diagnose production share endpoint
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve production host
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import socket
+          host = 'schedule-api.naclubs.net'
+          print('getaddrinfo:', socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM))
+          PY
+          getent ahosts schedule-api.naclubs.net || true
+
+      - name: Inspect share page
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875'
+          curl --fail-with-body --silent --show-error --location --max-redirs 0 --connect-timeout 10 --max-time 20 \
+            --dump-header /tmp/share-headers.txt --output /tmp/share-body.txt "$URL" || status=$?
+          echo "curl_exit=${status:-0}"
+          echo '--- headers ---'
+          cat /tmp/share-headers.txt 2>/dev/null || true
+          echo '--- body ---'
+          head -c 12000 /tmp/share-body.txt 2>/dev/null || true
+          echo
+
+      - name: Inspect preview image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875/image.png'
+          curl --silent --show-error --location --max-redirs 0 --connect-timeout 10 --max-time 20 \
+            --dump-header /tmp/image-headers.txt --output /tmp/share-image.bin "$URL" || status=$?
+          echo "curl_exit=${status:-0}"
+          echo '--- headers ---'
+          cat /tmp/image-headers.txt 2>/dev/null || true
+          echo '--- file ---'
+          file /tmp/share-image.bin 2>/dev/null || true
+          wc -c /tmp/share-image.bin 2>/dev/null || true
+          echo '--- first bytes ---'
+          xxd -l 64 /tmp/share-image.bin 2>/dev/null || true
+
+      - name: Inspect TLS certificate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          timeout 15 openssl s_client -connect schedule-api.naclubs.net:443 -servername schedule-api.naclubs.net </dev/null 2>/tmp/tls-stderr.txt | openssl x509 -noout -subject -issuer -dates -ext subjectAltName || true
+          echo '--- openssl stderr ---'
+          cat /tmp/tls-stderr.txt || true
