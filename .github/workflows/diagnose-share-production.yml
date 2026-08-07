@@ -1,4 +1,4 @@
-name: Deploy and verify production share fix
+name: Deploy and verify production share title
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          EXPECTED_SHA: b7d55067169def0193fe9d2645b98a4d8fb5823b
+          EXPECTED_SHA: 6dbdde6eed490b6e9a56a92312a77eb91bed7f2a
         run: |
           set -euo pipefail
 
@@ -89,7 +89,7 @@ jobs:
 
           test "$page_status" = 200
           test "$image_status" = 200
-          grep -q '<title>Schedule | NA ScheduleShare</title>' /tmp/page.html
-          grep -q '<meta property="og:title" content="Schedule | NA ScheduleShare">' /tmp/page.html
-          grep -q '<meta name="twitter:title" content="Schedule | NA ScheduleShare">' /tmp/page.html
+          grep -q '<title>My Schedule | NA ScheduleShare</title>' /tmp/page.html
+          grep -q '<meta property="og:title" content="My Schedule | NA ScheduleShare">' /tmp/page.html
+          grep -q '<meta name="twitter:title" content="My Schedule | NA ScheduleShare">' /tmp/page.html
           file /tmp/image.png | grep -q 'PNG image data, 1200 x 630'
