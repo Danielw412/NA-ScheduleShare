@@ -5,6 +5,7 @@ import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
 import { useCourseNameSearch } from '../hooks/useCourseNameSearch'
 import { useSchedule } from '../hooks/useSchedule'
 import { termLabels, type CourseNameSearchResult, type DayType, type ScheduleEngineJob, type ScheduleEnginePrediction, type ScheduleEnrollment, type SemesterTerm } from '../lib/domain'
+import { enrollmentCreditUnits, formatCreditUnits, isStudyHallCourseName, replacementCreditsCanMatch, scheduleCoverageIssueLabel, scheduleCoverageIssues } from '../lib/scheduleEngineRules'
 import { applyScheduleEnginePrediction, cancelScheduleEngineJob, createScheduleEngineJob, listScheduleEngineJobs } from '../lib/supabase/data'
 
 const MAX_REPLACEMENTS = 3
@@ -37,17 +38,38 @@ function enrollmentLabel(enrollment: ScheduleEnrollment): string {
 }
 
 function formErrorFor(sourceCourses: SourceCourseDraft[], replacementCourses: ReplacementCourseDraft[], enrollments: ScheduleEnrollment[]): string | null {
+  const coverageIssues = scheduleCoverageIssues(enrollments)
+  if (coverageIssues.length > 0) {
+    const first = coverageIssues[0]
+    return `Fill your entire schedule before using Schedule Engine. ${scheduleCoverageIssueLabel(first)} is ${first.count === 0 ? 'empty' : 'filled more than once'}.`
+  }
   if (sourceCourses.length < 1 || sourceCourses.length > MAX_REPLACEMENTS) return 'Choose up to three current courses.'
   if (replacementCourses.length < 1 || replacementCourses.length > MAX_REPLACEMENTS) return 'Choose up to three replacement courses.'
   if (sourceCourses.some((draft) => !draft.enrollmentId) || replacementCourses.some((draft) => !draft.replacementCourse)) return 'Complete every course selection before submitting.'
   const enrollmentIds = sourceCourses.map((draft) => draft.enrollmentId)
   if (new Set(enrollmentIds).size !== enrollmentIds.length) return 'Each current course can only be replaced once.'
-  const courseIds = replacementCourses.map((draft) => draft.replacementCourse?.id ?? '')
-  if (new Set(courseIds).size !== courseIds.length) return 'Choose different replacement courses.'
+
+  const selectedReplacementCourses = replacementCourses.map((draft) => draft.replacementCourse!)
+  const courseCounts = new Map<string, number>()
+  for (const course of selectedReplacementCourses) courseCounts.set(course.id, (courseCounts.get(course.id) ?? 0) + 1)
+  for (const [courseId, count] of courseCounts) {
+    if (count < 2) continue
+    const course = selectedReplacementCourses.find((item) => item.id === courseId)
+    if (!course || !isStudyHallCourseName(course.course_name)) return 'Only Study Hall can be selected more than once.'
+  }
+
+  const courseIds = selectedReplacementCourses.map((course) => course.id)
+  const selectedEnrollments: ScheduleEnrollment[] = []
   for (const draft of sourceCourses) {
     const enrollment = enrollments.find((item) => item.id === draft.enrollmentId)
     if (!enrollment) return 'One of the selected current courses is no longer in your schedule.'
+    selectedEnrollments.push(enrollment)
     if (courseIds.includes(enrollment.class.course_name_id)) return 'A course cannot replace itself.'
+  }
+
+  const sourceCreditUnits = selectedEnrollments.reduce((total, enrollment) => total + enrollmentCreditUnits(enrollment), 0)
+  if (!replacementCreditsCanMatch(selectedReplacementCourses, sourceCreditUnits)) {
+    return `The replacement courses cannot match the ${formatCreditUnits(sourceCreditUnits)} credits being removed. Semester or A/B-only full-year courses are 0.5 credits, full-year courses are 1.0, and double-period courses are 1.5.`
   }
   return null
 }
@@ -235,13 +257,31 @@ export function ScheduleEnginePage() {
   const selectedPrediction = selectedJob?.predictions.find((prediction) => prediction.rank === selectedPredictionRank) ?? selectedJob?.predictions[0] ?? null
   const selectedPredictionKey = selectedJob && selectedPrediction ? `${selectedJob.id}:${selectedPrediction.rank}` : null
   const activeRequestCount = jobs.filter((job) => job.status === 'queued' || job.status === 'processing').length
+  const coverageIssues = useMemo(() => scheduleCoverageIssues(enrollments), [enrollments])
   const validationError = useMemo(() => formErrorFor(sourceCourses, replacementCourses, enrollments), [sourceCourses, replacementCourses, enrollments])
   const selectedEnrollmentIds = useMemo(() => new Set(sourceCourses.map((draft) => draft.enrollmentId).filter(Boolean)), [sourceCourses])
   const selectedCurrentCourseIds = useMemo(() => new Set(sourceCourses.flatMap((draft) => {
     const enrollment = enrollments.find((item) => item.id === draft.enrollmentId)
     return enrollment ? [enrollment.class.course_name_id] : []
   })), [sourceCourses, enrollments])
-  const selectedReplacementCourseIds = useMemo(() => new Set(replacementCourses.map((draft) => draft.replacementCourse?.id).filter((id): id is string => Boolean(id))), [replacementCourses])
+  const selectedReplacementCourseIds = useMemo(() => new Set(replacementCourses.flatMap((draft) => {
+    const course = draft.replacementCourse
+    return course && !isStudyHallCourseName(course.course_name) ? [course.id] : []
+  })), [replacementCourses])
+  const selectedSourceEnrollments = useMemo(() => sourceCourses.flatMap((draft) => {
+    const enrollment = enrollments.find((item) => item.id === draft.enrollmentId)
+    return enrollment ? [enrollment] : []
+  }), [sourceCourses, enrollments])
+  const selectedSourceCreditUnits = useMemo(
+    () => selectedSourceEnrollments.reduce((total, enrollment) => total + enrollmentCreditUnits(enrollment), 0),
+    [selectedSourceEnrollments],
+  )
+  const selectedReplacementCourses = replacementCourses.flatMap((draft) => draft.replacementCourse ? [draft.replacementCourse] : [])
+  const replacementSelectionsComplete = selectedReplacementCourses.length === replacementCourses.length
+  const creditMatchPossible = selectedSourceEnrollments.length === sourceCourses.length
+    && replacementSelectionsComplete
+    && replacementCreditsCanMatch(selectedReplacementCourses, selectedSourceCreditUnits)
+  const singleStudyHallSelection = selectedReplacementCourses.filter((course) => isStudyHallCourseName(course.course_name)).length === 1
 
   function updateReplacementCourse(key: string, update: Partial<ReplacementCourseDraft>) {
     setReplacementCourses((current) => current.map((draft) => draft.key === key ? { ...draft, ...update } : draft))
@@ -396,7 +436,10 @@ export function ScheduleEnginePage() {
       ) : showForm ? (
         <div className="engine-request-layout">
           <form className="engine-request-form" onSubmit={(event) => void submit(event)}>
-            <div className="engine-form-heading"><h2>Course replacements</h2><p>Choose up to three courses from your schedule, then up to three catalog courses to replace them with.</p></div>
+            <div className="engine-form-heading"><h2>Course replacements</h2><p>Choose up to three current courses and replacement courses. Your schedule must be completely filled, and the credits removed and added must match.</p></div>
+            {!scheduleLoading && !scheduleError && enrollments.length > 0 && coverageIssues.length > 0 ? (
+              <p className="notice-box error engine-schedule-requirement" role="alert"><AlertCircle aria-hidden="true" /><span>Finish filling your schedule first. Every A/B period 1–9 must have exactly one class in both semesters. First issue: {scheduleCoverageIssueLabel(coverageIssues[0])} is {coverageIssues[0].count === 0 ? 'empty' : 'filled more than once'}.</span></p>
+            ) : null}
             {scheduleLoading ? <p className="engine-loading" role="status">Loading your current schedule…</p> : scheduleError ? <p className="form-error" role="alert">{scheduleError}</p> : enrollments.length === 0 ? <p className="notice-box"><Info aria-hidden="true" />Add classes to your schedule before creating a Schedule Engine request.</p> : (
               <div className="engine-replacement-list engine-selection-groups">
                 <section className="engine-selection-group" aria-labelledby="engine-current-courses-heading">
@@ -406,7 +449,7 @@ export function ScheduleEnginePage() {
                     excludedEnrollments.delete(draft.enrollmentId)
                     return <div className="engine-selection-row" key={draft.key}>
                       <label>Current course {sourceCourses.length > 1 ? index + 1 : ''}
-                        <select value={draft.enrollmentId} onChange={(event) => setSourceCourses((current) => current.map((item) => item.key === draft.key ? { ...item, enrollmentId: event.target.value } : item))}>
+                        <select value={draft.enrollmentId} onChange={(event) => { setSourceCourses((current) => current.map((item) => item.key === draft.key ? { ...item, enrollmentId: event.target.value } : item)); setSubmitError(null) }}>
                           <option value="">Select a current course</option>
                           {enrollments.filter((enrollment) => !excludedEnrollments.has(enrollment.id)).map((enrollment) => <option key={enrollment.id} value={enrollment.id}>{enrollmentLabel(enrollment)}</option>)}
                         </select>
@@ -421,7 +464,7 @@ export function ScheduleEnginePage() {
                   <header><span className="engine-replacement-number" aria-hidden="true">2</span><div><h3 id="engine-new-courses-heading">Replace with</h3><p>From the course catalog</p></div></header>
                   {replacementCourses.map((draft, index) => {
                     const excludedCourses = new Set([...selectedReplacementCourseIds, ...selectedCurrentCourseIds])
-                    if (draft.replacementCourse) excludedCourses.delete(draft.replacementCourse.id)
+                    if (draft.replacementCourse && !isStudyHallCourseName(draft.replacementCourse.course_name)) excludedCourses.delete(draft.replacementCourse.id)
                     return <div className="engine-selection-row" key={draft.key}>
                       <CourseCatalogPicker draft={draft} excludedCourseIds={excludedCourses} onChange={(update) => updateReplacementCourse(draft.key, update)} />
                       {replacementCourses.length > 1 ? <button className="engine-remove-selection" type="button" aria-label={`Remove replacement course ${index + 1}`} onClick={() => setReplacementCourses((current) => current.filter((item) => item.key !== draft.key))}><Trash2 size={15} /></button> : null}
@@ -431,6 +474,16 @@ export function ScheduleEnginePage() {
                 </section>
               </div>
             )}
+            {selectedSourceCreditUnits > 0 ? (
+              <section className={`engine-credit-balance ${replacementSelectionsComplete ? (creditMatchPossible ? 'is-balanced' : 'is-mismatch') : ''}`} aria-label="Credit balance" role="status">
+                <div><strong>Credit balance</strong><span>Schedule Engine only returns equal-credit replacements.</span></div>
+                <div className="engine-credit-values">
+                  <span>Removed <strong>{formatCreditUnits(selectedSourceCreditUnits)} credits</strong></span>
+                  <span>Replacement <strong>{replacementSelectionsComplete ? (creditMatchPossible ? 'can match' : 'does not match') : 'select courses'}</strong></span>
+                </div>
+                <small>Semester and A/B-only full-year courses are 0.5 credits; full-year courses are 1.0; double-period courses are 1.5.{singleStudyHallSelection ? ' If needed for balance, one Study Hall selection can become two half-credit Study Halls.' : ''} Final matching uses the actual existing sections.</small>
+              </section>
+            ) : null}
             <div className="engine-submit-area">
               <label className="checkbox-row"><input type="checkbox" checked={emailNotification} onChange={(event) => setEmailNotification(event.target.checked)} /><span>Email me when my predicted schedules are ready.</span></label>
               <p>You can leave this page after submitting and return when your results are ready.</p>
