@@ -1,5 +1,5 @@
 begin;
-select plan(4);
+select plan(5);
 
 select ok(
   not exists (
@@ -9,6 +9,19 @@ select ok(
       and conname = 'schedule_engine_replacement_courses_job_id_course_name_id_key'
   ),
   'replacement targets are no longer globally unique by course ID'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'schedule_engine_replacement_courses'
+      and indexname = 'schedule_engine_replacement_courses_non_study_unique_idx'
+      and indexdef ilike '%unique index%'
+      and indexdef ilike '%study hall%'
+  ),
+  'database uniqueness remains enforced for non-Study Hall replacement courses'
 );
 
 insert into auth.users (
