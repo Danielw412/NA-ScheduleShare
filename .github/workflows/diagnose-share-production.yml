@@ -51,8 +51,6 @@ jobs:
           echo '--- file ---'
           file /tmp/share-image.bin 2>/dev/null || true
           wc -c /tmp/share-image.bin 2>/dev/null || true
-          echo '--- first bytes ---'
-          xxd -l 64 /tmp/share-image.bin 2>/dev/null || true
 
       - name: Inspect TLS certificate
         shell: bash
@@ -61,3 +59,103 @@ jobs:
           timeout 15 openssl s_client -connect schedule-api.naclubs.net:443 -servername schedule-api.naclubs.net </dev/null 2>/tmp/tls-stderr.txt | openssl x509 -noout -subject -issuer -dates -ext subjectAltName || true
           echo '--- openssl stderr ---'
           cat /tmp/tls-stderr.txt || true
+
+  probe-production-supabase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Classify configured production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo 'supabase_url=missing'
+          else
+            python - <<'PY'
+          import os, urllib.parse
+          value = os.environ['SUPABASE_URL']
+          parsed = urllib.parse.urlsplit(value)
+          print('supabase_url=present')
+          print('supabase_scheme=' + parsed.scheme)
+          print('supabase_host=' + (parsed.hostname or ''))
+          PY
+          fi
+
+          key="${SUPABASE_PUBLISHABLE_KEY:-}"
+          if [ -z "$key" ]; then
+            echo 'publishable_key_kind=missing'
+          elif [[ "$key" == sb_publishable_* ]]; then
+            echo 'publishable_key_kind=modern_sb_publishable'
+          elif [[ "$key" == eyJ* ]]; then
+            echo 'publishable_key_kind=legacy_jwt'
+          else
+            echo 'publishable_key_kind=other'
+          fi
+          echo "publishable_key_length=${#key}"
+
+      - name: Call share RPC with Worker headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="${SUPABASE_URL%/}/rest/v1/rpc/get_public_schedule_share"
+          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            --output /tmp/worker-headers-body.json --write-out '%{http_code}' \
+            --request POST "$endpoint" \
+            --header "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            --header "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY" \
+            --header 'Content-Type: application/json' \
+            --header 'Accept: application/json' \
+            --data '{"p_token":"e81658a5-bbb6-4d0e-8cc2-6dc3a9200875"}')
+          echo "worker_headers_http_status=$status"
+          python - <<'PY'
+          import json
+          path='/tmp/worker-headers-body.json'
+          try:
+              data=json.load(open(path, encoding='utf-8'))
+          except Exception as exc:
+              print('worker_headers_json=false')
+              print('worker_headers_parse_error=' + type(exc).__name__)
+          else:
+              print('worker_headers_json=true')
+              if isinstance(data, dict):
+                  print('worker_headers_available=' + str(data.get('available')))
+                  schedule=data.get('schedule')
+                  if isinstance(schedule, list): print('worker_headers_schedule_rows=' + str(len(schedule)))
+                  if 'code' in data: print('worker_headers_error_code=' + str(data.get('code'))[:120])
+                  if 'message' in data: print('worker_headers_error_message=' + str(data.get('message'))[:240])
+          PY
+
+      - name: Call share RPC with apikey only
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="${SUPABASE_URL%/}/rest/v1/rpc/get_public_schedule_share"
+          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            --output /tmp/apikey-only-body.json --write-out '%{http_code}' \
+            --request POST "$endpoint" \
+            --header "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            --header 'Content-Type: application/json' \
+            --header 'Accept: application/json' \
+            --data '{"p_token":"e81658a5-bbb6-4d0e-8cc2-6dc3a9200875"}')
+          echo "apikey_only_http_status=$status"
+          python - <<'PY'
+          import json
+          path='/tmp/apikey-only-body.json'
+          try:
+              data=json.load(open(path, encoding='utf-8'))
+          except Exception as exc:
+              print('apikey_only_json=false')
+              print('apikey_only_parse_error=' + type(exc).__name__)
+          else:
+              print('apikey_only_json=true')
+              if isinstance(data, dict):
+                  print('apikey_only_available=' + str(data.get('available')))
+                  schedule=data.get('schedule')
+                  if isinstance(schedule, list): print('apikey_only_schedule_rows=' + str(len(schedule)))
+                  if 'code' in data: print('apikey_only_error_code=' + str(data.get('code'))[:120])
+                  if 'message' in data: print('apikey_only_error_message=' + str(data.get('message'))[:240])
+          PY
