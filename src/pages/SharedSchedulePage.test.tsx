@@ -32,6 +32,7 @@ function incompleteSchedule() {
 }
 
 beforeEach(() => {
+  document.title = 'NA ScheduleShare'
   mocks.useAuth.mockReturnValue({ user: null })
   mocks.useSchedule.mockReturnValue(incompleteSchedule())
 })
@@ -47,6 +48,7 @@ describe('shared schedule page', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: "Bob's schedule" })).toBeInTheDocument()
+    expect(document.title).toBe('Schedule | NA ScheduleShare')
     expect(screen.getByText('Robotics')).toBeInTheDocument()
     expect(screen.getByText('Lovelace')).toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: /Robotics/i })).toHaveAttribute('data-period', '9')
