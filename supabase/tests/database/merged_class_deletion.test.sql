@@ -57,9 +57,9 @@ select is(
 );
 
 select is(
-  (select count(*) from public.reports where id = '95000000-0000-4000-8000-000000000030' and reported_class_id is null),
-  1::bigint,
-  'reports safely clear their class foreign key when the merged duplicate is deleted'
+  (select reported_class_id from public.reports where id = '95000000-0000-4000-8000-000000000030'),
+  '95000000-0000-4000-8000-000000000001'::uuid,
+  'reports are retargeted to the canonical class before the duplicate is deleted'
 );
 
 select ok(
