@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: scheduleshare-worker-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
