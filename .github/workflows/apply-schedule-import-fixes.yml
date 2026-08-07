@@ -1,0 +1,836 @@
+name: Apply schedule import review fixes
+
+on:
+  push:
+    branches:
+      - fix/schedule-import-review-rules
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/schedule-import-review-rules
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply focused fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {text.count(old)}")
+              file.write_text(text.replace(old, new, 1))
+
+          core = "supabase/functions/schedule-import/core.ts"
+
+          replace_once(core, """  const courseIds = [...new Set(campusRows.flatMap((row) => {
+              const match = findCourseMatch(row.source_course_name, catalog)
+              return match.course ? [match.course.id] : []
+            }))]
+            const classes = await dependencies.loadClasses(token, config, courseIds)
+            validateBackendData(catalog, classes)
+            return {
+              parsed,
+              estimatedGrade,
+              rows: buildReviewRows(campusRows, catalog, classes, dependencies.randomUUID),
+            }""", """  const courseIds = [...new Set(campusRows.flatMap((row) => {
+              const match = findCourseMatch(row.source_course_name, catalog, estimatedGrade)
+              return match.course ? [match.course.id] : []
+            }))]
+            const classes = await dependencies.loadClasses(token, config, courseIds)
+            validateBackendData(catalog, classes)
+            return {
+              parsed,
+              estimatedGrade,
+              rows: buildReviewRows(campusRows, catalog, classes, estimatedGrade, dependencies.randomUUID),
+            }""")
+
+          replace_once(core, """export function findCourseMatch(sourceName: string, catalog: CourseRecord[]): CourseMatch {
+            const ranked = catalog
+              .map((course) => ({
+                course,
+                score: Math.max(
+                  courseSimilarity(sourceName, course.name),
+                  ...(course.aliases ?? []).map((alias) => courseSimilarity(sourceName, alias)),
+                ),
+              }))
+              .sort((left, right) => right.score - left.score || left.course.name.localeCompare(right.course.name))
+            const best = ranked[0]
+            const second = ranked[1]
+            if (!best) return { kind: 'unresolved', course: null, score: 0, alternatives: [] }
+            const margin = best.score - (second?.score ?? 0)
+            if (best.score >= 0.995 || (best.score >= 0.93 && margin >= 0.03) || (best.score >= 0.86 && margin >= 0.08)) {
+              return { kind: 'matched', course: best.course, score: best.score, alternatives: [] }
+            }
+            if (best.score >= 0.72 && second && second.score >= 0.68 && margin < 0.08) {
+              return {
+                kind: 'ambiguous',
+                course: null,
+                score: best.score,
+                alternatives: ranked.slice(0, 3).map((candidate) => candidate.course),
+              }
+            }
+            return { kind: 'unresolved', course: null, score: best.score, alternatives: ranked.slice(0, 3).map((candidate) => candidate.course) }
+          }
+
+          function buildReviewRows(
+            entries: NormalizedGeminiRow[],
+            catalog: CourseRecord[],
+            classes: ExistingClassRecord[],
+            randomUUID: (() => string) | undefined,
+          ): ImportReviewRow[] {
+            const matchedEntries = entries.map((entry) => {
+              const match = findCourseMatch(entry.source_course_name, catalog)
+              const policy = match.course?.term_policy ?? 'full_year'
+              const resolvedEntry = match.course && policy === 'full_year' && entry.term === 'unknown'
+                ? { ...entry, term: 'full_year' as const, term_defaulted: true }
+                : entry
+              return { match, policy, resolvedEntry }
+            })""", """function campusAdjustedCourseScore(sourceName: string, courseName: string, score: number, grade?: Grade): number {
+            if (!grade) return score
+            const source = normalizeCourseName(sourceName)
+            if (/(?:^| )(?:nai|nash)(?: |$)/.test(source)) return score
+            const candidate = normalizeCourseName(courseName)
+            const expectedCampus = grade <= 10 ? 'nai' : 'nash'
+            const otherCampus = expectedCampus === 'nai' ? 'nash' : 'nai'
+            if (candidate.endsWith(` ${expectedCampus}`)) return Math.min(1, score + 0.03)
+            if (candidate.endsWith(` ${otherCampus}`)) return Math.max(0, score - 0.03)
+            return score
+          }
+
+          export function findCourseMatch(sourceName: string, catalog: CourseRecord[], grade?: Grade): CourseMatch {
+            const ranked = catalog
+              .map((course) => {
+                const rawScore = Math.max(
+                  courseSimilarity(sourceName, course.name),
+                  ...(course.aliases ?? []).map((alias) => courseSimilarity(sourceName, alias)),
+                )
+                return { course, score: campusAdjustedCourseScore(sourceName, course.name, rawScore, grade) }
+              })
+              .sort((left, right) => right.score - left.score || left.course.name.localeCompare(right.course.name))
+            const best = ranked[0]
+            const second = ranked[1]
+            if (!best) return { kind: 'unresolved', course: null, score: 0, alternatives: [] }
+            const margin = best.score - (second?.score ?? 0)
+            if (best.score >= 0.995 || (best.score >= 0.93 && margin >= 0.03) || (best.score >= 0.86 && margin >= 0.08)) {
+              return { kind: 'matched', course: best.course, score: best.score, alternatives: [] }
+            }
+            if (best.score >= 0.72 && second && second.score >= 0.68 && margin < 0.08) {
+              return {
+                kind: 'ambiguous',
+                course: null,
+                score: best.score,
+                alternatives: ranked.slice(0, 3).map((candidate) => candidate.course),
+              }
+            }
+            return { kind: 'unresolved', course: null, score: best.score, alternatives: ranked.slice(0, 3).map((candidate) => candidate.course) }
+          }
+
+          function completeLunchMeetingSlots(slots: MeetingSlot[]): MeetingSlot[] {
+            if (slots.length !== 1) return slots
+            const slot = slots[0]
+            return sortSlots([
+              slot,
+              { day_type: slot.day_type === 'A' ? 'B' : 'A', period_number: slot.period_number },
+            ])
+          }
+
+          function buildReviewRows(
+            entries: NormalizedGeminiRow[],
+            catalog: CourseRecord[],
+            classes: ExistingClassRecord[],
+            grade: Grade,
+            randomUUID: (() => string) | undefined,
+          ): ImportReviewRow[] {
+            const matchedEntries = entries.map((entry) => {
+              const match = findCourseMatch(entry.source_course_name, catalog, grade)
+              const policy = match.course?.term_policy ?? 'full_year'
+              const normalizedEntry = match.course && policy === 'lunch'
+                ? { ...entry, meeting_slots: completeLunchMeetingSlots(entry.meeting_slots) }
+                : entry
+              const resolvedEntry = match.course && policy === 'full_year' && normalizedEntry.term === 'unknown'
+                ? { ...normalizedEntry, term: 'full_year' as const, term_defaulted: true }
+                : normalizedEntry
+              return { match, policy, resolvedEntry }
+            })""")
+
+          replace_once(core, """    const options = match.course ? classOptionsFor(match.course, classes) : []
+              const teacherLastName = parseTeacherLastName(resolvedEntry.teacher_raw, match.course?.name ?? resolvedEntry.source_course_name)
+              const existing = match.course ? exactClassMatch(resolvedEntry, teacherLastName, options, policy) : null
+              const flags: ImportReviewRow['flags'] = []""", """    const options = match.course ? classOptionsFor(match.course, classes) : []
+              const courseName = match.course?.name ?? resolvedEntry.source_course_name
+              const missingTeacher = !resolvedEntry.teacher_raw && !specialCourseKind(courseName)
+              const parsedTeacherLastName = parseTeacherLastName(resolvedEntry.teacher_raw, courseName)
+              const existing = match.course
+                ? exactClassMatch(resolvedEntry, parsedTeacherLastName, options, policy, missingTeacher)
+                : null
+              const teacherLastName = missingTeacher && existing ? existing.teacher_last_name : parsedTeacherLastName
+              const flags: ImportReviewRow['flags'] = []""")
+
+          replace_once(core, """    const formatError = match.course ? courseFormatError(policy, resolvedEntry.term, resolvedEntry.meeting_slots) : null""",
+                       """    const formatError = match.course ? courseFormatError(policy, resolvedEntry.term, resolvedEntry.meeting_slots, courseName) : null""")
+
+          replace_once(core, """    if (!resolvedEntry.teacher_raw && !specialCourseKind(match.course?.name ?? resolvedEntry.source_course_name)) {
+              if (!flags.includes('incomplete')) flags.push('incomplete')
+              warnings.push('The teacher name could not be read confidently.')
+            }""", """    if (missingTeacher && !existing) {
+              if (!flags.includes('incomplete')) flags.push('incomplete')
+              warnings.push('The teacher name could not be read confidently.')
+            }""")
+
+          replace_once(core, """function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: MeetingSlot[]): string | null {
+            if (term === 'unknown') return null
+            const aSlots = slots.filter((slot) => slot.day_type === 'A')
+            const bSlots = slots.filter((slot) => slot.day_type === 'B')
+            if (policy === 'full_year' && term !== 'full_year') return 'This catalogue course is full year, but the screenshot was read as semester-only.'
+            if (policy === 'semester' && term === 'full_year') return 'This half-credit course must be assigned to Semester 1 or Semester 2.'
+            if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
+              if (term === 'full_year' && slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
+              if (term !== 'full_year' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) {
+                return 'Semester Gym, Wellness, or Study Hall must meet every A and B day.'
+              }
+              if (term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) {
+                return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
+              }
+            }
+            if (policy === 'lunch' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
+              return 'Lunch must use the same period on every A and B day.'
+            }
+            return null
+          }""", """function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: MeetingSlot[], courseName = ''): string | null {
+            if (term === 'unknown') return null
+            const aSlots = slots.filter((slot) => slot.day_type === 'A')
+            const bSlots = slots.filter((slot) => slot.day_type === 'B')
+            const fullYearStudyHallEveryDay = specialCourseKind(courseName) === 'Study Hall'
+              && slots.length === 2
+              && aSlots.length === 1
+              && bSlots.length === 1
+              && aSlots[0].period_number === bSlots[0].period_number
+            if (policy === 'full_year' && term !== 'full_year') return 'This catalogue course is full year, but the screenshot was read as semester-only.'
+            if (policy === 'semester' && term === 'full_year') return 'This half-credit course must be assigned to Semester 1 or Semester 2.'
+            if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
+              if (term === 'full_year' && slots.length !== 1 && !fullYearStudyHallEveryDay) {
+                return specialCourseKind(courseName) === 'Study Hall'
+                  ? 'Full-year Study Hall must meet on one day type or the same period on both A and B days.'
+                  : 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
+              }
+              if (term !== 'full_year' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) {
+                return 'Semester Gym, Wellness, or Study Hall must meet every A and B day.'
+              }
+              if (term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0].period_number) {
+                return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
+              }
+            }
+            if (policy === 'lunch' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number)) {
+              return 'Lunch must use the same period on every A and B day.'
+            }
+            return null
+          }""")
+
+          replace_once(core, """function exactClassMatch(
+            entry: NormalizedGeminiRow,
+            teacherLastName: string,
+            options: ImportClassOption[],
+            policy: CourseTermPolicy,
+          ): ImportClassOption | null {
+            if (entry.term === 'unknown') return null
+            const key = slotsKey(entry.meeting_slots)
+            return options.find((option) => (
+              collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
+              && (policy === 'flexible_attendance'
+                ? periodsKey(option.meeting_slots) === periodsKey(entry.meeting_slots)
+                : policy === 'lunch'
+                  ? slotsKey(option.meeting_slots) === key
+                  : option.term === entry.term && slotsKey(option.meeting_slots) === key)
+            )) ?? null
+          }""", """function exactClassMatch(
+            entry: NormalizedGeminiRow,
+            teacherLastName: string,
+            options: ImportClassOption[],
+            policy: CourseTermPolicy,
+            allowUniqueTeacherFallback = false,
+          ): ImportClassOption | null {
+            if (entry.term === 'unknown') return null
+            const key = slotsKey(entry.meeting_slots)
+            const scheduleMatches = options.filter((option) => (
+              policy === 'flexible_attendance'
+                ? periodsKey(option.meeting_slots) === periodsKey(entry.meeting_slots)
+                : policy === 'lunch'
+                  ? slotsKey(option.meeting_slots) === key
+                  : option.term === entry.term && slotsKey(option.meeting_slots) === key
+            ))
+            const teacherMatch = scheduleMatches.find((option) => (
+              collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
+            ))
+            if (teacherMatch) return teacherMatch
+            return allowUniqueTeacherFallback && scheduleMatches.length === 1 ? scheduleMatches[0] : null
+          }""")
+
+          replace_once(core, """    .replace(/\bhon\b/g, 'honors')
+              .replace(/\bmod\b/g, 'modern')""", """    .replace(/\bacad\b/g, 'academic')
+              .replace(/\bhon\b/g, 'honors')
+              .replace(/\bmod\b/g, 'modern')""")
+          replace_once(core, """    .replace(/\bchem\b/g, 'chemistry')
+              .replace(/\blang\b/g, 'language')""", """    .replace(/\bchem\b/g, 'chemistry')
+              .replace(/\benvironment\b/g, 'environmental')
+              .replace(/\blang\b/g, 'language')""")
+
+          replace_once(core, """function courseSimilarity(left: string, right: string): number {
+            const normalizedLeft = normalizeCourseName(left)
+            const normalizedRight = normalizeCourseName(right)
+            if (!normalizedLeft || !normalizedRight) return 0
+            if (normalizedLeft === normalizedRight) return 1
+            const leftTokens = new Set(normalizedLeft.split(' '))
+            const rightTokens = new Set(normalizedRight.split(' '))
+            let shared = 0
+            for (const token of leftTokens) if (rightTokens.has(token)) shared += 1
+            const dice = (2 * shared) / (leftTokens.size + rightTokens.size)
+            const edit = 1 - levenshtein(normalizedLeft, normalizedRight) / Math.max(normalizedLeft.length, normalizedRight.length)
+            const containment = normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft) ? 0.88 : 0
+            return Math.max(containment, dice * 0.68 + edit * 0.32)
+          }""", """function truncatedCoursePrefixSimilarity(source: string, candidate: string): number {
+            const trimmed = collapseWhitespace(source)
+            if (!/(?:\.{3,}|…)$/.test(trimmed)) return 0
+            const visible = trimmed.replace(/(?:\.{3,}|…)$/, '').trim()
+            const normalizedVisible = normalizeCourseName(visible)
+            const normalizedCandidate = normalizeCourseName(candidate)
+            if (!normalizedVisible || !normalizedCandidate) return 0
+            if (normalizedCandidate.startsWith(normalizedVisible)) return 0.98
+
+            const visibleTokens = normalizedVisible.split(' ')
+            if (visibleTokens.length < 2) return 0
+            const partialToken = visibleTokens.at(-1) ?? ''
+            const prefix = visibleTokens.slice(0, -1).join(' ')
+            if (!prefix) return 0
+            if (normalizedCandidate === prefix) return 0.98
+            if (!normalizedCandidate.startsWith(`${prefix} `)) return 0
+            const nextToken = normalizedCandidate.slice(prefix.length).trim().split(' ')[0] ?? ''
+            return partialToken.length >= 2 && nextToken.startsWith(partialToken) ? 0.98 : 0
+          }
+
+          function courseSimilarity(left: string, right: string): number {
+            const normalizedLeft = normalizeCourseName(left)
+            const normalizedRight = normalizeCourseName(right)
+            if (!normalizedLeft || !normalizedRight) return 0
+            if (normalizedLeft === normalizedRight) return 1
+            const leftTokens = new Set(normalizedLeft.split(' '))
+            const rightTokens = new Set(normalizedRight.split(' '))
+            let shared = 0
+            for (const token of leftTokens) if (rightTokens.has(token)) shared += 1
+            const dice = (2 * shared) / (leftTokens.size + rightTokens.size)
+            const edit = 1 - levenshtein(normalizedLeft, normalizedRight) / Math.max(normalizedLeft.length, normalizedRight.length)
+            const containment = normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft) ? 0.88 : 0
+            return Math.max(truncatedCoursePrefixSimilarity(left, right), containment, dice * 0.68 + edit * 0.32)
+          }""")
+
+          frontend = "src/lib/scheduleImport.ts"
+          replace_once(frontend, """  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
+              if (row.term === 'full_year' && row.meeting_slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
+              if (row.term !== 'full_year' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) return 'Semester Gym, Wellness, or Study Hall must meet every day.'
+              if (row.term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
+            }""", """  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
+              const fullYearStudyHallEveryDay = specialCourseKind(row.course.name) === 'Study Hall'
+                && row.meeting_slots.length === 2
+                && aSlots.length === 1
+                && bSlots.length === 1
+                && aSlots[0].period_number === bSlots[0].period_number
+              if (row.term === 'full_year' && row.meeting_slots.length !== 1 && !fullYearStudyHallEveryDay) {
+                return specialCourseKind(row.course.name) === 'Study Hall'
+                  ? 'Full-year Study Hall must meet on one day type or the same period on both A and B days.'
+                  : 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
+              }
+              if (row.term !== 'full_year' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) return 'Semester Gym, Wellness, or Study Hall must meet every day.'
+              if (row.term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
+            }""")
+
+          replace_once(frontend, """export function editableRowsFromImportResult(result: ScheduleImportResult): EditableScheduleImportRow[] {
+            return result.rows.map((row) => {
+              const savedReview = row as ScheduleImportRow & Partial<Pick<EditableScheduleImportRow, 'include' | 'selected_existing_class_id'>>
+              const normalizedTerm = normalizeReviewTerm(row.term)
+              return reconcileExactClassSelection({
+                ...row,
+                term: normalizedTerm === 'unknown' && (row.course?.term_policy ?? 'full_year') === 'full_year'
+                  ? 'full_year'
+                  : normalizedTerm,
+                selected_existing_class_id: savedReview.selected_existing_class_id ?? row.existing_class_id,
+                include: savedReview.include ?? true,
+              })
+            })
+          }""", """function completeImportedLunchSlots(row: Pick<ScheduleImportRow, 'course' | 'meeting_slots'>): MeetingSlot[] {
+            const isLunch = row.course?.term_policy === 'lunch' || specialCourseKind(row.course?.name) === 'Lunch'
+            if (!isLunch || row.meeting_slots.length !== 1) return row.meeting_slots
+            const slot = row.meeting_slots[0]
+            return sortMeetingSlots([
+              slot,
+              { day_type: slot.day_type === 'A' ? 'B' : 'A', period_number: slot.period_number },
+            ])
+          }
+
+          export function editableRowsFromImportResult(result: ScheduleImportResult): EditableScheduleImportRow[] {
+            return result.rows.map((row) => {
+              const savedReview = row as ScheduleImportRow & Partial<Pick<EditableScheduleImportRow, 'include' | 'selected_existing_class_id'>>
+              const normalizedTerm = normalizeReviewTerm(row.term)
+              return reconcileExactClassSelection({
+                ...row,
+                meeting_slots: completeImportedLunchSlots(row),
+                term: normalizedTerm === 'unknown' && (row.course?.term_policy ?? 'full_year') === 'full_year'
+                  ? 'full_year'
+                  : normalizedTerm,
+                selected_existing_class_id: savedReview.selected_existing_class_id ?? row.existing_class_id,
+                include: savedReview.include ?? true,
+              })
+            })
+          }""")
+
+          dialog = "src/components/schedule/AddClassDialog.tsx"
+          replace_once(dialog, """function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meetingSlots: MeetingSlot[], isDoublePeriod: boolean): string | null {""",
+                       """function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meetingSlots: MeetingSlot[], isDoublePeriod: boolean, courseName = ''): string | null {""")
+          replace_once(dialog, """    if (term === 'full_year' && meetingSlots.length !== 1) return 'A full-year entry must meet only on A days or only on B days.'""",
+                       """    const fullYearStudyHallEveryDay = isStudyHallCourseName(courseName)
+                && meetingSlots.length === 2
+                && aSlots.length === 1
+                && bSlots.length === 1
+                && aSlots[0].period_number === bSlots[0].period_number
+              if (term === 'full_year' && meetingSlots.length !== 1 && !fullYearStudyHallEveryDay) return 'A full-year entry must meet only on A days or only on B days.'""")
+          replace_once(dialog, """  const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)""",
+                       """  const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod, activeCourseName)""")
+          replace_once(dialog, """{selected ? <SelectedAttendanceControls policy={selectedPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}""",
+                       """{selected ? <SelectedAttendanceControls policy={selectedPolicy} courseName={selected.course_name} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}""")
+          replace_once(dialog, """<NewCourseFormatControls policy={creatingPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />""",
+                       """<NewCourseFormatControls policy={creatingPolicy} courseName={activeCourseName} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />""")
+          replace_once(dialog, """function SelectedAttendanceControls({ policy, term, meetingSlots, dayType, period, onChange }: {
+            policy: CourseTermPolicy
+            term: AcademicTerm""", """function SelectedAttendanceControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
+            policy: CourseTermPolicy
+            courseName: string
+            term: AcademicTerm""")
+          replace_once(dialog, """  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls fixedPeriod={meetingSlots[0]?.period_number ?? period} term={term} meetingSlots={meetingSlots} onChange={onChange} />""",
+                       """  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls fixedPeriod={meetingSlots[0]?.period_number ?? period} allowFullYearEveryDay={isStudyHallCourseName(courseName)} term={term} meetingSlots={meetingSlots} onChange={onChange} />""")
+          replace_once(dialog, """function NewCourseFormatControls({ policy, term, meetingSlots, dayType, period, onChange }: {
+            policy: CourseTermPolicy
+            term: AcademicTerm""", """function NewCourseFormatControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
+            policy: CourseTermPolicy
+            courseName: string
+            term: AcademicTerm""")
+          replace_once(dialog, """  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') return <FlexibleAttendanceControls term={term} meetingSlots={meetingSlots} onChange={onChange} />""",
+                       """  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') return <FlexibleAttendanceControls allowFullYearEveryDay={policy === 'flexible_attendance' && isStudyHallCourseName(courseName)} term={term} meetingSlots={meetingSlots} onChange={onChange} />""")
+
+          replace_once(dialog, """function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, onChange }: {
+            term: AcademicTerm
+            meetingSlots: MeetingSlot[]
+            fixedPeriod?: number
+            onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
+          }) {
+            const onlyDay = meetingSlots[0]?.day_type ?? 'A'
+            const pattern = term === 'full_year' ? `full_year_${onlyDay}` : term
+            const fallback = fixedPeriod ?? meetingSlots[0]?.period_number ?? 1
+            const aPeriod = meetingSlotsForDay(meetingSlots, 'A')[0]?.period_number ?? fallback
+            const semesterPeriod = fixedPeriod ?? aPeriod
+
+            function changePattern(nextPattern: string) {
+              if (nextPattern === 'full_year_A' || nextPattern === 'full_year_B') {
+                const nextDay = nextPattern.endsWith('_A') ? 'A' : 'B'
+                onChange('full_year', [{ day_type: nextDay, period_number: term === 'full_year' ? fallback : semesterPeriod }])
+                return
+              }
+              const nextPeriod = term === 'full_year' ? fallback : semesterPeriod
+              onChange(nextPattern as SemesterTerm, [{ day_type: 'A', period_number: nextPeriod }, { day_type: 'B', period_number: nextPeriod }])
+            }
+
+            function changePeriod(dayType: DayType, nextPeriod: number) {
+              if (term === 'full_year') {
+                onChange(term, [{ day_type: onlyDay, period_number: nextPeriod }])
+                return
+              }
+              onChange(term, semesterEveryDaySlots(nextPeriod))
+            }
+
+            return <fieldset className="meeting-slot-picker special-attendance-picker"><legend>Attendance pattern</legend>
+              <label>Format<select value={pattern} onChange={(event) => changePattern(event.target.value)}><option value="semester_1">Semester 1 · Every day</option><option value="semester_2">Semester 2 · Every day</option><option value="full_year_A">Full Year · A days only</option><option value="full_year_B">Full Year · B days only</option></select></label>
+              {fixedPeriod ? <p className="inferred-slot">Period: <strong>{fixedPeriod}</strong></p> : <div className="two-field-row">
+                {term === 'full_year' ? <DayPeriodSelect dayType={onlyDay} value={fallback} onChange={changePeriod} /> : <PeriodSelect value={semesterPeriod} onChange={(nextPeriod) => changePeriod('A', nextPeriod)} />}
+              </div>}
+              <p className="inferred-slot">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
+            </fieldset>
+          }""", """function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, allowFullYearEveryDay = false, onChange }: {
+            term: AcademicTerm
+            meetingSlots: MeetingSlot[]
+            fixedPeriod?: number
+            allowFullYearEveryDay?: boolean
+            onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
+          }) {
+            const onlyDay = meetingSlots[0]?.day_type ?? 'A'
+            const fallback = fixedPeriod ?? meetingSlots[0]?.period_number ?? 1
+            const aSlots = meetingSlotsForDay(meetingSlots, 'A')
+            const bSlots = meetingSlotsForDay(meetingSlots, 'B')
+            const fullYearEveryDay = term === 'full_year'
+              && aSlots.length === 1
+              && bSlots.length === 1
+              && aSlots[0].period_number === bSlots[0].period_number
+            const pattern = term === 'full_year'
+              ? fullYearEveryDay ? 'full_year_every_day' : `full_year_${onlyDay}`
+              : term
+            const aPeriod = aSlots[0]?.period_number ?? fallback
+            const semesterPeriod = fixedPeriod ?? aPeriod
+
+            function changePattern(nextPattern: string) {
+              if (nextPattern === 'full_year_A' || nextPattern === 'full_year_B') {
+                const nextDay = nextPattern.endsWith('_A') ? 'A' : 'B'
+                onChange('full_year', [{ day_type: nextDay, period_number: term === 'full_year' ? fallback : semesterPeriod }])
+                return
+              }
+              const nextPeriod = term === 'full_year' ? fallback : semesterPeriod
+              if (nextPattern === 'full_year_every_day') {
+                onChange('full_year', semesterEveryDaySlots(nextPeriod))
+                return
+              }
+              onChange(nextPattern as SemesterTerm, semesterEveryDaySlots(nextPeriod))
+            }
+
+            function changePeriod(dayType: DayType, nextPeriod: number) {
+              if (term === 'full_year') {
+                onChange(term, fullYearEveryDay
+                  ? semesterEveryDaySlots(nextPeriod)
+                  : [{ day_type: onlyDay, period_number: nextPeriod }])
+                return
+              }
+              onChange(term, semesterEveryDaySlots(nextPeriod))
+            }
+
+            return <fieldset className="meeting-slot-picker special-attendance-picker"><legend>Attendance pattern</legend>
+              <label>Format<select value={pattern} onChange={(event) => changePattern(event.target.value)}><option value="semester_1">Semester 1 · Every day</option><option value="semester_2">Semester 2 · Every day</option><option value="full_year_A">Full Year · A days only</option><option value="full_year_B">Full Year · B days only</option>{allowFullYearEveryDay ? <option value="full_year_every_day">Full Year · Every day</option> : null}</select></label>
+              {fixedPeriod ? <p className="inferred-slot">Period: <strong>{fixedPeriod}</strong></p> : <div className="two-field-row">
+                {term === 'full_year' && !fullYearEveryDay ? <DayPeriodSelect dayType={onlyDay} value={fallback} onChange={changePeriod} /> : <PeriodSelect value={term === 'full_year' ? aPeriod : semesterPeriod} onChange={(nextPeriod) => changePeriod('A', nextPeriod)} />}
+              </div>}
+              <p className="inferred-slot">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
+            </fieldset>
+          }""")
+
+          core_test = "supabase/functions/schedule-import/core.test.ts"
+          marker = """  it('keeps the same course and teacher at different periods as separate rows', async () => {"""
+          insertion = """  it('matches common PowerSchool abbreviations and truncated course names without hiding real ambiguity', () => {
+              const matchingCatalog: CourseRecord[] = [
+                { id: '10000000-0000-4000-8000-000000000001', name: 'Academic Spanish 3', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000002', name: 'Academic Spanish 4', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000003', name: 'AP English 3 Language & Composition', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000004', name: 'AP Physics 1&2', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000005', name: 'AP Physics 1', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000006', name: 'AP Physics 2', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000007', name: 'AP Environmental Science', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000008', name: 'Symphonic Band - NAI', term_policy: 'full_year' },
+                { id: '10000000-0000-4000-8000-000000000009', name: 'Symphonic Band - NASH', term_policy: 'full_year' },
+              ]
+
+              expect(findCourseMatch('Acad Spanish 3', matchingCatalog)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'Academic Spanish 3' },
+              })
+              expect(findCourseMatch('AP English 3 Lan...', matchingCatalog, 11)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'AP English 3 Language & Composition' },
+              })
+              expect(findCourseMatch('AP Physics 1 & 2 (C...', matchingCatalog, 11)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'AP Physics 1&2' },
+              })
+              expect(findCourseMatch('AP Environment Science', matchingCatalog)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'AP Environmental Science' },
+              })
+              expect(findCourseMatch('Symphonic Band...', matchingCatalog)).toMatchObject({ kind: 'ambiguous', course: null })
+              expect(findCourseMatch('Symphonic Band...', matchingCatalog, 9)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'Symphonic Band - NAI' },
+              })
+              expect(findCourseMatch('Symphonic Band...', matchingCatalog, 12)).toMatchObject({
+                kind: 'matched',
+                course: { name: 'Symphonic Band - NASH' },
+              })
+            })
+
+          """
+          replace_once(core_test, marker, insertion + marker)
+
+          marker = """  it('assigns ordered semesters to two semester-capable classes sharing one A/B period', async () => {"""
+          insertion = """  it('auto-completes one-sided Lunch to the same A/B period', async () => {
+              const response = await handleScheduleImportRequest(request([png()]), dependencies({
+                config: config({ retry_incomplete_results: false }),
+                output: {
+                  schedule: true,
+                  issue: '',
+                  rows: [{ course: 'Lunch (SEM 1)', teacher: 'Staff, Unassigned', term: 'S1', slots: ['A5'] }],
+                },
+              }))
+              expect(response.status).toBe(200)
+              expect((await responseBody(response)).rows).toEqual([
+                expect.objectContaining({
+                  term: 'semester_1',
+                  meeting_slots: [{ day_type: 'A', period_number: 5 }, { day_type: 'B', period_number: 5 }],
+                  flags: [],
+                }),
+              ])
+            })
+
+            it('allows full-year Study Hall on the same period on both A and B days', async () => {
+              const response = await handleScheduleImportRequest(request([png()]), dependencies({
+                config: config({ retry_incomplete_results: false }),
+                output: {
+                  schedule: true,
+                  issue: '',
+                  rows: [{ course: 'Study Hall', teacher: 'Staff, Unassigned', term: 'FY', slots: ['A6', 'B6'] }],
+                },
+              }))
+              expect(response.status).toBe(200)
+              expect((await responseBody(response)).rows).toEqual([
+                expect.objectContaining({
+                  course: expect.objectContaining({ name: 'Study Hall - NASH' }),
+                  term: 'full_year',
+                  meeting_slots: [{ day_type: 'A', period_number: 6 }, { day_type: 'B', period_number: 6 }],
+                  flags: [],
+                }),
+              ])
+            })
+
+            it('uses the unique matching existing section when the teacher is unreadable', async () => {
+              const response = await handleScheduleImportRequest(request([png()]), dependencies({
+                config: config({ retry_incomplete_results: false }),
+                output: {
+                  schedule: true,
+                  issue: '',
+                  rows: [{ course: 'AP Biology (CHS)', teacher: '', term: 'FY', slots: ['A1', 'B1', 'A2'] }],
+                },
+                classes: [{
+                  id: CLASS_ID,
+                  course_name_id: COURSE_ID,
+                  teacher_last_name: 'Spak',
+                  default_academic_term: 'full_year',
+                  meeting_slots: [
+                    { day_type: 'A', period_number: 1 },
+                    { day_type: 'A', period_number: 2 },
+                    { day_type: 'B', period_number: 1 },
+                  ],
+                }],
+              }))
+              expect(response.status).toBe(200)
+              expect((await responseBody(response)).rows).toEqual([
+                expect.objectContaining({
+                  teacher_last_name: 'Spak',
+                  resolution: 'existing_class',
+                  existing_class_id: CLASS_ID,
+                  flags: [],
+                }),
+              ])
+            })
+
+          """
+          replace_once(core_test, marker, insertion + marker)
+
+          frontend_test = "src/lib/scheduleImport.test.ts"
+          marker = """  it('rejects mismatched A/B periods for semester Gym and Wellness review rows', () => {"""
+          insertion = """  it('auto-completes a one-sided Lunch import to both A and B days', () => {
+              const lunchResult = {
+                image_count: 1,
+                warnings: [],
+                rows: [{
+                  ...row,
+                  course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch - NASH', confidence: 1, term_policy: 'lunch' as const },
+                  teacher_last_name: 'N/A',
+                  term: 'semester_1' as const,
+                  meeting_slots: [{ day_type: 'A' as const, period_number: 5 }],
+                  class_options: [],
+                }],
+              }
+              expect(editableRowsFromImportResult(lunchResult)[0].meeting_slots).toEqual([
+                { day_type: 'A', period_number: 5 },
+                { day_type: 'B', period_number: 5 },
+              ])
+              expect(importRowError(editableRowsFromImportResult(lunchResult)[0])).toBeNull()
+            })
+
+            it('allows full-year Study Hall every day while keeping the Gym restriction', () => {
+              const everyDay = [{ day_type: 'A' as const, period_number: 6 }, { day_type: 'B' as const, period_number: 6 }]
+              expect(importRowError({
+                ...row,
+                term: 'full_year',
+                meeting_slots: everyDay,
+                course: { ...row.course!, name: 'Study Hall - NASH', term_policy: 'flexible_attendance' },
+                teacher_last_name: 'N/A',
+              })).toBeNull()
+              expect(importRowError({
+                ...row,
+                term: 'full_year',
+                meeting_slots: everyDay,
+                course: { ...row.course!, name: 'Gym', term_policy: 'flexible_attendance' },
+              })).toContain('only A days or only B days')
+            })
+
+          """
+          replace_once(frontend_test, marker, insertion + marker)
+
+          db_test = "supabase/tests/database/semester_enrollment_patterns.test.sql"
+          replace_once(db_test, "select plan(42);", "select plan(43);")
+          replace_once(db_test, """insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+          select '96000000-0000-4000-8000-000000000032', id, 'Cafe', 'semester_2', false, '96000000-0000-4000-8000-000000000001'
+          from public.course_names where normalized_name = 'lunch - nash';""", """insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+          select '96000000-0000-4000-8000-000000000032', id, 'Cafe', 'semester_2', false, '96000000-0000-4000-8000-000000000001'
+          from public.course_names where normalized_name = 'lunch - nash';
+          insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+          select '96000000-0000-4000-8000-000000000033', id, 'N/A', 'full_year', false, '96000000-0000-4000-8000-000000000001'
+          from public.course_names where normalized_name = 'study hall - nash';""")
+          replace_once(db_test, """  ('96000000-0000-4000-8000-000000000032', 'A', 8),
+            ('96000000-0000-4000-8000-000000000032', 'B', 8);""", """  ('96000000-0000-4000-8000-000000000032', 'A', 8),
+            ('96000000-0000-4000-8000-000000000032', 'B', 8),
+            ('96000000-0000-4000-8000-000000000033', 'A', 9),
+            ('96000000-0000-4000-8000-000000000033', 'B', 9);
+
+          select lives_ok(
+            $$select private.assert_enrollment_schedule_allowed(
+              '96000000-0000-4000-8000-000000000033',
+              'full_year',
+              '[{"day_type":"A","period_number":9},{"day_type":"B","period_number":9}]'
+            )$$,
+            'full-year Study Hall can meet in the same period on both A and B days'
+          );""")
+
+          migration = dedent(r"""
+          -- Study Hall can be a full-year class on A-only, B-only, or the same
+          -- period on both A and B days. Keep Gym/Wellness restrictions unchanged.
+          create or replace function private.assert_enrollment_schedule_allowed(
+            target_class_id uuid,
+            requested_term public.academic_term,
+            requested_slots jsonb
+          )
+          returns void
+          language plpgsql
+          stable
+          security definer
+          set search_path = ''
+          as $$
+          declare
+            class_term public.academic_term;
+            policy public.course_term_policy;
+            course_normalized_name text;
+            default_slots jsonb;
+            slot_count integer;
+            a_count integer;
+            b_count integer;
+            min_period integer;
+            max_period integer;
+          begin
+            select class_record.default_academic_term, course_name.term_policy, course_name.normalized_name
+            into class_term, policy, course_normalized_name
+            from public.classes class_record
+            join public.course_names course_name on course_name.id = class_record.course_name_id
+            where class_record.id = target_class_id
+              and class_record.status = 'active'
+              and course_name.status = 'active';
+
+            if not found then
+              raise exception 'active_class_not_found' using errcode = 'P0002';
+            end if;
+
+            perform private.assert_valid_enrollment_meeting_slots(requested_slots);
+            default_slots := private.class_slots_json(target_class_id);
+
+            select count(*),
+                   count(*) filter (where slot.day_type = 'A'),
+                   count(*) filter (where slot.day_type = 'B'),
+                   min(slot.period_number),
+                   max(slot.period_number)
+            into slot_count, a_count, b_count, min_period, max_period
+            from jsonb_to_recordset(requested_slots) slot(day_type public.day_type, period_number smallint);
+
+            if policy = 'full_year' then
+              if requested_term <> 'full_year' then
+                raise exception 'full_year_course_requires_full_year' using errcode = '23514';
+              end if;
+              if not private.meeting_slots_equal(requested_slots, default_slots) then
+                raise exception 'class_meeting_slots_locked' using errcode = '23514';
+              end if;
+            elsif policy = 'semester' then
+              if requested_term <> class_term then
+                raise exception 'semester_course_term_mismatch' using errcode = '23514';
+              end if;
+              if not private.meeting_slots_equal(requested_slots, default_slots) then
+                raise exception 'class_meeting_slots_locked' using errcode = '23514';
+              end if;
+            elsif policy in ('variable_credit', 'versioned') then
+              if requested_term <> class_term then
+                raise exception 'course_version_term_mismatch' using errcode = '23514';
+              end if;
+              if not private.meeting_slots_equal(requested_slots, default_slots) then
+                raise exception 'class_meeting_slots_locked' using errcode = '23514';
+              end if;
+            elsif policy in ('flexible_attendance', 'sectioned_attendance') then
+              if requested_term = 'full_year' then
+                if course_normalized_name in ('study hall', 'study hall - nai', 'study hall - nash') then
+                  if not (
+                    (slot_count = 1 and (a_count = 1 or b_count = 1))
+                    or (slot_count = 2 and a_count = 1 and b_count = 1 and min_period = max_period)
+                  ) then
+                    raise exception 'full_year_special_requires_one_day' using errcode = '23514';
+                  end if;
+                elsif slot_count <> 1 or (a_count <> 1 and b_count <> 1) then
+                  raise exception 'full_year_special_requires_one_day' using errcode = '23514';
+                end if;
+              elsif slot_count <> 2 or a_count <> 1 or b_count <> 1 then
+                raise exception 'semester_special_requires_every_day' using errcode = '23514';
+              elsif min_period <> max_period then
+                raise exception 'semester_special_requires_same_period' using errcode = '23514';
+              end if;
+
+              if policy = 'sectioned_attendance' then
+                if requested_term <> class_term then
+                  raise exception 'sectioned_attendance_term_mismatch' using errcode = '23514';
+                end if;
+                if not private.meeting_slots_equal(requested_slots, default_slots) then
+                  raise exception 'sectioned_attendance_slots_locked' using errcode = '23514';
+                end if;
+              end if;
+            elsif policy = 'lunch' then
+              if slot_count <> 2 or a_count <> 1 or b_count <> 1 or min_period <> max_period then
+                raise exception 'lunch_requires_same_period_every_day' using errcode = '23514';
+              end if;
+              if not private.meeting_slots_equal(requested_slots, default_slots) then
+                raise exception 'lunch_period_does_not_match_section' using errcode = '23514';
+              end if;
+            end if;
+          end;
+          $$;
+
+          revoke all on function private.assert_enrollment_schedule_allowed(uuid, public.academic_term, jsonb)
+          from public, anon, authenticated;
+          """).lstrip()
+          Path("supabase/migrations/20260807155500_allow_full_year_study_hall_every_day.sql").write_text(migration)
+          PY
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:function
+      - run: pnpm test -- src/lib/scheduleImport.test.ts
+      - run: pnpm typecheck
+      - name: Commit tested changes
+        shell: bash
+        run: |
+          rm .github/workflows/apply-schedule-import-fixes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix schedule import review false positives"
+          git push origin HEAD:fix/schedule-import-review-rules
