@@ -169,9 +169,9 @@ select is(
   'class merge preserves both students and avoids duplicate canonical enrollments'
 );
 select is(
-  (select status::text from public.classes where id = '91000000-0000-4000-8000-000000000004'),
-  'merged',
-  'duplicate class is archived as merged'
+  (select count(*) from public.classes where id = '91000000-0000-4000-8000-000000000004'),
+  0::bigint,
+  'duplicate class row is deleted after merge'
 );
 
 select * from finish();
