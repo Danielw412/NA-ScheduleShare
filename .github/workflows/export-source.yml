@@ -1,19 +1,215 @@
-name: Export repository source
+name: Apply and validate schedule import fixes
 
 on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  apply-test-commit:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/upload-artifact@v4
         with:
-          name: repository-source
-          path: .
-          include-hidden-files: true
-          if-no-files-found: error
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply importer, UI, and database fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/apply-schedule-import-fixes.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(source) if line.strip() == "python <<'PY'") + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          patch_lines = [line[10:] if line.startswith('          ') else line for line in source[start:end]]
+          patch = '\n'.join(patch_lines) + '\n'
+
+          old_helper = '''def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {text.count(old)}")
+              file.write_text(text.replace(old, new, 1))'''
+          new_helper = '''def replace_once(path, old, new):
+              import re
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count == 1:
+                  file.write_text(text.replace(old, new, 1))
+                  return
+              if count == 0:
+                  lines = old.splitlines()
+                  pattern = r"\\n".join(r"[ \\t]*" + re.escape(line.strip()) for line in lines)
+                  replaced, match_count = re.subn(pattern, new, text, count=1, flags=re.MULTILINE)
+                  if match_count == 1:
+                      file.write_text(replaced)
+                      return
+              raise SystemExit(f"{path}: expected exactly one match, found {count}")'''
+          if old_helper not in patch:
+              raise SystemExit('Could not locate patch helper')
+          patch = patch.replace(old_helper, new_helper, 1)
+          # Preserve JS/TS regex word-boundary escapes inside Python string literals.
+          patch = patch.replace('\\b', '\\\\b')
+          Path('/tmp/apply_schedule_import_fixes.py').write_text(patch)
+          PY
+          python /tmp/apply_schedule_import_fixes.py
+      - name: Keep Schedule Engine consistent with Study Hall rule
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one match, got {text.count(old)}')
+              file.write_text(text.replace(old, new, 1))
+
+          worker = 'schedule-engine-worker/src/prediction-engine.ts'
+          replace_once(worker, """  if (placement.course_term_policy === 'flexible_attendance' || placement.course_term_policy === 'sectioned_attendance') {
+              const aSlots = slots.filter((slot) => slot.day_type === 'A')
+              const bSlots = slots.filter((slot) => slot.day_type === 'B')
+              if (placement.academic_term === 'full_year') {
+                if (slots.length !== 1) return 'must meet on exactly one A or B day when full-year'
+              } else if (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number) {
+                return 'must meet every day in the same period when semester-long'
+              }
+            }""", """  if (placement.course_term_policy === 'flexible_attendance' || placement.course_term_policy === 'sectioned_attendance') {
+              const aSlots = slots.filter((slot) => slot.day_type === 'A')
+              const bSlots = slots.filter((slot) => slot.day_type === 'B')
+              const fullYearStudyHallEveryDay = /^study hall(?:\\s*-\\s*(?:nai|nash))?$/i.test(placement.course_name.trim())
+                && slots.length === 2
+                && aSlots.length === 1
+                && bSlots.length === 1
+                && aSlots[0].period_number === bSlots[0].period_number
+              if (placement.academic_term === 'full_year') {
+                if (slots.length !== 1 && !fullYearStudyHallEveryDay) return 'must meet on one day type or, for Study Hall, the same period every day when full-year'
+              } else if (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number) {
+                return 'must meet every day in the same period when semester-long'
+              }
+            }""")
+
+          source = Path('supabase/migrations/20260804201030_expand_schedule_engine_flexible_patterns.sql').read_text()
+          start = source.index('create or replace function private.expand_schedule_engine_flexible_sections(payload jsonb)')
+          end = source.index('\ncreate or replace function public.get_schedule_engine_worker_input', start)
+          function_sql = source[start:end]
+          old_variant = """        (
+                    'semester_2',
+                    jsonb_build_array(
+                      jsonb_build_object('day_type', 'A', 'period_number', period_source.period_number),
+                      jsonb_build_object('day_type', 'B', 'period_number', period_source.period_number)
+                    )
+                  )
+              ) variant(academic_term, meeting_slots)
+            ),"""
+          new_variant = """        (
+                    'semester_2',
+                    jsonb_build_array(
+                      jsonb_build_object('day_type', 'A', 'period_number', period_source.period_number),
+                      jsonb_build_object('day_type', 'B', 'period_number', period_source.period_number)
+                    )
+                  ),
+                  (
+                    'full_year',
+                    case
+                      when lower(period_source.section ->> 'course_name') in ('study hall', 'study hall - nai', 'study hall - nash') then
+                        jsonb_build_array(
+                          jsonb_build_object('day_type', 'A', 'period_number', period_source.period_number),
+                          jsonb_build_object('day_type', 'B', 'period_number', period_source.period_number)
+                        )
+                      else null
+                    end
+                  )
+              ) variant(academic_term, meeting_slots)
+              where variant.meeting_slots is not null
+            ),"""
+          if old_variant not in function_sql:
+              raise SystemExit('Could not locate Schedule Engine flexible variant block')
+          function_sql = function_sql.replace(old_variant, new_variant, 1)
+          Path('supabase/migrations/20260807155600_expand_full_year_study_hall_patterns.sql').write_text(
+              "-- Include full-year every-day Study Hall in Schedule Engine choices while\n"
+              "-- retaining A-only/B-only full-year patterns for other flexible-attendance courses.\n"
+              + function_sql
+              + "\n\nrevoke all on function private.expand_schedule_engine_flexible_sections(jsonb)\n"
+                "from public, anon, authenticated;\n\n"
+                "comment on function private.expand_schedule_engine_flexible_sections(jsonb) is\n"
+                "'Adds legal flexible-attendance patterns for each represented period, including full-year A/B same-period Study Hall.';\n"
+          )
+
+          db_test = 'supabase/tests/database/schedule_engine_flexible_patterns.test.sql'
+          replace_once(db_test, 'select plan(20);', 'select plan(21);')
+          replace_once(db_test, """  13,
+            'two Study Hall sections, one Gym section, and one fixed section expand to thirteen unique placements'""", """  15,
+            'two Study Hall sections, one Gym section, and one fixed section expand to fifteen unique placements'""")
+          replace_once(db_test, """    where section ->> 'course_term_policy' = 'flexible_attendance'
+                and section ->> 'academic_term' = 'full_year'
+                and jsonb_array_length(section -> 'meeting_slots') <> 1
+            ),
+            0::bigint,
+            'every generated full-year flexible placement is exactly one A/B-day meeting'
+          );""", """    where section ->> 'course_term_policy' = 'flexible_attendance'
+                and section ->> 'academic_term' = 'full_year'
+                and not (
+                  jsonb_array_length(section -> 'meeting_slots') = 1
+                  or (
+                    lower(section ->> 'course_name') in ('study hall', 'study hall - nai', 'study hall - nash')
+                    and jsonb_array_length(section -> 'meeting_slots') = 2
+                    and section -> 'meeting_slots' @> '[{\"day_type\":\"A\"}]'::jsonb
+                    and section -> 'meeting_slots' @> '[{\"day_type\":\"B\"}]'::jsonb
+                    and (section #>> '{meeting_slots,0,period_number}') = (section #>> '{meeting_slots,1,period_number}')
+                  )
+                )
+            ),
+            0::bigint,
+            'full-year flexible placements use one day except same-period A/B Study Hall'
+          );
+
+          select is(
+            (
+              select count(*)
+              from expanded_schedule_engine_payload payload_row
+              cross join lateral jsonb_array_elements(payload_row.payload -> 'available_sections') section
+              where lower(section ->> 'course_name') = 'study hall - nash'
+                and section ->> 'academic_term' = 'full_year'
+                and jsonb_array_length(section -> 'meeting_slots') = 2
+                and section -> 'meeting_slots' @> '[{\"day_type\":\"A\"}]'::jsonb
+                and section -> 'meeting_slots' @> '[{\"day_type\":\"B\"}]'::jsonb
+            ),
+            2::bigint,
+            'each Study Hall period gets a full-year every-day placement'
+          );""")
+          PY
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test -- src/lib/scheduleImport.test.ts
+      - run: pnpm test:function
+      - run: pnpm test:schedule-engine
+      - name: Start local Supabase
+        run: pnpm exec supabase start
+      - name: Test database privacy and integrity
+        run: pnpm test:privacy
+      - name: Stop local Supabase
+        if: always()
+        run: pnpm exec supabase stop --no-backup
+      - name: Commit tested implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix schedule import review false positives"
+          git push origin HEAD:${{ github.head_ref }}
