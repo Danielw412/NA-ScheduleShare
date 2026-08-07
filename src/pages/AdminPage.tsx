@@ -210,6 +210,10 @@ export function AdminPage() {
   }
 
   function permanentlyDeleteClass(course: AdminClassRecord) {
+    if (course.active_enrollment_count > 0) {
+      const count = course.active_enrollment_count
+      if (!window.confirm(`Delete ${course.course_name} with ${course.teacher_last_name}? ${count} active student${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} currently enrolled.`)) return
+    }
     void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
   }
 
