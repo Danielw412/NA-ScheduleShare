@@ -5,6 +5,8 @@ import { readBoundedJson } from './http'
 
 const SHARE_PATH = /^\/share\/([^/]{1,128})(\/image\.png)?$/i
 const SHARE_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SHARE_PAGE_TITLE = 'Schedule | NA ScheduleShare'
+const SHARE_PREVIEW_VERSION = '2'
 const WIDTH = 1200
 const HEIGHT = 630
 const MAX_PUBLIC_SCHEDULE_ROWS = 54
@@ -108,11 +110,12 @@ async function fetchPublicSchedule(token: string, env: ShareEnv, requestId?: str
 
 function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: ShareEnv, nonce: string): string {
   const canonicalUrl = `${url.origin}${url.pathname}`
-  const imageUrl = `${canonicalUrl}/image.png`
+  const previewUrl = `${canonicalUrl}?v=${SHARE_PREVIEW_VERSION}`
+  const imageUrl = `${canonicalUrl}/image.png?v=${SHARE_PREVIEW_VERSION}`
   const siteUrl = configuredSiteUrl(env)
   const reactUrl = `${siteUrl}/#/share/${encodeURIComponent(token)}`
   const title = share.available
-    ? 'Schedule | NA ScheduleShare'
+    ? SHARE_PAGE_TITLE
     : 'Schedule unavailable | NA ScheduleShare'
   const description = share.available
     ? 'A shared A/B-day class schedule with periods and course names.'
@@ -127,8 +130,9 @@ function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: Shar
 <meta property="og:type" content="website">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
-<meta property="og:url" content="${escapeHtml(canonicalUrl)}">
+<meta property="og:url" content="${escapeHtml(previewUrl)}">
 <meta property="og:image" content="${escapeHtml(imageUrl)}">
+<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/png">
@@ -152,6 +156,7 @@ export async function handleShareRequest(request: Request, env: ShareEnv): Promi
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'X-Robots-Tag': 'noindex, nofollow, noarchive',
+    'X-ScheduleShare-Share-Version': SHARE_PREVIEW_VERSION,
   })
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     headers.set('Allow', 'GET, HEAD')
