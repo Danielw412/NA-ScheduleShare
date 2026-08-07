@@ -9,27 +9,72 @@ permissions:
   contents: read
 
 jobs:
-  tail-worker-runtime:
+  remote-worker-reproduction:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
     steps:
-      - name: Capture Worker logs for exact share request
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Reproduce share handler in Cloudflare remote runtime
         shell: bash
         run: |
           set -euo pipefail
-          rm -f /tmp/worker-tail.log
-          timeout 30s npx --yes wrangler@4.111.0 tail na-scheduleshare-import --format json > /tmp/worker-tail.log 2>&1 &
-          tail_pid=$!
-          sleep 10
-          echo 'request_status:'
-          curl --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
-            'https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875' || true
-          sleep 10
-          kill "$tail_pid" 2>/dev/null || true
-          wait "$tail_pid" 2>/dev/null || true
-          echo '--- captured Worker tail ---'
-          cat /tmp/worker-tail.log
+          cat > cloudflare/schedule-import-worker/.dev.vars <<EOF
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+          EOF
+          chmod 600 cloudflare/schedule-import-worker/.dev.vars
+
+          rm -f /tmp/remote-worker.log /tmp/remote-body.txt /tmp/remote-headers.txt
+          timeout 60s pnpm exec wrangler dev --remote \
+            --config cloudflare/schedule-import-worker/wrangler.toml \
+            --ip 127.0.0.1 --port 8787 \
+            > /tmp/remote-worker.log 2>&1 &
+          worker_pid=$!
+
+          ready=0
+          for i in $(seq 1 30); do
+            if curl --silent --output /dev/null --connect-timeout 1 http://127.0.0.1:8787/ 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          echo "remote_ready=$ready"
+          if [ "$ready" != 1 ]; then
+            echo '--- remote worker log ---'
+            cat /tmp/remote-worker.log
+            exit 1
+          fi
+
+          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            --dump-header /tmp/remote-headers.txt \
+            --output /tmp/remote-body.txt \
+            --write-out '%{http_code}' \
+            'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875')
+          echo "remote_share_http_status=$status"
+          echo '--- remote response headers ---'
+          cat /tmp/remote-headers.txt
+          echo '--- remote response title ---'
+          grep -o '<title>[^<]*</title>' /tmp/remote-body.txt || true
+          sleep 2
+          kill "$worker_pid" 2>/dev/null || true
+          wait "$worker_pid" 2>/dev/null || true
+          echo '--- remote worker log ---'
+          cat /tmp/remote-worker.log
+
+          rm -f cloudflare/schedule-import-worker/.dev.vars
