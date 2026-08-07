@@ -28,10 +28,10 @@ set grade = 11, onboarding_completed = true
 where id = '98400000-0000-4000-8000-000000000001';
 
 insert into public.course_names (id, name, normalized_name, status, source, term_policy) values
-  ('98410000-0000-4000-8000-000000000001', 'Schedule Engine Source One', 'schedule engine source one', 'active', 'test', 'full_year'),
-  ('98410000-0000-4000-8000-000000000002', 'Schedule Engine Source Two', 'schedule engine source two', 'active', 'test', 'full_year'),
-  ('98410000-0000-4000-8000-000000000003', 'Study Hall - Test', 'study hall - test', 'active', 'test', 'flexible_attendance'),
-  ('98410000-0000-4000-8000-000000000004', 'Schedule Engine Normal Target', 'schedule engine normal target', 'active', 'test', 'full_year');
+  ('98410000-0000-4000-8000-000000000001', 'Schedule Engine Source One', 'schedule engine source one', 'active', 'user', 'full_year'),
+  ('98410000-0000-4000-8000-000000000002', 'Schedule Engine Source Two', 'schedule engine source two', 'active', 'user', 'full_year'),
+  ('98410000-0000-4000-8000-000000000003', 'Study Hall - Test', 'study hall - test', 'active', 'user', 'flexible_attendance'),
+  ('98410000-0000-4000-8000-000000000004', 'Schedule Engine Normal Target', 'schedule engine normal target', 'active', 'user', 'full_year');
 
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by) values
   ('98420000-0000-4000-8000-000000000001', '98410000-0000-4000-8000-000000000001', 'One', 'full_year', false, '98400000-0000-4000-8000-000000000001'),
