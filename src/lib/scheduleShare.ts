@@ -2,7 +2,7 @@ import { supabase } from './supabase/client'
 import { recordShareButtonPressed } from './supabase/data'
 import type { AcademicTerm, DayType, ScheduleEnrollment } from './domain'
 
-export const scheduleShareTitle = 'My A/B-Day Schedule | NA ScheduleShare'
+export const scheduleShareTitle = 'My Schedule | NA ScheduleShare'
 
 const shareServiceBaseUrl = import.meta.env.VITE_SCHEDULE_SHARE_BASE_URL?.trim().replace(/\/$/, '')
 const tokenPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
