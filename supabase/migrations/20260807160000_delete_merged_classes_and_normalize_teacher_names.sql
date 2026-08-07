@@ -33,7 +33,7 @@ $$;
 
 -- A merged duplicate has no remaining purpose once its enrollments and
 -- enrollment-specific meeting slots have been transferred to the canonical
--- class. Preserve the immutable history/audit records, then remove the row.
+-- class. Preserve reports/history/audit data, then remove the duplicate row.
 create or replace function private.merge_class_records(
   canonical_class_id uuid,
   duplicate_class_id uuid,
@@ -84,7 +84,8 @@ begin
   select jsonb_build_object(
     'canonical', (select to_jsonb(c) from public.classes c where c.id = canonical_class_id),
     'duplicate', (select to_jsonb(c) from public.classes c where c.id = duplicate_class_id),
-    'duplicate_enrollment_count', (select count(*) from public.class_enrollments e where e.class_id = duplicate_class_id)
+    'duplicate_enrollment_count', (select count(*) from public.class_enrollments e where e.class_id = duplicate_class_id),
+    'duplicate_report_count', (select count(*) from public.reports r where r.reported_class_id = duplicate_class_id)
   ) into before_data;
 
   insert into public.schedule_change_history (student_id, action, previous_value, new_value, changed_by)
@@ -143,6 +144,12 @@ begin
     end if;
   end loop;
 
+  -- A class-only report must keep a valid target. Point reports at the
+  -- canonical class before deleting the duplicate so the report remains usable.
+  update public.reports
+  set reported_class_id = canonical_class_id
+  where reported_class_id = duplicate_class_id;
+
   delete from public.classes
   where id = duplicate_class_id;
 
@@ -174,7 +181,7 @@ where status = 'active'
 
 -- Teacher cleanup may make two previously distinct sections identical.
 -- Coalesce those sections using the normal merge path, which now removes the
--- duplicate class row after moving enrollments.
+-- duplicate class row after moving enrollments and report targets.
 do $$
 declare
   course_record record;
@@ -194,9 +201,10 @@ begin
 end;
 $$;
 
--- Old merge behavior left status='merged' rows behind. Refuse to cascade away
--- an unexpected enrollment; otherwise preserve report readability and remove
--- the obsolete class records.
+-- Old merge behavior left status='merged' rows behind. The live preflight for
+-- this migration found no enrollments or reports pointing at those rows. Abort
+-- instead of cascading away an unexpected reference if that changes before
+-- deployment.
 do $$
 begin
   if exists (
@@ -207,15 +215,17 @@ begin
   ) then
     raise exception 'merged_class_cleanup_found_enrollments' using errcode = '23514';
   end if;
+
+  if exists (
+    select 1
+    from public.reports report
+    join public.classes class_record on class_record.id = report.reported_class_id
+    where class_record.status = 'merged'
+  ) then
+    raise exception 'merged_class_cleanup_found_reports' using errcode = '23514';
+  end if;
 end;
 $$;
-
-update public.reports report
-set reported_course_name_snapshot = coalesce(report.reported_course_name_snapshot, course_name.name)
-from public.classes class_record
-join public.course_names course_name on course_name.id = class_record.course_name_id
-where report.reported_class_id = class_record.id
-  and class_record.status = 'merged';
 
 delete from public.classes
 where status = 'merged';
