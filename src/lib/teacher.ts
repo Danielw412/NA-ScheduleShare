@@ -9,7 +9,10 @@ function hasControlCharacter(value: string): boolean {
 }
 
 export function normalizeTeacherLastName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ')
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  if (OBVIOUSLY_INVALID_CHARACTERS.test(normalized) || hasControlCharacter(normalized)) return normalized
+  const words = normalized.split(' ')
+  return words.length === 2 ? words[1] : normalized
 }
 
 export function teacherLastNameError(value: string): string | null {
