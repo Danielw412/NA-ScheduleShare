@@ -4,6 +4,10 @@
 alter table public.schedule_engine_replacement_courses
   drop constraint if exists schedule_engine_replacement_courses_job_id_course_name_id_key;
 
+create unique index schedule_engine_replacement_courses_non_study_unique_idx
+on public.schedule_engine_replacement_courses(job_id, course_name_id)
+where lower(btrim(course_name)) not like 'study hall%';
+
 create or replace function private.create_schedule_engine_job(
   p_replacements jsonb,
   p_email_notification boolean default true
