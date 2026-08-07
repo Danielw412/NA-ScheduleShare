@@ -108,8 +108,8 @@ select is(
     cross join lateral jsonb_array_elements(payload_row.payload -> 'available_sections') section
     where section ->> 'class_id' = 'study-p3'
   ),
-  4::bigint,
-  'a semester-default Study Hall section exposes all four legal patterns at its period'
+  5::bigint,
+  'a semester-default Study Hall section exposes all five legal patterns at its period'
 );
 
 select is(
@@ -184,8 +184,8 @@ select is(
     cross join lateral jsonb_array_elements(payload_row.payload -> 'available_sections') section
     where section ->> 'class_id' = 'study-p7'
   ),
-  4::bigint,
-  'a one-day full-year Study Hall default also expands to four legal patterns'
+  5::bigint,
+  'a one-day full-year Study Hall default also expands to five legal patterns'
 );
 
 select is(
