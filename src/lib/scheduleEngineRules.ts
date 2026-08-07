@@ -19,12 +19,12 @@ export function isStudyHallCourseName(courseName: string): boolean {
   return /^study hall\b/i.test(courseName.trim())
 }
 
-/** One unit equals 0.5 credits. */
+/** One unit equals 0.5 credits. Double-period courses are always 1.5 credits. */
 export function enrollmentCreditUnits(enrollment: ScheduleEnrollment): number {
   const slots = meetingSlots(enrollment)
   if (slots.length === 0) return 0
-  if (enrollment.academic_term !== 'full_year') return 1
   if (enrollment.class.is_double_period) return 3
+  if (enrollment.academic_term !== 'full_year') return 1
   return new Set(slots.map((slot) => slot.day_type)).size === 1 ? 1 : 2
 }
 
