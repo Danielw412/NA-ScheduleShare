@@ -325,7 +325,16 @@ export function importRowError(row: EditableScheduleImportRow): string | null {
   const aSlots = meetingSlotsForDay(row.meeting_slots, 'A')
   const bSlots = meetingSlotsForDay(row.meeting_slots, 'B')
   if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
-    if (row.term === 'full_year' && row.meeting_slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
+    const fullYearStudyHallEveryDay = specialCourseKind(row.course.name) === 'Study Hall'
+      && row.meeting_slots.length === 2
+      && aSlots.length === 1
+      && bSlots.length === 1
+      && aSlots[0].period_number === bSlots[0].period_number
+    if (row.term === 'full_year' && row.meeting_slots.length !== 1 && !fullYearStudyHallEveryDay) {
+      return specialCourseKind(row.course.name) === 'Study Hall'
+        ? 'Full-year Study Hall must meet on one day type or the same period on both A and B days.'
+        : 'Full-year Gym, Wellness, or Study Hall must meet on only A days or only B days.'
+    }
     if (row.term !== 'full_year' && (row.meeting_slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) return 'Semester Gym, Wellness, or Study Hall must meet every day.'
     if (row.term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
   }
@@ -441,12 +450,23 @@ export function teacherForImportedCourse(teacherLastName: string, courseName?: s
   return normalizeTeacherLastName(teacherLastName)
 }
 
+function completeImportedLunchSlots(row: Pick<ScheduleImportRow, 'course' | 'meeting_slots'>): MeetingSlot[] {
+  const isLunch = row.course?.term_policy === 'lunch' || specialCourseKind(row.course?.name) === 'Lunch'
+  if (!isLunch || row.meeting_slots.length !== 1) return row.meeting_slots
+  const slot = row.meeting_slots[0]
+  return sortMeetingSlots([
+    slot,
+    { day_type: slot.day_type === 'A' ? 'B' : 'A', period_number: slot.period_number },
+  ])
+}
+
 export function editableRowsFromImportResult(result: ScheduleImportResult): EditableScheduleImportRow[] {
   return result.rows.map((row) => {
     const savedReview = row as ScheduleImportRow & Partial<Pick<EditableScheduleImportRow, 'include' | 'selected_existing_class_id'>>
     const normalizedTerm = normalizeReviewTerm(row.term)
     return reconcileExactClassSelection({
       ...row,
+      meeting_slots: completeImportedLunchSlots(row),
       term: normalizedTerm === 'unknown' && (row.course?.term_policy ?? 'full_year') === 'full_year'
         ? 'full_year'
         : normalizedTerm,
