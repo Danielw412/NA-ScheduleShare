@@ -1,4 +1,4 @@
-name: Diagnose production share endpoint
+name: Verify production share fix
 
 on:
   pull_request:
@@ -7,92 +7,82 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  validate-minimal-fix:
+  verify-production:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: production
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.7.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-
-      - name: Validate redirect manual in Cloudflare remote runtime
+      - name: Inspect Worker deploy runs and live share endpoint
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED_SHA: b7d55067169def0193fe9d2645b98a4d8fb5823b
         run: |
           set -euo pipefail
 
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('cloudflare/schedule-import-worker/src/share.ts')
-          text = path.read_text(encoding='utf-8')
-          old = "      redirect: 'error',\n"
-          new = "      redirect: 'manual',\n"
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one redirect:error, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          deployed=0
+          for attempt in $(seq 1 20); do
+            curl --silent --show-error --fail \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/actions/workflows/deploy-worker.yml/runs?per_page=20" \
+              > /tmp/runs.json
+
+            python - <<'PY'
+          import json, os
+          data=json.load(open('/tmp/runs.json', encoding='utf-8'))
+          expected=os.environ['EXPECTED_SHA']
+          matches=[r for r in data.get('workflow_runs', []) if r.get('head_sha') == expected]
+          if matches:
+              r=matches[0]
+              print(f"worker_run id={r.get('id')} status={r.get('status')} conclusion={r.get('conclusion')} event={r.get('event')}")
+          else:
+              print('worker_run not_found')
           PY
 
-          cat > cloudflare/schedule-import-worker/.dev.vars <<EOF
-          SUPABASE_URL=$SUPABASE_URL
-          SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
-          EOF
-          chmod 600 cloudflare/schedule-import-worker/.dev.vars
+            state=$(python - <<'PY'
+          import json, os
+          data=json.load(open('/tmp/runs.json', encoding='utf-8'))
+          expected=os.environ['EXPECTED_SHA']
+          matches=[r for r in data.get('workflow_runs', []) if r.get('head_sha') == expected]
+          if not matches:
+              print('not_found')
+          else:
+              r=matches[0]
+              print(f"{r.get('status')}:{r.get('conclusion')}")
+          PY
+          )
 
-          rm -f /tmp/remote-worker.log /tmp/page-body.txt /tmp/page-headers.txt /tmp/image.bin /tmp/image-headers.txt
-          timeout 60s pnpm exec wrangler dev --remote \
-            --config cloudflare/schedule-import-worker/wrangler.toml \
-            --ip 127.0.0.1 --port 8787 \
-            > /tmp/remote-worker.log 2>&1 &
-          worker_pid=$!
-
-          ready=0
-          for i in $(seq 1 30); do
-            if curl --silent --output /dev/null --connect-timeout 1 http://127.0.0.1:8787/ 2>/dev/null; then
-              ready=1
+            if [ "$state" = 'completed:success' ]; then
+              deployed=1
               break
             fi
-            sleep 2
+            if [[ "$state" == completed:* ]] && [ "$state" != 'completed:success' ]; then
+              echo "Worker deployment failed: $state"
+              exit 1
+            fi
+            sleep 3
           done
-          echo "remote_ready=$ready"
-          if [ "$ready" != 1 ]; then
-            cat /tmp/remote-worker.log
-            exit 1
-          fi
 
+          test "$deployed" = 1
+
+          URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875'
           page_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
-            --dump-header /tmp/page-headers.txt --output /tmp/page-body.txt --write-out '%{http_code}' \
-            'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875')
-          echo "page_status=$page_status"
-          grep -o '<title>[^<]*</title>' /tmp/page-body.txt || true
-
+            --output /tmp/page.html --write-out '%{http_code}' "$URL")
           image_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
-            --dump-header /tmp/image-headers.txt --output /tmp/image.bin --write-out '%{http_code}' \
-            'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875/image.png')
-          echo "image_status=$image_status"
-          file /tmp/image.bin || true
-          wc -c /tmp/image.bin || true
+            --output /tmp/image.png --write-out '%{http_code}' "$URL/image.png")
 
-          kill "$worker_pid" 2>/dev/null || true
-          wait "$worker_pid" 2>/dev/null || true
-          echo '--- remote worker log ---'
-          cat /tmp/remote-worker.log
+          echo "page_status=$page_status"
+          grep -o '<title>[^<]*</title>' /tmp/page.html || true
+          echo "image_status=$image_status"
+          file /tmp/image.png || true
+          wc -c /tmp/image.png || true
 
           test "$page_status" = 200
           test "$image_status" = 200
-          grep -q '<title>A/B-Day Schedule | NA ScheduleShare</title>' /tmp/page-body.txt
-          file /tmp/image.bin | grep -q 'PNG image data, 1200 x 630'
-
-          rm -f cloudflare/schedule-import-worker/.dev.vars
+          grep -q '<title>Schedule | NA ScheduleShare</title>' /tmp/page.html
+          grep -q '<meta property="og:title" content="Schedule | NA ScheduleShare">' /tmp/page.html
+          file /tmp/image.png | grep -q 'PNG image data, 1200 x 630'
