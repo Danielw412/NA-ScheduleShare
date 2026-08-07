@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(9);
 
 select is(
   private.normalize_teacher_last_name('Joe Smith'),
