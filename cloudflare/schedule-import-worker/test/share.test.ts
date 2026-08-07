@@ -47,7 +47,8 @@ describe('schedule share HTML', () => {
     expect(html).toContain(`<script nonce="${nonce}">`)
     expect(response?.headers.get('Permissions-Policy')).toContain('camera=()')
     expect(response?.headers.get('X-Frame-Options')).toBe('DENY')
-    expect(html).toContain('<meta property="og:title"')
+    expect(html).toContain('<title>Schedule | NA ScheduleShare</title>')
+    expect(html).toContain('<meta property="og:title" content="Schedule | NA ScheduleShare">')
     expect(html).toContain('<meta property="og:description"')
     expect(html).toContain(`<meta property="og:url" content="https://share.example/share/${TOKEN}">`)
     expect(html).toContain(`<meta property="og:image" content="https://share.example/share/${TOKEN}/image.png">`)
@@ -58,6 +59,13 @@ describe('schedule share HTML', () => {
     expect(html).not.toContain('private-user-id')
     expect(html).not.toContain('Biology')
     expect(html).not.toContain('<ul>')
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      'https://example.supabase.co/rest/v1/rpc/get_public_schedule_share',
+      expect.objectContaining({
+        method: 'POST',
+        redirect: 'manual',
+      }),
+    )
   })
 
   it('returns the same safe generic page for private, disabled, and invalid links', async () => {
