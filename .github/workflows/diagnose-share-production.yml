@@ -7,168 +7,8 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  diagnose:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Resolve production host
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python - <<'PY'
-          import socket
-          host = 'schedule-api.naclubs.net'
-          print('getaddrinfo:', socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM))
-          PY
-          getent ahosts schedule-api.naclubs.net || true
-
-      - name: Inspect share page
-        shell: bash
-        run: |
-          set -euxo pipefail
-          URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875'
-          curl --fail-with-body --silent --show-error --location --max-redirs 0 --connect-timeout 10 --max-time 20 \
-            --dump-header /tmp/share-headers.txt --output /tmp/share-body.txt "$URL" || status=$?
-          echo "curl_exit=${status:-0}"
-          echo '--- headers ---'
-          cat /tmp/share-headers.txt 2>/dev/null || true
-          echo '--- body ---'
-          head -c 12000 /tmp/share-body.txt 2>/dev/null || true
-          echo
-
-      - name: Inspect preview image
-        shell: bash
-        run: |
-          set -euxo pipefail
-          URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875/image.png'
-          curl --silent --show-error --location --max-redirs 0 --connect-timeout 10 --max-time 20 \
-            --dump-header /tmp/image-headers.txt --output /tmp/share-image.bin "$URL" || status=$?
-          echo "curl_exit=${status:-0}"
-          echo '--- headers ---'
-          cat /tmp/image-headers.txt 2>/dev/null || true
-          echo '--- file ---'
-          file /tmp/share-image.bin 2>/dev/null || true
-          wc -c /tmp/share-image.bin 2>/dev/null || true
-
-      - name: Inspect TLS certificate
-        shell: bash
-        run: |
-          set -euxo pipefail
-          timeout 15 openssl s_client -connect schedule-api.naclubs.net:443 -servername schedule-api.naclubs.net </dev/null 2>/tmp/tls-stderr.txt | openssl x509 -noout -subject -issuer -dates -ext subjectAltName || true
-          echo '--- openssl stderr ---'
-          cat /tmp/tls-stderr.txt || true
-
-      - name: Inspect Worker deployment runs
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          curl --silent --show-error --fail \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$REPO/actions/workflows/deploy-worker.yml/runs?per_page=30" \
-            > /tmp/worker-runs.json
-          python - <<'PY'
-          import json
-          data=json.load(open('/tmp/worker-runs.json', encoding='utf-8'))
-          print('worker_run_count=' + str(len(data.get('workflow_runs', []))))
-          for run in data.get('workflow_runs', []):
-              print('WORKER_RUN',
-                    'id=' + str(run.get('id')),
-                    'event=' + str(run.get('event')),
-                    'status=' + str(run.get('status')),
-                    'conclusion=' + str(run.get('conclusion')),
-                    'head_sha=' + str(run.get('head_sha')),
-                    'created_at=' + str(run.get('created_at')),
-                    'updated_at=' + str(run.get('updated_at')),
-                    'attempt=' + str(run.get('run_attempt')))
-          PY
-
-  probe-production-supabase:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: production
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-    steps:
-      - name: Classify configured production credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ]; then
-            echo 'supabase_url=missing'
-          else
-            python - <<'PY'
-          import os, urllib.parse
-          value = os.environ['SUPABASE_URL']
-          parsed = urllib.parse.urlsplit(value)
-          print('supabase_url=present')
-          print('supabase_scheme=' + parsed.scheme)
-          print('supabase_host=' + (parsed.hostname or ''))
-          PY
-          fi
-
-          key="${SUPABASE_PUBLISHABLE_KEY:-}"
-          if [ -z "$key" ]; then
-            echo 'publishable_key_kind=missing'
-          elif [[ "$key" == sb_publishable_* ]]; then
-            echo 'publishable_key_kind=modern_sb_publishable'
-          elif [[ "$key" == eyJ* ]]; then
-            echo 'publishable_key_kind=legacy_jwt'
-          else
-            echo 'publishable_key_kind=other'
-          fi
-          echo "publishable_key_length=${#key}"
-
-      - name: Call share RPC with Worker headers
-        shell: bash
-        run: |
-          set -euo pipefail
-          endpoint="${SUPABASE_URL%/}/rest/v1/rpc/get_public_schedule_share"
-          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
-            --output /tmp/worker-headers-body.json --write-out '%{http_code}' \
-            --request POST "$endpoint" \
-            --header "apikey: $SUPABASE_PUBLISHABLE_KEY" \
-            --header "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY" \
-            --header 'Content-Type: application/json' \
-            --header 'Accept: application/json' \
-            --data '{"p_token":"e81658a5-bbb6-4d0e-8cc2-6dc3a9200875"}')
-          echo "worker_headers_http_status=$status"
-          python - <<'PY'
-          import json
-          data=json.load(open('/tmp/worker-headers-body.json', encoding='utf-8'))
-          print('worker_headers_available=' + str(data.get('available')))
-          schedule=data.get('schedule')
-          if isinstance(schedule, list): print('worker_headers_schedule_rows=' + str(len(schedule)))
-          PY
-
-      - name: Call share RPC with apikey only
-        shell: bash
-        run: |
-          set -euo pipefail
-          endpoint="${SUPABASE_URL%/}/rest/v1/rpc/get_public_schedule_share"
-          status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
-            --output /tmp/apikey-only-body.json --write-out '%{http_code}' \
-            --request POST "$endpoint" \
-            --header "apikey: $SUPABASE_PUBLISHABLE_KEY" \
-            --header 'Content-Type: application/json' \
-            --header 'Accept: application/json' \
-            --data '{"p_token":"e81658a5-bbb6-4d0e-8cc2-6dc3a9200875"}')
-          echo "apikey_only_http_status=$status"
-          python - <<'PY'
-          import json
-          data=json.load(open('/tmp/apikey-only-body.json', encoding='utf-8'))
-          print('apikey_only_available=' + str(data.get('available')))
-          schedule=data.get('schedule')
-          if isinstance(schedule, list): print('apikey_only_schedule_rows=' + str(len(schedule)))
-          PY
-
   tail-worker-runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -182,12 +22,13 @@ jobs:
         run: |
           set -euo pipefail
           rm -f /tmp/worker-tail.log
-          timeout 25s npx --yes wrangler@4.111.0 tail na-scheduleshare-import --format json --sampling-rate 1 > /tmp/worker-tail.log 2>&1 &
+          timeout 30s npx --yes wrangler@4.111.0 tail na-scheduleshare-import --format json > /tmp/worker-tail.log 2>&1 &
           tail_pid=$!
-          sleep 8
-          curl --silent --show-error --output /dev/null \
+          sleep 10
+          echo 'request_status:'
+          curl --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
             'https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875' || true
-          sleep 8
+          sleep 10
           kill "$tail_pid" 2>/dev/null || true
           wait "$tail_pid" 2>/dev/null || true
           echo '--- captured Worker tail ---'
