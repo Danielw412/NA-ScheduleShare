@@ -10,10 +10,11 @@ declare
   normalized text := private.normalize_course_display(value);
   words text[];
 begin
-  -- Reject invalid formatting before removing a possible first name so inputs
-  -- such as "Smith, Joe" cannot be accidentally converted into "Joe".
+  -- Reject invalid formatting and titles before removing a possible first name
+  -- so inputs such as "Smith, Joe" cannot be accidentally converted into "Joe".
   if normalized ~ '[0-9,@]'
-     or normalized ~ '[[:cntrl:]]' then
+     or normalized ~ '[[:cntrl:]]'
+     or normalized ~* '^(mr|mrs|ms|miss|dr|prof|professor|coach)\.?\s+' then
     raise exception 'invalid_teacher_last_name' using errcode = '23514';
   end if;
 
@@ -22,8 +23,7 @@ begin
     normalized := words[2];
   end if;
 
-  if char_length(normalized) not between 2 and 120
-     or normalized ~* '^(mr|mrs|ms|miss|dr|prof|professor|coach)\.?\s+' then
+  if char_length(normalized) not between 2 and 120 then
     raise exception 'invalid_teacher_last_name' using errcode = '23514';
   end if;
 
@@ -169,7 +169,8 @@ set teacher_last_name = private.normalize_teacher_last_name(teacher_last_name)
 where status = 'active'
   and teacher_last_name ~ '^\S+\s+\S+$'
   and teacher_last_name !~ '[0-9,@]'
-  and teacher_last_name !~ '[[:cntrl:]]';
+  and teacher_last_name !~ '[[:cntrl:]]'
+  and teacher_last_name !~* '^(mr|mrs|ms|miss|dr|prof|professor|coach)\.?\s+';
 
 -- Teacher cleanup may make two previously distinct sections identical.
 -- Coalesce those sections using the normal merge path, which now removes the
