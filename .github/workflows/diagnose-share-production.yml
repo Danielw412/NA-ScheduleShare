@@ -168,3 +168,27 @@ jobs:
           schedule=data.get('schedule')
           if isinstance(schedule, list): print('apikey_only_schedule_rows=' + str(len(schedule)))
           PY
+
+  tail-worker-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Capture Worker logs for exact share request
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/worker-tail.log
+          timeout 25s npx --yes wrangler@4.111.0 tail na-scheduleshare-import --format json --sampling-rate 1 > /tmp/worker-tail.log 2>&1 &
+          tail_pid=$!
+          sleep 8
+          curl --silent --show-error --output /dev/null \
+            'https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875' || true
+          sleep 8
+          kill "$tail_pid" 2>/dev/null || true
+          wait "$tail_pid" 2>/dev/null || true
+          echo '--- captured Worker tail ---'
+          cat /tmp/worker-tail.log
