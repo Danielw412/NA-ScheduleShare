@@ -6,8 +6,14 @@ describe('teacher last-name input', () => {
     expect(normalizeTeacherLastName('  De   la Cruz  ')).toBe('De la Cruz')
   })
 
-  it('rejects titles and obvious full-name formatting', () => {
-    expect(teacherLastNameError('Dr. Smith')).toContain('titles')
+  it('keeps only the final word when a two-word teacher name is entered', () => {
+    expect(normalizeTeacherLastName('Joe Smith')).toBe('Smith')
+    expect(normalizeTeacherLastName('  Joe   Smith  ')).toBe('Smith')
+    expect(normalizeTeacherLastName('Dr. Smith')).toBe('Smith')
+    expect(teacherLastNameError('Joe Smith')).toBeNull()
+  })
+
+  it('still rejects obviously invalid teacher formatting', () => {
     expect(teacherLastNameError('Smith, Joe')).toContain('valid')
     expect(teacherLastNameError('Smith2')).toContain('valid')
   })
