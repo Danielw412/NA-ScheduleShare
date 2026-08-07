@@ -210,10 +210,6 @@ export function AdminPage() {
   }
 
   function permanentlyDeleteClass(course: AdminClassRecord) {
-    const typed = window.prompt(
-      `This permanently deletes ${course.course_name} with ${course.teacher_last_name}. ${course.total_enrollment_count} enrollment${course.total_enrollment_count === 1 ? '' : 's'} and ${course.meeting_slots.length} meeting slot${course.meeting_slots.length === 1 ? '' : 's'} will be deleted. ${course.report_count} report reference${course.report_count === 1 ? '' : 's'} will keep a course-name snapshot, and schedule/audit history will be retained. Type DELETE to continue.`,
-    )
-    if (typed?.trim() !== 'DELETE') return
     void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
   }
 
