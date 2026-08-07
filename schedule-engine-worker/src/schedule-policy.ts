@@ -31,14 +31,18 @@ function isStudyHallName(courseName: string): boolean {
   return /^study hall\b/i.test(courseName.trim())
 }
 
-/** One unit equals 0.5 credits. */
+/** One unit equals 0.5 credits. Double-period courses are always 1.5 credits. */
 export function scheduleEngineCreditUnits(
   enrollment: Pick<CurrentScheduleEnrollment, 'academic_term' | 'is_double_period' | 'meeting_slots'>,
 ): number {
   if (enrollment.meeting_slots.length === 0) return 0
-  if (enrollment.academic_term !== 'full_year') return 1
   if (enrollment.is_double_period) return 3
+  if (enrollment.academic_term !== 'full_year') return 1
   return new Set(enrollment.meeting_slots.map((slot) => slot.day_type)).size === 1 ? 1 : 2
+}
+
+function totalCreditUnits(enrollments: CurrentScheduleEnrollment[]): number {
+  return enrollments.reduce((total, enrollment) => total + scheduleEngineCreditUnits(enrollment), 0)
 }
 
 function creditLabel(units: number): string {
@@ -160,6 +164,25 @@ function requestedReplacementCreditUnits(result: PredictedScheduleResult, source
   ), 0)
 }
 
+function hasUnsupportedDuplicateClass(result: PredictedScheduleResult): boolean {
+  const byClass = new Map<string, PredictedScheduleEnrollment[]>()
+  for (const enrollment of result.schedule) {
+    const group = byClass.get(enrollment.class_id) ?? []
+    group.push(enrollment)
+    byClass.set(enrollment.class_id, group)
+  }
+  for (const group of byClass.values()) {
+    if (group.length <= 1) continue
+    const lunchTerms = new Set(group.map((enrollment) => enrollment.academic_term))
+    const complementaryLunchPair = group.length === 2
+      && group.every((enrollment) => enrollment.course_term_policy === 'lunch')
+      && lunchTerms.has('semester_1')
+      && lunchTerms.has('semester_2')
+    if (!complementaryLunchPair) return true
+  }
+  return false
+}
+
 function scheduleSignature(schedule: PredictedScheduleEnrollment[]): string {
   return schedule.map((enrollment) => {
     const slots = [...enrollment.meeting_slots]
@@ -185,6 +208,7 @@ export async function predictWithSchedulePolicy(
 
   const sourceEnrollmentIds = new Set(input.source_courses.map((source) => source.enrollment_id))
   const sourceCreditUnits = input.source_courses.reduce((total, source) => total + scheduleEngineCreditUnits(source.current_course), 0)
+  const currentTotalCreditUnits = totalCreditUnits(input.current_schedule)
   const variants: Array<{ input: ScheduleEngineInput; autoExpandedStudyHall: boolean }> = [
     { input, autoExpandedStudyHall: false },
   ]
@@ -195,6 +219,7 @@ export async function predictWithSchedulePolicy(
   const coreReasons: string[] = []
   let sawCreditMismatch = false
   let sawIncompleteResult = false
+  let sawUnapplicableResult = false
 
   for (let variantIndex = 0; variantIndex < variants.length; variantIndex += 1) {
     const variant = variants[variantIndex]
@@ -204,12 +229,17 @@ export async function predictWithSchedulePolicy(
 
     for (let resultIndex = 0; resultIndex < outcome.results.length; resultIndex += 1) {
       let result = restoreCourseIds(outcome.results[resultIndex], normalized.aliasToRealCourseId)
-      if (requestedReplacementCreditUnits(result, sourceEnrollmentIds) !== sourceCreditUnits) {
+      if (requestedReplacementCreditUnits(result, sourceEnrollmentIds) !== sourceCreditUnits
+        || totalCreditUnits(result.schedule) !== currentTotalCreditUnits) {
         sawCreditMismatch = true
         continue
       }
       if (scheduleEngineCoverageIssues(result.schedule).length > 0) {
         sawIncompleteResult = true
+        continue
+      }
+      if (hasUnsupportedDuplicateClass(result)) {
+        sawUnapplicableResult = true
         continue
       }
       if (variant.autoExpandedStudyHall) {
@@ -241,6 +271,12 @@ export async function predictWithSchedulePolicy(
     return {
       results: [],
       no_valid_schedule_reason: 'The available replacement sections would leave at least one A/B period empty. Schedule Engine only returns fully filled schedules for both semesters.',
+    }
+  }
+  if (sawUnapplicableResult) {
+    return {
+      results: [],
+      no_valid_schedule_reason: 'The available sections would require using the same class section more than once, so that predicted schedule cannot be applied safely.',
     }
   }
   if (coreReasons.length > 0) return { results: [], no_valid_schedule_reason: coreReasons[0] }
