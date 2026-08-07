@@ -33,6 +33,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('cloudflare/schedule-import-worker/src/share.ts')
+          text = path.read_text(encoding='utf-8')
+          old = "      error_name: error instanceof Error ? error.name : 'UnknownError',\n"
+          new = old + "      error_message: error instanceof Error ? error.message : String(error),\n      error_stack: error instanceof Error ? error.stack?.slice(0, 1200) : undefined,\n"
+          if old not in text:
+              raise SystemExit('diagnostic patch target not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
           cat > cloudflare/schedule-import-worker/.dev.vars <<EOF
           SUPABASE_URL=$SUPABASE_URL
           SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
@@ -67,8 +79,6 @@ jobs:
             --write-out '%{http_code}' \
             'http://127.0.0.1:8787/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875')
           echo "remote_share_http_status=$status"
-          echo '--- remote response headers ---'
-          cat /tmp/remote-headers.txt
           echo '--- remote response title ---'
           grep -o '<title>[^<]*</title>' /tmp/remote-body.txt || true
           sleep 2
