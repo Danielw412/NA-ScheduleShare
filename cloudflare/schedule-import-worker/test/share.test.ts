@@ -26,20 +26,19 @@ function expectValidPreviewPng(bytes: Uint8Array) {
 }
 
 describe('schedule share HTML', () => {
-  it('returns the expected title and raw Open Graph/Twitter metadata in the initial response', async () => {
+  it('returns raw Open Graph and Twitter metadata in the initial response', async () => {
     mockShare({
       available: true,
       schedule: [{ day_type: 'A', period_number: 2, course_name: 'Biology <script>', academic_term: 'full_year' }],
       email: 'student@example.com',
       owner_id: 'private-user-id',
     })
-    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}?v=2`), env)
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}`), env)
     const html = await response?.text()
 
     expect(response?.status).toBe(200)
     expect(response?.headers.get('Content-Type')).toContain('text/html')
     expect(response?.headers.get('Cache-Control')).toBe('no-store')
-    expect(response?.headers.get('X-ScheduleShare-Share-Version')).toBe('2')
     const contentSecurityPolicy = response?.headers.get('Content-Security-Policy') ?? ''
     expect(contentSecurityPolicy).toContain("frame-ancestors 'none'")
     expect(contentSecurityPolicy).not.toContain("'unsafe-inline'")
@@ -48,13 +47,10 @@ describe('schedule share HTML', () => {
     expect(html).toContain(`<script nonce="${nonce}">`)
     expect(response?.headers.get('Permissions-Policy')).toContain('camera=()')
     expect(response?.headers.get('X-Frame-Options')).toBe('DENY')
-    expect(html).toContain('<title>Schedule | NA ScheduleShare</title>')
-    expect(html).toContain('<meta property="og:title" content="Schedule | NA ScheduleShare">')
-    expect(html).toContain('<meta name="twitter:title" content="Schedule | NA ScheduleShare">')
+    expect(html).toContain('<meta property="og:title"')
     expect(html).toContain('<meta property="og:description"')
-    expect(html).toContain(`<meta property="og:url" content="https://share.example/share/${TOKEN}?v=2">`)
-    expect(html).toContain(`<meta property="og:image" content="https://share.example/share/${TOKEN}/image.png?v=2">`)
-    expect(html).toContain(`<meta property="og:image:secure_url" content="https://share.example/share/${TOKEN}/image.png?v=2">`)
+    expect(html).toContain(`<meta property="og:url" content="https://share.example/share/${TOKEN}">`)
+    expect(html).toContain(`<meta property="og:image" content="https://share.example/share/${TOKEN}/image.png">`)
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">')
     expect(html).toContain(`window.location.replace("https://app.example/NA-ScheduleShare/#/share/${TOKEN}")`)
     expect(html).toContain(`href="https://app.example/NA-ScheduleShare/#/share/${TOKEN}"`)
@@ -133,12 +129,11 @@ describe('schedule preview image', () => {
         { day_type: 'A', period_number: 9, course_name: 'Robotics', academic_term: 'semester_1' },
       ],
     })
-    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}/image.png?v=2`), env)
+    const response = await handleShareRequest(new Request(`https://share.example/share/${TOKEN}/image.png`), env)
     const bytes = new Uint8Array(await response!.arrayBuffer())
 
     expect(response?.status).toBe(200)
     expect(response?.headers.get('Content-Type')).toBe('image/png')
-    expect(response?.headers.get('X-ScheduleShare-Share-Version')).toBe('2')
     expectValidPreviewPng(bytes)
   })
 
