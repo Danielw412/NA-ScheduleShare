@@ -24,12 +24,6 @@ export function SharedSchedulePage() {
   useNoIndex(true)
 
   useEffect(() => {
-    const previousTitle = document.title
-    document.title = 'Schedule | NA ScheduleShare'
-    return () => { document.title = previousTitle }
-  }, [])
-
-  useEffect(() => {
     let active = true
     setLoadState({ status: 'loading' })
     void fetchPublicScheduleShare(token)
