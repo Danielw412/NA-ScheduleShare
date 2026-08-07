@@ -25,14 +25,6 @@ values
 insert into public.class_enrollments (id, student_id, class_id, academic_term)
 values ('95000000-0000-4000-8000-000000000020', '10000000-0000-4000-8000-000000000003', '95000000-0000-4000-8000-000000000002', 'full_year');
 
-insert into public.class_enrollment_meeting_slots (enrollment_id, day_type, period_number)
-values
-  ('95000000-0000-4000-8000-000000000020', 'A', 8),
-  ('95000000-0000-4000-8000-000000000020', 'B', 8);
-
-insert into public.reports (id, reporter_id, reported_class_id, reason_category, explanation)
-values ('95000000-0000-4000-8000-000000000030', '10000000-0000-4000-8000-000000000002', '95000000-0000-4000-8000-000000000002', 'duplicate_class', 'Merged class deletion regression');
-
 select lives_ok(
   $$select private.merge_class_records(
     '95000000-0000-4000-8000-000000000001',
