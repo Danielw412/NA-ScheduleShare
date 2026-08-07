@@ -7,6 +7,7 @@ import { ClubPromptProvider } from './components/club/ClubPromptProvider'
 import { AuthProvider } from './features/auth/AuthProvider'
 import './styles.css'
 import './mobile-layout-fixes.css'
+import './schedule-engine-overrides.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

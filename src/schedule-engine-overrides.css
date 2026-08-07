@@ -1,0 +1,291 @@
+.schedule-engine-page .engine-request-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.schedule-engine-page .engine-request-form {
+  width: 100%;
+}
+
+.engine-schedule-requirement {
+  margin: 18px 26px 0;
+}
+
+.engine-credit-balance {
+  margin: 0 26px 22px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 18px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-gold-dark);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.engine-credit-balance > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.engine-credit-balance > div:first-child strong {
+  font-size: 13px;
+}
+
+.engine-credit-balance > div:first-child span,
+.engine-credit-balance small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.engine-credit-balance small {
+  grid-column: 1 / -1;
+}
+
+.engine-credit-values {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.engine-credit-values > span {
+  min-width: 112px;
+  padding: 7px 9px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--white);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.engine-credit-values strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.engine-credit-balance.is-balanced {
+  border-left-color: var(--success);
+  background: #f6fff8;
+}
+
+.engine-credit-balance.is-mismatch {
+  border-left-color: var(--danger);
+  background: #fff8f8;
+}
+
+.engine-credit-balance.is-mismatch .engine-credit-values > span:last-child strong {
+  color: var(--danger);
+}
+
+.schedule-engine-page .engine-selection-row select,
+.schedule-engine-page .engine-course-picker input {
+  width: 100%;
+  min-width: 0;
+}
+
+.schedule-engine-page .engine-course-results button {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .schedule-engine-page {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .engine-page-heading,
+  .engine-page-actions,
+  .engine-request-overview,
+  .engine-result-controls,
+  .engine-selected-result-heading {
+    min-width: 0;
+  }
+
+  .engine-page-heading {
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .engine-page-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .engine-page-actions .button,
+  .engine-history-select,
+  .engine-history-select select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .engine-request-layout {
+    gap: 14px;
+  }
+
+  .engine-request-form {
+    min-width: 0;
+  }
+
+  .engine-form-heading {
+    padding: 19px 16px 15px;
+  }
+
+  .engine-form-heading h2 {
+    font-size: 21px;
+  }
+
+  .engine-schedule-requirement {
+    margin: 14px 16px 0;
+  }
+
+  .engine-replacement-list.engine-selection-groups {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px 16px;
+  }
+
+  .engine-selection-arrow {
+    justify-self: center;
+    margin: -2px 0;
+    transform: rotate(90deg);
+  }
+
+  .engine-selection-group {
+    gap: 12px;
+  }
+
+  .engine-selection-row {
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .engine-remove-selection {
+    width: 42px;
+    height: 42px;
+    margin-top: 23px;
+  }
+
+  .engine-add-selection {
+    min-height: 42px;
+    padding: 8px 0;
+    text-decoration: none;
+  }
+
+  .engine-course-results {
+    max-height: min(250px, 45vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .engine-course-results button {
+    min-height: 46px;
+  }
+
+  .engine-credit-balance {
+    margin: 0 16px 18px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .engine-credit-values {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .engine-credit-values > span {
+    min-width: 0;
+  }
+
+  .engine-submit-area {
+    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .engine-submit-area > .button-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .engine-request-flow {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) !important;
+    justify-items: start;
+  }
+
+  .engine-request-flow > span,
+  .engine-request-flow > strong {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .engine-request-flow > svg {
+    transform: rotate(90deg);
+  }
+
+  .engine-result-controls {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .engine-result-picker {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .engine-selected-result-heading {
+    align-items: stretch;
+  }
+
+  .engine-result-actions,
+  .engine-result-actions .button {
+    width: 100%;
+  }
+
+  .engine-result-actions .button {
+    justify-content: center;
+  }
+
+  .engine-waiting-panel {
+    min-height: 0;
+    padding: 28px 18px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .engine-waiting-panel > .button {
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+  }
+
+  .engine-prediction-card,
+  .engine-prediction-card .schedule-grid-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .engine-prediction-explanations {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 430px) {
+  .engine-credit-values {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .engine-selection-group > header {
+    align-items: flex-start;
+  }
+
+  .engine-selection-group h3 {
+    font-size: 15px;
+  }
+}

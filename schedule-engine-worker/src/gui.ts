@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createPredictionReadyNotifier, smtpConfigured, smtpNotifierConfigFromEnvironment } from './notifier.js'
-import { createPredictionFunction, maxCollateralChangesFromEnvironment } from './prediction-engine.js'
+import { maxCollateralChangesFromEnvironment } from './prediction-engine.js'
+import { createSchedulePolicyPredictionFunction } from './schedule-policy.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import type { ScheduleEngineStore } from './types.js'
 import { processFullQueue, processNextJob } from './worker.js'
@@ -39,7 +40,7 @@ function json(response: ServerResponse, status: number, body: unknown) {
 export function startControlPanel(options: {
   store: ScheduleEngineStore
   workerId: string
-  predict: ReturnType<typeof createPredictionFunction>
+  predict: ReturnType<typeof createSchedulePolicyPredictionFunction>
   notify: ReturnType<typeof createPredictionReadyNotifier>
   maxCollateralChanges: number
   emailConfigured: boolean
@@ -120,7 +121,7 @@ function main() {
   const maxCollateralChanges = maxCollateralChangesFromEnvironment(process.env.SCHEDULE_ENGINE_MAX_COLLATERAL_CHANGES)
   const smtpConfig = smtpNotifierConfigFromEnvironment()
   startControlPanel({ store, workerId, maxCollateralChanges, emailConfigured: smtpConfigured(smtpConfig),
-    predict: createPredictionFunction({ maxCollateralChanges }),
+    predict: createSchedulePolicyPredictionFunction({ maxCollateralChanges }),
     notify: createPredictionReadyNotifier(smtpConfig), port: Number(process.env.SCHEDULE_ENGINE_GUI_PORT || 4174),
     autoProcessInitially: enabledFromEnvironment(process.env.SCHEDULE_ENGINE_AUTO_PROCESS) })
 }
