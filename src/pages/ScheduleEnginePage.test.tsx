@@ -76,12 +76,32 @@ const biology: ScheduleEnrollment = {
   meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'B', period_number: 3 }],
 }
 
+const fillerEnrollments: ScheduleEnrollment[] = Array.from({ length: 6 }, (_, index) => {
+  const period = index + 4
+  return {
+    ...english,
+    id: `enrollment-filler-${period}`,
+    class_id: `class-filler-${period}`,
+    meeting_slots: [{ day_type: 'A', period_number: period }, { day_type: 'B', period_number: period }],
+    class: {
+      ...english.class,
+      id: `class-filler-${period}`,
+      course_name_id: `course-filler-${period}`,
+      course_name: `Sample Class ${period}`,
+      teacher_last_name: `Teacher${period}`,
+      meeting_slots: [{ day_type: 'A', period_number: period }, { day_type: 'B', period_number: period }],
+    },
+  }
+})
+
+const completeSchedule = [english, chemistry, biology, ...fillerEnrollments]
+
 function renderPage() {
   return render(<MemoryRouter><ScheduleEnginePage /></MemoryRouter>)
 }
 
 beforeEach(() => {
-  mocks.useSchedule.mockReturnValue({ enrollments: [english, chemistry, biology], loading: false, error: null, reload: mocks.reloadSchedule })
+  mocks.useSchedule.mockReturnValue({ enrollments: completeSchedule, loading: false, error: null, reload: mocks.reloadSchedule })
   mocks.useCourseNameSearch.mockReturnValue({
     loading: false,
     error: null,
@@ -90,6 +110,7 @@ beforeEach(() => {
       { id: 'course-literature', course_name: 'AP Literature', course_term_policy: 'full_year', score: 95 },
       { id: 'course-history', course_name: 'AP US History', course_term_policy: 'full_year', score: 90 },
       { id: 'course-economics', course_name: 'AP Economics', course_term_policy: 'full_year', score: 85 },
+      { id: 'course-study-hall', course_name: 'Study Hall - NASH', course_term_policy: 'flexible_attendance', score: 80 },
     ],
   })
   mocks.listScheduleEngineJobs.mockResolvedValue([])
@@ -160,6 +181,100 @@ describe('ScheduleEnginePage', () => {
     }, true))
   })
 
+  it('requires the current schedule to fill every A/B period in both semesters', async () => {
+    mocks.useSchedule.mockReturnValue({ enrollments: [english, chemistry, biology], loading: false, error: null, reload: mocks.reloadSchedule })
+    renderPage()
+
+    expect(await screen.findByText(/Finish filling your schedule first/i)).toBeInTheDocument()
+    expect(screen.getByText(/S1 A4 is empty/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit request' })).toBeDisabled()
+  })
+
+  it('allows one Study Hall selection when the worker can expand it to two half-credit Study Halls', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('heading', { name: 'Course replacements' })
+    await user.selectOptions(screen.getByLabelText('Current course'), english.id)
+    await user.type(screen.getByRole('combobox', { name: 'Replacement course' }), 'Study')
+    await user.click(screen.getByRole('option', { name: 'Study Hall - NASH' }))
+
+    expect(screen.getByText('can match')).toBeInTheDocument()
+    expect(screen.getByText(/one Study Hall selection can become two half-credit Study Halls/i)).toBeInTheDocument()
+    const submit = screen.getByRole('button', { name: 'Submit request' })
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+
+    await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith({
+      enrollmentIds: ['enrollment-english'],
+      replacementCourseIds: ['course-study-hall'],
+    }, true))
+  })
+
+  it('allows the same Study Hall course to be selected twice explicitly', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('heading', { name: 'Course replacements' })
+    await user.selectOptions(screen.getByLabelText('Current course'), english.id)
+    const firstReplacement = screen.getByRole('combobox', { name: 'Replacement course' })
+    await user.type(firstReplacement, 'Study')
+    await user.click(screen.getByRole('option', { name: 'Study Hall - NASH' }))
+    await user.click(screen.getByRole('button', { name: 'Add another replacement course' }))
+    const secondReplacement = screen.getAllByRole('combobox', { name: 'Replacement course' })[1]
+    await user.type(secondReplacement, 'Study')
+    const secondTarget = secondReplacement.closest<HTMLElement>('.engine-selection-row')!
+    await user.click(within(secondTarget).getByRole('option', { name: 'Study Hall - NASH' }))
+
+    const submit = screen.getByRole('button', { name: 'Submit request' })
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    await waitFor(() => expect(mocks.createScheduleEngineJob).toHaveBeenCalledWith({
+      enrollmentIds: ['enrollment-english'],
+      replacementCourseIds: ['course-study-hall', 'course-study-hall'],
+    }, true))
+  })
+
+  it('blocks a replacement set that cannot match a half-credit source course', async () => {
+    const halfCreditSource: ScheduleEnrollment = {
+      ...english,
+      id: 'enrollment-a-day-elective',
+      class_id: 'class-a-day-elective',
+      meeting_slots: [{ day_type: 'A', period_number: 1 }],
+      class: {
+        ...english.class,
+        id: 'class-a-day-elective',
+        course_name_id: 'course-a-day-elective',
+        course_name: 'A-Day Elective',
+        course_term_policy: 'sectioned_attendance',
+        meeting_slots: [{ day_type: 'A', period_number: 1 }],
+      },
+    }
+    const bDayStudyHall: ScheduleEnrollment = {
+      ...english,
+      id: 'enrollment-b-day-study',
+      class_id: 'class-b-day-study',
+      meeting_slots: [{ day_type: 'B', period_number: 1 }],
+      class: {
+        ...english.class,
+        id: 'class-b-day-study',
+        course_name_id: 'course-b-day-study',
+        course_name: 'Study Hall - Current',
+        course_term_policy: 'flexible_attendance',
+        meeting_slots: [{ day_type: 'B', period_number: 1 }],
+      },
+    }
+    const rest = [chemistry, biology, ...fillerEnrollments]
+    mocks.useSchedule.mockReturnValue({ enrollments: [halfCreditSource, bDayStudyHall, ...rest], loading: false, error: null, reload: mocks.reloadSchedule })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('heading', { name: 'Course replacements' })
+    await user.selectOptions(screen.getByLabelText('Current course'), halfCreditSource.id)
+    await user.type(screen.getByRole('combobox', { name: 'Replacement course' }), 'Lit')
+    await user.click(screen.getByRole('option', { name: 'AP Literature' }))
+
+    expect(screen.getByText('does not match')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit request' })).toBeDisabled()
+  })
+
   it('keeps the catalog result mounted through a mobile pointer selection', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -215,6 +330,7 @@ describe('ScheduleEnginePage', () => {
     expect(screen.getByText('No unrelated courses moved')).toBeInTheDocument()
     expect(screen.getByText('Your requested courses fit without moving any unrelated courses.')).toBeInTheDocument()
     expect(screen.getAllByText('Changed')).not.toHaveLength(0)
+    expect(screen.getByRole('group', { name: 'Predicted schedule day' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /New request/ })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Make this my schedule' }))
     await waitFor(() => expect(mocks.applyScheduleEnginePrediction).toHaveBeenCalledWith('job-complete', 1))
