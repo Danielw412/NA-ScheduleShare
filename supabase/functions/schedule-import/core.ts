@@ -935,7 +935,7 @@ async function buildImportPass(
   const estimatedGrade = config.grade ?? inferGradeFromEnglish(normalizedRows)
   const campusRows = normalizeCampusSpecialCourses(normalizedRows, estimatedGrade)
   const courseIds = [...new Set(campusRows.flatMap((row) => {
-    const match = findCourseMatch(row.source_course_name, catalog)
+    const match = findCourseMatch(row.source_course_name, catalog, estimatedGrade)
     return match.course ? [match.course.id] : []
   }))]
   const classes = await dependencies.loadClasses(token, config, courseIds)
@@ -943,7 +943,7 @@ async function buildImportPass(
   return {
     parsed,
     estimatedGrade,
-    rows: buildReviewRows(campusRows, catalog, classes, dependencies.randomUUID),
+    rows: buildReviewRows(campusRows, catalog, classes, estimatedGrade, dependencies.randomUUID),
   }
 }
 
@@ -1010,15 +1010,27 @@ function concealGuestCampusNames(rows: ImportReviewRow[]): ImportReviewRow[] {
   })
 }
 
-export function findCourseMatch(sourceName: string, catalog: CourseRecord[]): CourseMatch {
+function campusAdjustedCourseScore(sourceName: string, courseName: string, score: number, grade?: Grade): number {
+  if (!grade) return score
+  const source = normalizeCourseName(sourceName)
+  if (/(?:^| )(?:nai|nash)(?: |$)/.test(source)) return score
+  const candidate = normalizeCourseName(courseName)
+  const expectedCampus = grade <= 10 ? 'nai' : 'nash'
+  const otherCampus = expectedCampus === 'nai' ? 'nash' : 'nai'
+  if (candidate.endsWith(` ${expectedCampus}`)) return Math.min(1, score + 0.03)
+  if (candidate.endsWith(` ${otherCampus}`)) return Math.max(0, score - 0.03)
+  return score
+}
+
+export function findCourseMatch(sourceName: string, catalog: CourseRecord[], grade?: Grade): CourseMatch {
   const ranked = catalog
-    .map((course) => ({
-      course,
-      score: Math.max(
+    .map((course) => {
+      const rawScore = Math.max(
         courseSimilarity(sourceName, course.name),
         ...(course.aliases ?? []).map((alias) => courseSimilarity(sourceName, alias)),
-      ),
-    }))
+      )
+      return { course, score: campusAdjustedCourseScore(sourceName, course.name, rawScore, grade) }
+    })
     .sort((left, right) => right.score - left.score || left.course.name.localeCompare(right.course.name))
   const best = ranked[0]
   const second = ranked[1]
@@ -1038,18 +1050,31 @@ export function findCourseMatch(sourceName: string, catalog: CourseRecord[]): Co
   return { kind: 'unresolved', course: null, score: best.score, alternatives: ranked.slice(0, 3).map((candidate) => candidate.course) }
 }
 
+function completeLunchMeetingSlots(slots: MeetingSlot[]): MeetingSlot[] {
+  if (slots.length !== 1) return slots
+  const slot = slots[0]
+  return sortSlots([
+    slot,
+    { day_type: slot.day_type === 'A' ? 'B' : 'A', period_number: slot.period_number },
+  ])
+}
+
 function buildReviewRows(
   entries: NormalizedGeminiRow[],
   catalog: CourseRecord[],
   classes: ExistingClassRecord[],
+  grade: Grade,
   randomUUID: (() => string) | undefined,
 ): ImportReviewRow[] {
   const matchedEntries = entries.map((entry) => {
-    const match = findCourseMatch(entry.source_course_name, catalog)
+    const match = findCourseMatch(entry.source_course_name, catalog, grade)
     const policy = match.course?.term_policy ?? 'full_year'
-    const resolvedEntry = match.course && policy === 'full_year' && entry.term === 'unknown'
-      ? { ...entry, term: 'full_year' as const, term_defaulted: true }
+    const normalizedEntry = match.course && policy === 'lunch'
+      ? { ...entry, meeting_slots: completeLunchMeetingSlots(entry.meeting_slots) }
       : entry
+    const resolvedEntry = match.course && policy === 'full_year' && normalizedEntry.term === 'unknown'
+      ? { ...normalizedEntry, term: 'full_year' as const, term_defaulted: true }
+      : normalizedEntry
     return { match, policy, resolvedEntry }
   })
 
@@ -1081,8 +1106,13 @@ function buildReviewRows(
 
   return matchedEntries.map(({ match, policy, resolvedEntry }, index) => {
     const options = match.course ? classOptionsFor(match.course, classes) : []
-    const teacherLastName = parseTeacherLastName(resolvedEntry.teacher_raw, match.course?.name ?? resolvedEntry.source_course_name)
-    const existing = match.course ? exactClassMatch(resolvedEntry, teacherLastName, options, policy) : null
+    const courseName = match.course?.name ?? resolvedEntry.source_course_name
+    const missingTeacher = !resolvedEntry.teacher_raw && !specialCourseKind(courseName)
+    const parsedTeacherLastName = parseTeacherLastName(resolvedEntry.teacher_raw, courseName)
+    const existing = match.course
+      ? exactClassMatch(resolvedEntry, parsedTeacherLastName, options, policy, missingTeacher)
+      : null
+    const teacherLastName = missingTeacher && existing ? existing.teacher_last_name : parsedTeacherLastName
     const flags: ImportReviewRow['flags'] = []
     const warnings: string[] = []
     if (match.kind === 'unresolved') flags.push('unresolved_course')
@@ -1101,7 +1131,7 @@ function buildReviewRows(
     if (resolvedEntry.term_inferred) {
       warnings.push('Academic term was inferred from the complementary semester course in the same meeting slot.')
     }
-    const formatError = match.course ? courseFormatError(policy, resolvedEntry.term, resolvedEntry.meeting_slots) : null
+    const formatError = match.course ? courseFormatError(policy, resolvedEntry.term, resolvedEntry.meeting_slots, courseName) : null
     if (resolvedEntry.term === 'unknown') {
       if (!flags.includes('incomplete')) flags.push('incomplete')
       warnings.push('The academic term could not be read confidently.')
@@ -1109,10 +1139,10 @@ function buildReviewRows(
       if (!flags.includes('incomplete')) flags.push('incomplete')
       warnings.push(formatError)
     }
-    if (!resolvedEntry.teacher_raw && !specialCourseKind(match.course?.name ?? resolvedEntry.source_course_name)) {
-      if (!flags.includes('incomplete')) flags.push('incomplete')
-      warnings.push('The teacher name could not be read confidently.')
-    }
+    if (missingTeacher && !existing) {
+    if (!flags.includes('incomplete')) flags.push('incomplete')
+    warnings.push('The teacher name could not be read confidently.')
+  }
     return {
       id: `import-${index + 1}-${randomUUID ? randomUUID() : crypto.randomUUID()}`,
       source_course_name: resolvedEntry.source_course_name,
@@ -1135,18 +1165,27 @@ function buildReviewRows(
   })
 }
 
-function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: MeetingSlot[]): string | null {
+function courseFormatError(policy: CourseTermPolicy, term: ImportTerm, slots: MeetingSlot[], courseName = ''): string | null {
   if (term === 'unknown') return null
   const aSlots = slots.filter((slot) => slot.day_type === 'A')
   const bSlots = slots.filter((slot) => slot.day_type === 'B')
+  const fullYearStudyHallEveryDay = specialCourseKind(courseName) === 'Study Hall'
+    && slots.length === 2
+    && aSlots.length === 1
+    && bSlots.length === 1
+    && aSlots[0].period_number === bSlots[0].period_number
   if (policy === 'full_year' && term !== 'full_year') return 'This catalogue course is full year, but the screenshot was read as semester-only.'
   if (policy === 'semester' && term === 'full_year') return 'This half-credit course must be assigned to Semester 1 or Semester 2.'
   if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
-    if (term === 'full_year' && slots.length !== 1) return 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
+    if (term === 'full_year' && slots.length !== 1 && !fullYearStudyHallEveryDay) {
+      return specialCourseKind(courseName) === 'Study Hall'
+        ? 'Full-year Study Hall must meet on one day type or the same period on both A and B days.'
+        : 'Full-year Gym, Wellness, or Study Hall must meet only on A days or only on B days.'
+    }
     if (term !== 'full_year' && (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1)) {
       return 'Semester Gym, Wellness, or Study Hall must meet every A and B day.'
     }
-    if (term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0]?.period_number) {
+    if (term !== 'full_year' && aSlots[0]?.period_number !== bSlots[0].period_number) {
       return 'Semester Gym, Wellness, or Study Hall must use the same period every day.'
     }
   }
@@ -1186,17 +1225,22 @@ function exactClassMatch(
   teacherLastName: string,
   options: ImportClassOption[],
   policy: CourseTermPolicy,
+  allowUniqueTeacherFallback = false,
 ): ImportClassOption | null {
   if (entry.term === 'unknown') return null
   const key = slotsKey(entry.meeting_slots)
-  return options.find((option) => (
-    collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
-    && (policy === 'flexible_attendance'
+  const scheduleMatches = options.filter((option) => (
+    policy === 'flexible_attendance'
       ? periodsKey(option.meeting_slots) === periodsKey(entry.meeting_slots)
       : policy === 'lunch'
         ? slotsKey(option.meeting_slots) === key
-        : option.term === entry.term && slotsKey(option.meeting_slots) === key)
-  )) ?? null
+        : option.term === entry.term && slotsKey(option.meeting_slots) === key
+  ))
+  const teacherMatch = scheduleMatches.find((option) => (
+    collapseWhitespace(option.teacher_last_name).toLowerCase() === teacherLastName.toLowerCase()
+  ))
+  if (teacherMatch) return teacherMatch
+  return allowUniqueTeacherFallback && scheduleMatches.length === 1 ? scheduleMatches[0] : null
 }
 
 function periodsKey(slots: MeetingSlot[]): string {
@@ -1209,6 +1253,7 @@ function normalizeCourseName(value: string): string {
     .toLowerCase()
     .replace(/\(\s*chs\s*\)/g, ' ')
     .replace(/\(\s*(?:sem(?:ester)?\s*[12]|s[12]|fy|full\s*year|fy\s*\/\s*pt)\s*\)\s*\d*/g, ' ')
+    .replace(/\bacad\b/g, 'academic')
     .replace(/\bhon\b/g, 'honors')
     .replace(/\bmod\b/g, 'modern')
     .replace(/\bamer\b/g, 'american')
@@ -1217,6 +1262,7 @@ function normalizeCourseName(value: string): string {
     .replace(/\bcomp\s+sci\b/g, 'computer science')
     .replace(/\bbio\b/g, 'biology')
     .replace(/\bchem\b/g, 'chemistry')
+    .replace(/\benvironment\b/g, 'environmental')
     .replace(/\blang\b/g, 'language')
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
@@ -1225,6 +1271,26 @@ function normalizeCourseName(value: string): string {
 
   if (/^health (?:and )?(?:p e|pe|physical education|phys ed)(?: \d{1,2})?$/.test(normalized)) return 'gym'
   return normalized
+}
+
+function truncatedCoursePrefixSimilarity(source: string, candidate: string): number {
+  const trimmed = collapseWhitespace(source)
+  if (!/(?:\.{3,}|…)$/.test(trimmed)) return 0
+  const visible = trimmed.replace(/(?:\.{3,}|…)$/, '').trim()
+  const normalizedVisible = normalizeCourseName(visible)
+  const normalizedCandidate = normalizeCourseName(candidate)
+  if (!normalizedVisible || !normalizedCandidate) return 0
+  if (normalizedCandidate.startsWith(normalizedVisible)) return 0.98
+
+  const visibleTokens = normalizedVisible.split(' ')
+  if (visibleTokens.length < 2) return 0
+  const partialToken = visibleTokens.at(-1) ?? ''
+  const prefix = visibleTokens.slice(0, -1).join(' ')
+  if (!prefix) return 0
+  if (normalizedCandidate === prefix) return 0.98
+  if (!normalizedCandidate.startsWith(`${prefix} `)) return 0
+  const nextToken = normalizedCandidate.slice(prefix.length).trim().split(' ')[0] ?? ''
+  return partialToken.length >= 2 && nextToken.startsWith(partialToken) ? 0.98 : 0
 }
 
 function courseSimilarity(left: string, right: string): number {
@@ -1239,7 +1305,7 @@ function courseSimilarity(left: string, right: string): number {
   const dice = (2 * shared) / (leftTokens.size + rightTokens.size)
   const edit = 1 - levenshtein(normalizedLeft, normalizedRight) / Math.max(normalizedLeft.length, normalizedRight.length)
   const containment = normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft) ? 0.88 : 0
-  return Math.max(containment, dice * 0.68 + edit * 0.32)
+  return Math.max(truncatedCoursePrefixSimilarity(left, right), containment, dice * 0.68 + edit * 0.32)
 }
 
 function levenshtein(left: string, right: string): number {

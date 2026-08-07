@@ -340,6 +340,46 @@ describe('normalization and backend catalogue matching', () => {
     })
   })
 
+  it('matches common PowerSchool abbreviations and truncated course names without hiding real ambiguity', () => {
+    const matchingCatalog: CourseRecord[] = [
+      { id: '10000000-0000-4000-8000-000000000001', name: 'Academic Spanish 3', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000002', name: 'Academic Spanish 4', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000003', name: 'AP English 3 Language & Composition', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000004', name: 'AP Physics 1&2', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000005', name: 'AP Physics 1', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000006', name: 'AP Physics 2', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000007', name: 'AP Environmental Science', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000008', name: 'Symphonic Band - NAI', term_policy: 'full_year' },
+      { id: '10000000-0000-4000-8000-000000000009', name: 'Symphonic Band - NASH', term_policy: 'full_year' },
+    ]
+
+    expect(findCourseMatch('Acad Spanish 3', matchingCatalog)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'Academic Spanish 3' },
+    })
+    expect(findCourseMatch('AP English 3 Lan...', matchingCatalog, 11)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'AP English 3 Language & Composition' },
+    })
+    expect(findCourseMatch('AP Physics 1 & 2 (C...', matchingCatalog, 11)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'AP Physics 1&2' },
+    })
+    expect(findCourseMatch('AP Environment Science', matchingCatalog)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'AP Environmental Science' },
+    })
+    expect(findCourseMatch('Symphonic Band...', matchingCatalog)).toMatchObject({ kind: 'ambiguous', course: null })
+    expect(findCourseMatch('Symphonic Band...', matchingCatalog, 9)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'Symphonic Band - NAI' },
+    })
+    expect(findCourseMatch('Symphonic Band...', matchingCatalog, 12)).toMatchObject({
+      kind: 'matched',
+      course: { name: 'Symphonic Band - NASH' },
+    })
+  })
+
   it('keeps the same course and teacher at different periods as separate rows', async () => {
     const response = await handleScheduleImportRequest(request([png(), png()]), dependencies({
       output: {
@@ -400,6 +440,76 @@ describe('normalization and backend catalogue matching', () => {
     expect((await responseBody(semesters)).rows).toEqual([
       expect.objectContaining({ term: 'semester_1', teacher_last_name: 'N/A' }),
       expect.objectContaining({ term: 'semester_2', teacher_last_name: 'N/A' }),
+    ])
+  })
+
+  it('auto-completes one-sided Lunch to the same A/B period', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      config: config({ retry_incomplete_results: false }),
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'Lunch (SEM 1)', teacher: 'Staff, Unassigned', term: 'S1', slots: ['A5'] }],
+      },
+    }))
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        term: 'semester_1',
+        meeting_slots: [{ day_type: 'A', period_number: 5 }, { day_type: 'B', period_number: 5 }],
+        flags: [],
+      }),
+    ])
+  })
+
+  it('allows full-year Study Hall on the same period on both A and B days', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      config: config({ retry_incomplete_results: false }),
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'Study Hall', teacher: 'Staff, Unassigned', term: 'FY', slots: ['A6', 'B6'] }],
+      },
+    }))
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        course: expect.objectContaining({ name: 'Study Hall - NASH' }),
+        term: 'full_year',
+        meeting_slots: [{ day_type: 'A', period_number: 6 }, { day_type: 'B', period_number: 6 }],
+        flags: [],
+      }),
+    ])
+  })
+
+  it('uses the unique matching existing section when the teacher is unreadable', async () => {
+    const response = await handleScheduleImportRequest(request([png()]), dependencies({
+      config: config({ retry_incomplete_results: false }),
+      output: {
+        schedule: true,
+        issue: '',
+        rows: [{ course: 'AP Biology (CHS)', teacher: '', term: 'FY', slots: ['A1', 'B1', 'A2'] }],
+      },
+      classes: [{
+        id: CLASS_ID,
+        course_name_id: COURSE_ID,
+        teacher_last_name: 'Spak',
+        default_academic_term: 'full_year',
+        meeting_slots: [
+          { day_type: 'A', period_number: 1 },
+          { day_type: 'A', period_number: 2 },
+          { day_type: 'B', period_number: 1 },
+        ],
+      }],
+    }))
+    expect(response.status).toBe(200)
+    expect((await responseBody(response)).rows).toEqual([
+      expect.objectContaining({
+        teacher_last_name: 'Spak',
+        resolution: 'existing_class',
+        existing_class_id: CLASS_ID,
+        flags: [],
+      }),
     ])
   })
 

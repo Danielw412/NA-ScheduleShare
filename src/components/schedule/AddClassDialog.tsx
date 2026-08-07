@@ -162,7 +162,7 @@ function automaticSpecialSlots(term: AcademicTerm, dayType: DayType, period: num
   return [{ day_type: dayType, period_number: period }]
 }
 
-function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meetingSlots: MeetingSlot[], isDoublePeriod: boolean): string | null {
+function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meetingSlots: MeetingSlot[], isDoublePeriod: boolean, courseName = ''): string | null {
   const slotError = validateMeetingSlots(meetingSlots, isDoublePeriod)
   if (slotError) return slotError
   const aSlots = meetingSlotsForDay(meetingSlots, 'A')
@@ -172,7 +172,12 @@ function scheduleRuleError(policy: CourseTermPolicy, term: AcademicTerm, meeting
   if (policy === 'semester' && term === 'full_year') return 'Choose Semester 1 or Semester 2 for this half-credit course.'
   if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') {
     if (isDoublePeriod) return 'Gym, Wellness, and Study Hall cannot use a double-period attendance pattern.'
-    if (term === 'full_year' && meetingSlots.length !== 1) return 'A full-year entry must meet only on A days or only on B days.'
+    const fullYearStudyHallEveryDay = isStudyHallCourseName(courseName)
+      && meetingSlots.length === 2
+      && aSlots.length === 1
+      && bSlots.length === 1
+      && aSlots[0].period_number === bSlots[0].period_number
+    if (term === 'full_year' && meetingSlots.length !== 1 && !fullYearStudyHallEveryDay) return 'A full-year entry must meet only on A days or only on B days.'
     if (term !== 'full_year' && (aSlots.length !== 1 || bSlots.length !== 1 || meetingSlots.length !== 2)) {
       return 'A semester entry must meet once on every A and B day.'
     }
@@ -268,7 +273,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   const activeCourseName = (mode === 'search' ? selected?.course_name : selectedCourseName?.course_name ?? newCourseName) ?? ''
   const teacherIsNotApplicable = teacherNotApplicable(activeCourseName)
   const effectiveTeacherLastName = teacherIsNotApplicable ? 'N/A' : teacherLastName
-  const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod)
+  const meetingSlotError = mode === 'search' && !selected ? null : scheduleRuleError(activePolicy, term, meetingSlots, isDoublePeriod, activeCourseName)
   const teacherError = teacherIsNotApplicable || !teacherLastName ? null : teacherLastNameError(teacherLastName)
   const canCreate = Boolean(selectedCourseName || (newCourseName.length >= 2 && confirmedNoCourseMatch))
     && (teacherIsNotApplicable || !teacherLastNameError(teacherLastName))
@@ -409,7 +414,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
                 )
               })}
             </div>
-            {selected ? <SelectedAttendanceControls policy={selectedPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}
+            {selected ? <SelectedAttendanceControls policy={selectedPolicy} courseName={selected.course_name} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} /> : null}
             <div className="cant-find"><span>Can’t find the right class?</span><button className="button button-secondary" type="button" onClick={() => setMode('create')}><Plus aria-hidden="true" /> Create a new class</button></div>
             {searchError || error || meetingSlotError ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{searchError ?? error ?? meetingSlotError}</span></div> : null}
             <div className="dialog-action-bar"><button className="button button-primary button-block" type="button" disabled={!selected || saving || Boolean(meetingSlotError)} onClick={() => void confirmSelection()}>{saving ? 'Saving…' : replacing ? 'Save class entry' : 'Add class'}</button></div>
@@ -449,7 +454,7 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
               <small id="teacher-last-name-help" className="field-help">{teacherIsNotApplicable ? 'Lunch and Study Hall always use N/A for the teacher.' : 'Enter only the teacher’s last name. For example, enter Smith instead of Joe Smith.'}</small>
             </label>
             {teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}
-            <NewCourseFormatControls policy={creatingPolicy} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />
+            <NewCourseFormatControls policy={creatingPolicy} courseName={activeCourseName} term={term} meetingSlots={meetingSlots} dayType={dayType} period={period} onChange={(nextTerm, nextSlots) => { setTerm(nextTerm); setMeetingSlots(nextSlots) }} />
             {creatingPolicy !== 'flexible_attendance' && creatingPolicy !== 'sectioned_attendance' && creatingPolicy !== 'lunch' ? <MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} onDoublePeriodChange={changeDoublePeriod} onMeetingSlotsChange={setMeetingSlots} /> : null}
             {meetingSlotError ? <p className="form-error" role="alert">{meetingSlotError}</p> : null}
             {error ? <div className="notice-box error" role="alert"><AlertTriangle aria-hidden="true" /><span>{error}</span></div> : null}
@@ -461,8 +466,9 @@ export function AddClassDialog({ open, dayType, period, semester, replacing, onC
   )
 }
 
-function SelectedAttendanceControls({ policy, term, meetingSlots, dayType, period, onChange }: {
+function SelectedAttendanceControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
   policy: CourseTermPolicy
+  courseName: string
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
   dayType: DayType
@@ -470,12 +476,13 @@ function SelectedAttendanceControls({ policy, term, meetingSlots, dayType, perio
   onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
 }) {
   if (policy === 'lunch') return <AutomaticSpecialCourseControls legend="Lunch schedule" lunch term={term} dayType={dayType} period={period} onChange={onChange} />
-  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls fixedPeriod={meetingSlots[0]?.period_number ?? period} term={term} meetingSlots={meetingSlots} onChange={onChange} />
+  if (policy === 'flexible_attendance') return <FlexibleAttendanceControls fixedPeriod={meetingSlots[0]?.period_number ?? period} allowFullYearEveryDay={isStudyHallCourseName(courseName)} term={term} meetingSlots={meetingSlots} onChange={onChange} />
   return <div className="term-field"><p><span>Academic term</span><strong>{term === 'full_year' ? 'Full Year' : term === 'semester_1' ? 'Semester 1' : 'Semester 2'}</strong></p></div>
 }
 
-function NewCourseFormatControls({ policy, term, meetingSlots, dayType, period, onChange }: {
+function NewCourseFormatControls({ policy, courseName, term, meetingSlots, dayType, period, onChange }: {
   policy: CourseTermPolicy
+  courseName: string
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
   dayType: DayType
@@ -485,7 +492,7 @@ function NewCourseFormatControls({ policy, term, meetingSlots, dayType, period, 
   if (policy === 'full_year') return <div className="term-field"><p><span>Academic term</span><strong>Full Year</strong></p></div>
   if (policy === 'semester') return <SemesterSelect label="Semester" term={term} onChange={(nextTerm) => onChange(nextTerm, meetingSlots)} />
   if (policy === 'lunch') return <AutomaticSpecialCourseControls legend="Lunch schedule" lunch term={term} dayType={dayType} period={period} onChange={onChange} />
-  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') return <FlexibleAttendanceControls term={term} meetingSlots={meetingSlots} onChange={onChange} />
+  if (policy === 'flexible_attendance' || policy === 'sectioned_attendance') return <FlexibleAttendanceControls allowFullYearEveryDay={policy === 'flexible_attendance' && isStudyHallCourseName(courseName)} term={term} meetingSlots={meetingSlots} onChange={onChange} />
   return <label>{policy === 'variable_credit' ? 'Credit and term' : 'Course version format'}
     <select value={term} onChange={(event) => onChange(event.target.value as AcademicTerm, meetingSlots)}>
       <option value="full_year">{policy === 'variable_credit' ? '1.0 credit · Full Year' : 'Full-year version'}</option>
@@ -519,16 +526,25 @@ function AutomaticSpecialCourseControls({ legend, lunch = false, term, dayType, 
   </fieldset>
 }
 
-function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, onChange }: {
+function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, allowFullYearEveryDay = false, onChange }: {
   term: AcademicTerm
   meetingSlots: MeetingSlot[]
   fixedPeriod?: number
+  allowFullYearEveryDay?: boolean
   onChange: (term: AcademicTerm, meetingSlots: MeetingSlot[]) => void
 }) {
   const onlyDay = meetingSlots[0]?.day_type ?? 'A'
-  const pattern = term === 'full_year' ? `full_year_${onlyDay}` : term
   const fallback = fixedPeriod ?? meetingSlots[0]?.period_number ?? 1
-  const aPeriod = meetingSlotsForDay(meetingSlots, 'A')[0]?.period_number ?? fallback
+  const aSlots = meetingSlotsForDay(meetingSlots, 'A')
+  const bSlots = meetingSlotsForDay(meetingSlots, 'B')
+  const fullYearEveryDay = term === 'full_year'
+    && aSlots.length === 1
+    && bSlots.length === 1
+    && aSlots[0].period_number === bSlots[0].period_number
+  const pattern = term === 'full_year'
+    ? fullYearEveryDay ? 'full_year_every_day' : `full_year_${onlyDay}`
+    : term
+  const aPeriod = aSlots[0]?.period_number ?? fallback
   const semesterPeriod = fixedPeriod ?? aPeriod
 
   function changePattern(nextPattern: string) {
@@ -538,21 +554,27 @@ function FlexibleAttendanceControls({ term, meetingSlots, fixedPeriod, onChange 
       return
     }
     const nextPeriod = term === 'full_year' ? fallback : semesterPeriod
-    onChange(nextPattern as SemesterTerm, [{ day_type: 'A', period_number: nextPeriod }, { day_type: 'B', period_number: nextPeriod }])
+    if (nextPattern === 'full_year_every_day') {
+      onChange('full_year', semesterEveryDaySlots(nextPeriod))
+      return
+    }
+    onChange(nextPattern as SemesterTerm, semesterEveryDaySlots(nextPeriod))
   }
 
   function changePeriod(dayType: DayType, nextPeriod: number) {
     if (term === 'full_year') {
-      onChange(term, [{ day_type: onlyDay, period_number: nextPeriod }])
+      onChange(term, fullYearEveryDay
+        ? semesterEveryDaySlots(nextPeriod)
+        : [{ day_type: onlyDay, period_number: nextPeriod }])
       return
     }
     onChange(term, semesterEveryDaySlots(nextPeriod))
   }
 
   return <fieldset className="meeting-slot-picker special-attendance-picker"><legend>Attendance pattern</legend>
-    <label>Format<select value={pattern} onChange={(event) => changePattern(event.target.value)}><option value="semester_1">Semester 1 · Every day</option><option value="semester_2">Semester 2 · Every day</option><option value="full_year_A">Full Year · A days only</option><option value="full_year_B">Full Year · B days only</option></select></label>
+    <label>Format<select value={pattern} onChange={(event) => changePattern(event.target.value)}><option value="semester_1">Semester 1 · Every day</option><option value="semester_2">Semester 2 · Every day</option><option value="full_year_A">Full Year · A days only</option><option value="full_year_B">Full Year · B days only</option>{allowFullYearEveryDay ? <option value="full_year_every_day">Full Year · Every day</option> : null}</select></label>
     {fixedPeriod ? <p className="inferred-slot">Period: <strong>{fixedPeriod}</strong></p> : <div className="two-field-row">
-      {term === 'full_year' ? <DayPeriodSelect dayType={onlyDay} value={fallback} onChange={changePeriod} /> : <PeriodSelect value={semesterPeriod} onChange={(nextPeriod) => changePeriod('A', nextPeriod)} />}
+      {term === 'full_year' && !fullYearEveryDay ? <DayPeriodSelect dayType={onlyDay} value={fallback} onChange={changePeriod} /> : <PeriodSelect value={term === 'full_year' ? aPeriod : semesterPeriod} onChange={(nextPeriod) => changePeriod('A', nextPeriod)} />}
     </div>}
     <p className="inferred-slot">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
   </fieldset>

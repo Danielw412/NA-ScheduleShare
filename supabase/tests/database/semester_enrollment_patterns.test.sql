@@ -1,5 +1,5 @@
 begin;
-select plan(42);
+select plan(43);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -61,6 +61,9 @@ from public.course_names where normalized_name = 'lunch - nash';
 insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
 select '96000000-0000-4000-8000-000000000032', id, 'Cafe', 'semester_2', false, '96000000-0000-4000-8000-000000000001'
 from public.course_names where normalized_name = 'lunch - nash';
+insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+select '96000000-0000-4000-8000-000000000033', id, 'N/A', 'full_year', false, '96000000-0000-4000-8000-000000000001'
+from public.course_names where normalized_name = 'study hall - nash';
 
 insert into public.class_meeting_slots (class_id, day_type, period_number) values
   ('96000000-0000-4000-8000-000000000020', 'A', 1),
@@ -77,7 +80,18 @@ insert into public.class_meeting_slots (class_id, day_type, period_number) value
   ('96000000-0000-4000-8000-000000000031', 'A', 7),
   ('96000000-0000-4000-8000-000000000031', 'B', 7),
   ('96000000-0000-4000-8000-000000000032', 'A', 8),
-  ('96000000-0000-4000-8000-000000000032', 'B', 8);
+  ('96000000-0000-4000-8000-000000000032', 'B', 8),
+  ('96000000-0000-4000-8000-000000000033', 'A', 9),
+  ('96000000-0000-4000-8000-000000000033', 'B', 9);
+
+select lives_ok(
+  $$select private.assert_enrollment_schedule_allowed(
+    '96000000-0000-4000-8000-000000000033',
+    'full_year',
+    '[{"day_type":"A","period_number":9},{"day_type":"B","period_number":9}]'
+  )$$,
+  'full-year Study Hall can meet in the same period on both A and B days'
+);
 
 select set_config('request.jwt.claim.sub', '96000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);

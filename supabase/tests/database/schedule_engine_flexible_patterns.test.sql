@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(21);
 
 create temporary table expanded_schedule_engine_payload (payload jsonb not null);
 
@@ -97,8 +97,8 @@ select is(
 
 select is(
   (select jsonb_array_length(payload -> 'available_sections') from expanded_schedule_engine_payload),
-  13,
-  'two Study Hall sections, one Gym section, and one fixed section expand to thirteen unique placements'
+  15,
+  'two Study Hall sections, one Gym section, and one fixed section expand to fifteen unique placements'
 );
 
 select is(
@@ -283,10 +283,34 @@ select is(
     cross join lateral jsonb_array_elements(payload_row.payload -> 'available_sections') section
     where section ->> 'course_term_policy' = 'flexible_attendance'
       and section ->> 'academic_term' = 'full_year'
-      and jsonb_array_length(section -> 'meeting_slots') <> 1
+      and not (
+        jsonb_array_length(section -> 'meeting_slots') = 1
+        or (
+          lower(section ->> 'course_name') in ('study hall', 'study hall - nai', 'study hall - nash')
+          and jsonb_array_length(section -> 'meeting_slots') = 2
+          and section -> 'meeting_slots' @> '[{"day_type":"A"}]'::jsonb
+          and section -> 'meeting_slots' @> '[{"day_type":"B"}]'::jsonb
+          and (section #>> '{meeting_slots,0,period_number}') = (section #>> '{meeting_slots,1,period_number}')
+        )
+      )
   ),
   0::bigint,
-  'every generated full-year flexible placement is exactly one A/B-day meeting'
+  'full-year flexible placements use one day except same-period A/B Study Hall'
+);
+
+select is(
+  (
+    select count(*)
+    from expanded_schedule_engine_payload payload_row
+    cross join lateral jsonb_array_elements(payload_row.payload -> 'available_sections') section
+    where lower(section ->> 'course_name') = 'study hall - nash'
+      and section ->> 'academic_term' = 'full_year'
+      and jsonb_array_length(section -> 'meeting_slots') = 2
+      and section -> 'meeting_slots' @> '[{"day_type":"A"}]'::jsonb
+      and section -> 'meeting_slots' @> '[{"day_type":"B"}]'::jsonb
+  ),
+  2::bigint,
+  'each Study Hall period gets a full-year every-day placement'
 );
 
 select is(

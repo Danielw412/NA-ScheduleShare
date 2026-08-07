@@ -146,6 +146,43 @@ describe('schedule import replacement', () => {
     })
   })
 
+  it('auto-completes a one-sided Lunch import to both A and B days', () => {
+    const lunchResult = {
+      image_count: 1,
+      warnings: [],
+      rows: [{
+        ...row,
+        course: { id: '22222222-2222-4222-8222-222222222222', name: 'Lunch - NASH', confidence: 1, term_policy: 'lunch' as const },
+        teacher_last_name: 'N/A',
+        term: 'semester_1' as const,
+        meeting_slots: [{ day_type: 'A' as const, period_number: 5 }],
+        class_options: [],
+      }],
+    }
+    expect(editableRowsFromImportResult(lunchResult)[0].meeting_slots).toEqual([
+      { day_type: 'A', period_number: 5 },
+      { day_type: 'B', period_number: 5 },
+    ])
+    expect(importRowError(editableRowsFromImportResult(lunchResult)[0])).toBeNull()
+  })
+
+  it('allows full-year Study Hall every day while keeping the Gym restriction', () => {
+    const everyDay = [{ day_type: 'A' as const, period_number: 6 }, { day_type: 'B' as const, period_number: 6 }]
+    expect(importRowError({
+      ...row,
+      term: 'full_year',
+      meeting_slots: everyDay,
+      course: { ...row.course!, name: 'Study Hall - NASH', term_policy: 'flexible_attendance' },
+      teacher_last_name: 'N/A',
+    })).toBeNull()
+    expect(importRowError({
+      ...row,
+      term: 'full_year',
+      meeting_slots: everyDay,
+      course: { ...row.course!, name: 'Gym', term_policy: 'flexible_attendance' },
+    })).toContain('only A days or only B days')
+  })
+
   it('rejects mismatched A/B periods for semester Gym and Wellness review rows', () => {
     const mismatchedSlots = [{ day_type: 'A' as const, period_number: 2 }, { day_type: 'B' as const, period_number: 3 }]
     expect(importRowError({

@@ -202,8 +202,13 @@ function placementValidationError(placement: ExistingSectionPlacement): string |
   if (placement.course_term_policy === 'flexible_attendance' || placement.course_term_policy === 'sectioned_attendance') {
     const aSlots = slots.filter((slot) => slot.day_type === 'A')
     const bSlots = slots.filter((slot) => slot.day_type === 'B')
+    const fullYearStudyHallEveryDay = /^study hall(?:\s*-\s*(?:nai|nash))?$/i.test(placement.course_name.trim())
+      && slots.length === 2
+      && aSlots.length === 1
+      && bSlots.length === 1
+      && aSlots[0].period_number === bSlots[0].period_number
     if (placement.academic_term === 'full_year') {
-      if (slots.length !== 1) return 'must meet on exactly one A or B day when full-year'
+      if (slots.length !== 1 && !fullYearStudyHallEveryDay) return 'must meet on one day type or, for Study Hall, the same period every day when full-year'
     } else if (slots.length !== 2 || aSlots.length !== 1 || bSlots.length !== 1 || aSlots[0].period_number !== bSlots[0].period_number) {
       return 'must meet every day in the same period when semester-long'
     }
