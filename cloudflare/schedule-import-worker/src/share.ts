@@ -112,7 +112,7 @@ function pageHtml(url: URL, token: string, share: PublicScheduleShare, env: Shar
   const siteUrl = configuredSiteUrl(env)
   const reactUrl = `${siteUrl}/#/share/${encodeURIComponent(token)}`
   const title = share.available
-    ? 'Schedule | NA ScheduleShare'
+    ? 'A/B-Day Schedule | NA ScheduleShare'
     : 'Schedule unavailable | NA ScheduleShare'
   const description = share.available
     ? 'A shared A/B-day class schedule with periods and course names.'
