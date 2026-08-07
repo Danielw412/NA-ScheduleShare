@@ -1,5 +1,5 @@
 begin;
-select plan(32);
+select plan(33);
 
 select is(
   (select count(*) from public.course_names where source = 'approved'),
@@ -61,12 +61,16 @@ select is(
   'De la Cruz',
   'legitimate compound teacher last names are accepted'
 );
+select is(
+  private.normalize_teacher_last_name('Joe Smith'),
+  'Smith',
+  'two-word teacher names automatically keep only the final word'
+);
 select throws_ok(
-  $$insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
-    values ('94000000-0000-4000-8000-000000000003', '94000000-0000-4000-8000-000000000010', 'Dr. Smith', 'full_year', false, '10000000-0000-4000-8000-000000000001')$$,
+  $$select private.normalize_teacher_last_name('Smith, Joe')$$,
   '23514',
   'invalid_teacher_last_name',
-  'teacher titles are rejected as obviously invalid last-name input'
+  'comma-formatted teacher names remain invalid instead of being truncated'
 );
 
 insert into public.class_enrollments (student_id, class_id, academic_term)
