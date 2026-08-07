@@ -1,0 +1,57 @@
+name: Temporary database test patch
+
+on:
+  push:
+    branches:
+      - fix/admin-class-cleanup-teacher-delete
+
+permissions:
+  contents: write
+
+jobs:
+  patch-db-test:
+    if: ${{ !contains(github.event.head_commit.message, '[db-test-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-class-cleanup-teacher-delete
+      - name: Update teacher normalization database test
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('supabase/tests/database/course_catalog_and_deletion.test.sql')
+          text = path.read_text()
+          text = text.replace('select plan(32);', 'select plan(33);', 1)
+          old = '''select throws_ok(
+            $$insert into public.classes (id, course_name_id, teacher_last_name, default_academic_term, is_double_period, created_by)
+              values ('94000000-0000-4000-8000-000000000003', '94000000-0000-4000-8000-000000000010', 'Dr. Smith', 'full_year', false, '10000000-0000-4000-8000-000000000001')$$,
+            '23514',
+            'invalid_teacher_last_name',
+            'teacher titles are rejected as obviously invalid last-name input'
+          );
+          '''.replace('          ', '')
+          new = '''select is(
+            private.normalize_teacher_last_name('Joe Smith'),
+            'Smith',
+            'two-word teacher names automatically keep only the final word'
+          );
+          select throws_ok(
+            $$select private.normalize_teacher_last_name('Smith, Joe')$$,
+            '23514',
+            'invalid_teacher_last_name',
+            'comma-formatted teacher names remain invalid instead of being truncated'
+          );
+          '''.replace('          ', '')
+          if old not in text:
+            raise SystemExit('Expected teacher validation block not found; refusing broad patch')
+          path.write_text(text.replace(old, new, 1))
+      - name: Commit branch-only test patch
+        run: |
+          git config user.name "ScheduleShare branch patch"
+          git config user.email "actions@users.noreply.github.com"
+          git add supabase/tests/database/course_catalog_and_deletion.test.sql
+          git diff --cached --quiet && exit 0
+          git commit -m "Update teacher normalization database test [db-test-patch]"
+          git push origin HEAD:fix/admin-class-cleanup-teacher-delete
