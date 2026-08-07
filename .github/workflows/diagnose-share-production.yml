@@ -1,4 +1,4 @@
-name: Verify production share fix
+name: Deploy and verify production share fix
 
 on:
   pull_request:
@@ -7,14 +7,14 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 jobs:
-  verify-production:
+  deploy-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Inspect Worker deploy runs and live share endpoint
+      - name: Dispatch production Worker and verify live share endpoint
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -23,27 +23,25 @@ jobs:
         run: |
           set -euo pipefail
 
+          curl --silent --show-error --fail \
+            --request POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Content-Type: application/json' \
+            "https://api.github.com/repos/$REPO/actions/workflows/deploy-worker.yml/dispatches" \
+            --data '{"ref":"main"}'
+          echo 'Worker deployment dispatched for main.'
+
           deployed=0
-          for attempt in $(seq 1 20); do
+          run_id=''
+          for attempt in $(seq 1 60); do
             curl --silent --show-error --fail \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H 'Accept: application/vnd.github+json' \
-              "https://api.github.com/repos/$REPO/actions/workflows/deploy-worker.yml/runs?per_page=20" \
+              "https://api.github.com/repos/$REPO/actions/workflows/deploy-worker.yml/runs?event=workflow_dispatch&per_page=20" \
               > /tmp/runs.json
 
-            python - <<'PY'
-          import json, os
-          data=json.load(open('/tmp/runs.json', encoding='utf-8'))
-          expected=os.environ['EXPECTED_SHA']
-          matches=[r for r in data.get('workflow_runs', []) if r.get('head_sha') == expected]
-          if matches:
-              r=matches[0]
-              print(f"worker_run id={r.get('id')} status={r.get('status')} conclusion={r.get('conclusion')} event={r.get('event')}")
-          else:
-              print('worker_run not_found')
-          PY
-
-            state=$(python - <<'PY'
+            result=$(python - <<'PY'
           import json, os
           data=json.load(open('/tmp/runs.json', encoding='utf-8'))
           expected=os.environ['EXPECTED_SHA']
@@ -51,23 +49,31 @@ jobs:
           if not matches:
               print('not_found')
           else:
-              r=matches[0]
-              print(f"{r.get('status')}:{r.get('conclusion')}")
+              r=max(matches, key=lambda x: x.get('created_at') or '')
+              print(f"{r.get('id')}|{r.get('status')}|{r.get('conclusion')}")
           PY
           )
+            echo "worker_run=$result"
 
-            if [ "$state" = 'completed:success' ]; then
-              deployed=1
-              break
-            fi
-            if [[ "$state" == completed:* ]] && [ "$state" != 'completed:success' ]; then
-              echo "Worker deployment failed: $state"
-              exit 1
+            if [ "$result" != 'not_found' ]; then
+              run_id=${result%%|*}
+              rest=${result#*|}
+              status=${rest%%|*}
+              conclusion=${rest#*|}
+              if [ "$status" = 'completed' ] && [ "$conclusion" = 'success' ]; then
+                deployed=1
+                break
+              fi
+              if [ "$status" = 'completed' ] && [ "$conclusion" != 'success' ]; then
+                echo "Worker deployment failed: run=$run_id conclusion=$conclusion"
+                exit 1
+              fi
             fi
             sleep 3
           done
 
           test "$deployed" = 1
+          echo "Worker deployment succeeded: run=$run_id"
 
           URL='https://schedule-api.naclubs.net/share/e81658a5-bbb6-4d0e-8cc2-6dc3a9200875'
           page_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
@@ -85,4 +91,5 @@ jobs:
           test "$image_status" = 200
           grep -q '<title>Schedule | NA ScheduleShare</title>' /tmp/page.html
           grep -q '<meta property="og:title" content="Schedule | NA ScheduleShare">' /tmp/page.html
+          grep -q '<meta name="twitter:title" content="Schedule | NA ScheduleShare">' /tmp/page.html
           file /tmp/image.png | grep -q 'PNG image data, 1200 x 630'
