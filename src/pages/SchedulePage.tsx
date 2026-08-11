@@ -54,19 +54,24 @@ function ImportIssueChoiceDialog({ count, onFix, onManual }: { count: number; on
   </div>
 }
 
-function OpenScheduleSlotsNote({ enrollments, selectedTerm }: { enrollments: ScheduleEnrollment[]; selectedTerm: SemesterTerm }) {
+function OpenScheduleSlotsNote({ enrollments }: { enrollments: ScheduleEnrollment[] }) {
   if (enrollments.length === 0) return null
   const completeEnrollments = enrollments.filter((enrollment) => Boolean(
     enrollment.academic_term
     && enrollment.class
     && (enrollment.meeting_slots ?? enrollment.class.meeting_slots),
   ))
-  const openSlotCount = scheduleCoverageIssues(completeEnrollments)
-    .filter((issue) => issue.term === selectedTerm && issue.count === 0)
-    .length
-  if (openSlotCount === 0) return null
-  const semesterLabel = selectedTerm === 'semester_1' ? 'Semester 1' : 'Semester 2'
-  return <p className="schedule-open-slots-note"><strong>{openSlotCount}</strong> schedule {openSlotCount === 1 ? 'slot is' : 'slots are'} not filled for {semesterLabel} yet.</p>
+  const coverageIssues = scheduleCoverageIssues(completeEnrollments)
+  const openSlotCounts = (['semester_1', 'semester_2'] as const).map((term) => ({
+    term,
+    count: coverageIssues.filter((issue) => issue.term === term && issue.count === 0).length,
+  })).filter((summary) => summary.count > 0)
+  if (openSlotCounts.length === 0) return null
+  const openSlotCount = openSlotCounts.reduce((total, summary) => total + summary.count, 0)
+  const semesterLabel = openSlotCounts.length === 1
+    ? (openSlotCounts[0].term === 'semester_1' ? 'Semester 1' : 'Semester 2')
+    : null
+  return <p className="schedule-open-slots-note"><strong>{openSlotCount}</strong> schedule {openSlotCount === 1 ? 'slot is' : 'slots are'} not filled{semesterLabel ? ` for ${semesterLabel}` : ''} yet.</p>
 }
 
 function onboardingKey(userId: string): string {
@@ -435,7 +440,7 @@ export function SchedulePage() {
           }}>Create account</button></div>
         </section>}
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-        <OpenScheduleSlotsNote enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} />
+        <OpenScheduleSlotsNote enrollments={guestPreviewEnrollments} />
         <div className="schedule-layout">
           <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} />
         </div>
@@ -509,7 +514,7 @@ export function SchedulePage() {
         <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
       </section> : null}
       <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-      <OpenScheduleSlotsNote enrollments={schedule.enrollments} selectedTerm={selectedTerm} />
+      <OpenScheduleSlotsNote enrollments={schedule.enrollments} />
       <div className="schedule-layout">
         <ScheduleGrid
           enrollments={schedule.enrollments}

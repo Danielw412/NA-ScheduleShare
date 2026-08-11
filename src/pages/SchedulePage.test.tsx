@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ScheduleEnrollment } from '../lib/domain'
 import type * as ScheduleImportModule from '../lib/scheduleImport'
 import type { ScheduleImportResult } from '../lib/scheduleImport'
 import { SchedulePage } from './SchedulePage'
@@ -116,6 +117,32 @@ function emptySchedule() {
     removeDemoEnrollment: vi.fn(),
     updateDemoTerm: vi.fn(),
   }
+}
+
+function semesterOneSchedule(): ScheduleEnrollment[] {
+  return Array.from({ length: 9 }, (_, index) => {
+    const period = index + 1
+    const meetingSlots = [{ day_type: 'A' as const, period_number: period }, { day_type: 'B' as const, period_number: period }]
+    return {
+      id: `enrollment-semester-1-${period}`,
+      class_id: `class-semester-1-${period}`,
+      student_id: 'student-1',
+      academic_term: 'semester_1' as const,
+      active: true,
+      created_at: '2026-08-01T00:00:00Z',
+      updated_at: '2026-08-01T00:00:00Z',
+      meeting_slots: meetingSlots,
+      class: {
+        id: `class-semester-1-${period}`,
+        course_name_id: `course-semester-1-${period}`,
+        course_name: `Semester 1 Class ${period}`,
+        teacher_last_name: `Teacher ${period}`,
+        default_academic_term: 'semester_1' as const,
+        is_double_period: false,
+        meeting_slots: meetingSlots,
+      },
+    }
+  })
 }
 
 function renderPage(initialEntry = '/schedule') {
@@ -335,11 +362,21 @@ describe('SchedulePage onboarding', () => {
 
     expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument()
     expect(screen.getByTestId('schedule-grid')).toHaveTextContent('AP Statistics')
-    expect(document.querySelector('.schedule-open-slots-note')).toHaveTextContent('16 schedule slots are not filled for Semester 1 yet')
+    expect(document.querySelector('.schedule-open-slots-note')).toHaveTextContent('32 schedule slots are not filled yet')
     expect(screen.getByRole('heading', { name: 'See who shares classes with you' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'See who shares classes with you' }).closest('section')).toHaveTextContent('4 students share at least one class with you')
     expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument()
     expect(localStorage.getItem('scheduleshare:guest-import-draft:v1')).not.toBeNull()
+  })
+
+  it('names the only semester with open slots even when the other semester is complete', () => {
+    mocks.useSchedule.mockReturnValue({
+      ...emptySchedule(),
+      enrollments: semesterOneSchedule(),
+    })
+    renderPage()
+
+    expect(document.querySelector('.schedule-open-slots-note')).toHaveTextContent('18 schedule slots are not filled for Semester 2 yet')
   })
 
   it('automatically saves a guest preview after account onboarding completes', async () => {
