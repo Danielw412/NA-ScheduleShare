@@ -24,6 +24,7 @@ import {
 } from '../lib/scheduleImport'
 import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
 import { clearSchedule, removeEnrollment, searchGuestCourseNames } from '../lib/supabase/data'
+import { scheduleCoverageIssues } from '../lib/scheduleEngineRules'
 
 interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
 
@@ -33,6 +34,39 @@ function ClarificationCallout({ count, onReview, onDismiss }: { count: number; o
     <div><h2>{count} {count === 1 ? 'class needs' : 'classes need'} clarification</h2><p>Valid classes were imported. Review the specific issue for each remaining class.</p></div>
     <div className="schedule-clarification-actions"><button className="button button-primary" type="button" onClick={onReview}>Review classes</button><button className="icon-button" type="button" aria-label="Dismiss clarification reminder" onClick={onDismiss}><X aria-hidden="true" /></button></div>
   </section>
+}
+
+function ImportIssueChoiceDialog({ count, onFix, onManual }: { count: number; onFix: () => void; onManual: () => void }) {
+  const dialogRef = useDialogAccessibility(true, onManual)
+  const classLabel = count === 1 ? 'class' : 'classes'
+  return <div className="dialog-backdrop" role="presentation">
+    <section className="class-dialog import-issue-choice-dialog" ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="import-issue-choice-title" aria-describedby="import-issue-choice-description" tabIndex={-1}>
+      <div className="import-issue-choice-icon"><AlertTriangle aria-hidden="true" /></div>
+      <div className="import-issue-choice-copy">
+        <h2 id="import-issue-choice-title">ScheduleShare Importer could not successfully import {count} {classLabel}</h2>
+        <p id="import-issue-choice-description">Choose how you want to add the remaining {classLabel}.</p>
+      </div>
+      <div className="import-issue-choice-actions">
+        <button className="button button-primary" type="button" onClick={onFix}>Fix the importer</button>
+        <button className="button button-secondary" type="button" onClick={onManual}>Enter remaining {classLabel} manually</button>
+      </div>
+    </section>
+  </div>
+}
+
+function OpenScheduleSlotsNote({ enrollments, selectedTerm }: { enrollments: ScheduleEnrollment[]; selectedTerm: SemesterTerm }) {
+  if (enrollments.length === 0) return null
+  const completeEnrollments = enrollments.filter((enrollment) => Boolean(
+    enrollment.academic_term
+    && enrollment.class
+    && (enrollment.meeting_slots ?? enrollment.class.meeting_slots),
+  ))
+  const openSlotCount = scheduleCoverageIssues(completeEnrollments)
+    .filter((issue) => issue.term === selectedTerm && issue.count === 0)
+    .length
+  if (openSlotCount === 0) return null
+  const semesterLabel = selectedTerm === 'semester_1' ? 'Semester 1' : 'Semester 2'
+  return <p className="schedule-open-slots-note"><strong>{openSlotCount}</strong> schedule {openSlotCount === 1 ? 'slot is' : 'slots are'} not filled for {semesterLabel} yet.</p>
 }
 
 function onboardingKey(userId: string): string {
@@ -148,6 +182,7 @@ export function SchedulePage() {
   const [guestImportResult, setGuestImportResult] = useState<ScheduleImportResult | null>(null)
   const clarificationOwnerId = user?.id ?? 'guest'
   const [clarification, setClarification] = useState<ScheduleImportClarification | null>(() => loadClarification(clarificationOwnerId))
+  const [clarificationPromptOpen, setClarificationPromptOpen] = useState(false)
   const [clarificationOpen, setClarificationOpen] = useState(false)
   const [clearScheduleOpen, setClearScheduleOpen] = useState(false)
   const [clearingSchedule, setClearingSchedule] = useState(false)
@@ -165,6 +200,7 @@ export function SchedulePage() {
 
   useEffect(() => {
     setClarification(loadClarification(clarificationOwnerId))
+    setClarificationPromptOpen(false)
     setClarificationOpen(false)
   }, [clarificationOwnerId])
 
@@ -175,12 +211,14 @@ export function SchedulePage() {
 
   const startClarification = useCallback((next: ScheduleImportClarification) => {
     updateClarification(next)
-    setClarificationOpen(true)
+    setClarificationOpen(false)
+    setClarificationPromptOpen(true)
   }, [updateClarification])
 
   const finishClarification = useCallback(() => {
     clearClarification(clarificationOwnerId)
     setClarification(null)
+    setClarificationPromptOpen(false)
     setClarificationOpen(false)
   }, [clarificationOwnerId])
 
@@ -397,6 +435,7 @@ export function SchedulePage() {
           }}>Create account</button></div>
         </section>}
         <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
+        <OpenScheduleSlotsNote enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} />
         <div className="schedule-layout">
           <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} />
         </div>
@@ -430,6 +469,11 @@ export function SchedulePage() {
           }}
           onClarificationChange={updateClarification}
           onClarificationResolved={finishClarification}
+        /> : null}
+        {clarification && clarificationPromptOpen ? <ImportIssueChoiceDialog
+          count={clarification.rowIds.length}
+          onFix={() => { setClarificationPromptOpen(false); setClarificationOpen(true) }}
+          onManual={finishClarification}
         /> : null}
       </div>
     )
@@ -465,6 +509,7 @@ export function SchedulePage() {
         <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
       </section> : null}
       <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
+      <OpenScheduleSlotsNote enrollments={schedule.enrollments} selectedTerm={selectedTerm} />
       <div className="schedule-layout">
         <ScheduleGrid
           enrollments={schedule.enrollments}
@@ -516,6 +561,11 @@ export function SchedulePage() {
         }}
         onClarificationChange={updateClarification}
         onClarificationResolved={finishClarification}
+      /> : null}
+      {clarification && clarificationPromptOpen ? <ImportIssueChoiceDialog
+        count={clarification.rowIds.length}
+        onFix={() => { setClarificationPromptOpen(false); setClarificationOpen(true) }}
+        onManual={finishClarification}
       /> : null}
       {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeClearScheduleDialog() }}>
         <section className="class-dialog clear-schedule-dialog" ref={clearScheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description" tabIndex={-1}>

@@ -220,6 +220,9 @@ describe('SchedulePage onboarding', () => {
     renderPage('/schedule?import=1')
 
     await user.click(await screen.findByRole('button', { name: 'Complete analysis with issues' }))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('ScheduleShare Importer could not successfully import 1 class')
+    expect(screen.queryByTestId('clarification-dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Fix the importer' }))
     expect(await screen.findByTestId('clarification-dialog')).toHaveTextContent('1 class needs clarification')
     expect(screen.getByText('Mystery Course')).toBeInTheDocument()
     expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).not.toBeNull()
@@ -241,10 +244,24 @@ describe('SchedulePage onboarding', () => {
     renderPage('/schedule?import=1')
 
     await user.click(await screen.findByRole('button', { name: 'Complete analysis with issues' }))
+    await user.click(await screen.findByRole('button', { name: 'Fix the importer' }))
     await user.click(screen.getByRole('button', { name: 'Close clarification' }))
     await user.click(screen.getByRole('button', { name: 'Dismiss clarification reminder' }))
 
     expect(screen.queryByRole('button', { name: 'Review classes' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
+  })
+
+  it('returns to the schedule without opening corrections when manual entry is chosen', async () => {
+    const user = userEvent.setup()
+    renderPage('/schedule?import=1')
+
+    await user.click(await screen.findByRole('button', { name: 'Complete analysis with issues' }))
+    await user.click(await screen.findByRole('button', { name: 'Enter remaining class manually' }))
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('clarification-dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('schedule-grid')).toBeInTheDocument()
     expect(localStorage.getItem('scheduleshare:schedule-import-clarification:v1:student-1')).toBeNull()
   })
 
@@ -318,6 +335,7 @@ describe('SchedulePage onboarding', () => {
 
     expect(screen.queryByTestId('import-dialog')).not.toBeInTheDocument()
     expect(screen.getByTestId('schedule-grid')).toHaveTextContent('AP Statistics')
+    expect(document.querySelector('.schedule-open-slots-note')).toHaveTextContent('16 schedule slots are not filled for Semester 1 yet')
     expect(screen.getByRole('heading', { name: 'See who shares classes with you' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'See who shares classes with you' }).closest('section')).toHaveTextContent('4 students share at least one class with you')
     expect(screen.getByRole('button', { name: 'Create account' })).toBeInTheDocument()

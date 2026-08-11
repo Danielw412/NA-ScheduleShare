@@ -2713,6 +2713,23 @@ legend {
   align-items: start;
 }
 
+.schedule-open-slots-note {
+  width: fit-content;
+  margin: -7px 0 14px;
+  padding: 8px 11px;
+  border: 1px solid #ead394;
+  border-radius: 999px;
+  background: #fffaf0;
+  color: #6d550d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.schedule-open-slots-note strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: 98px repeat(2, minmax(0, 1fr));
@@ -5296,6 +5313,48 @@ a.student-access-profile:hover strong {
   background: var(--white);
 }
 
+.import-issue-choice-dialog {
+  width: min(520px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 30px;
+  text-align: center;
+}
+
+.import-issue-choice-icon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff1c9;
+  color: #8a5a00;
+}
+
+.import-issue-choice-icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.import-issue-choice-copy h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.import-issue-choice-copy p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.import-issue-choice-actions {
+  width: 100%;
+  display: grid;
+  gap: 9px;
+}
+
 .schedule-import-empty-card>div:last-child {
   display: flex;
   flex-direction: column;
@@ -6133,7 +6192,7 @@ a.student-access-profile:hover strong {
   }
 
   .engine-replacement-row>label,
-  .engine-course-picker {
+  .engine-replacement-row>.engine-course-picker {
     grid-column: 2;
   }
 
