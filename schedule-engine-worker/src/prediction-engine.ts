@@ -224,7 +224,14 @@ function placementValidationError(placement: ExistingSectionPlacement): string |
   return null
 }
 
+function isComplementaryLunchPair(left: ExistingSectionPlacement, right: ExistingSectionPlacement): boolean {
+  if (left.class_id !== right.class_id || left.course_term_policy !== 'lunch' || right.course_term_policy !== 'lunch') return false
+  return (left.academic_term === 'semester_1' && right.academic_term === 'semester_2')
+    || (left.academic_term === 'semester_2' && right.academic_term === 'semester_1')
+}
+
 function conflictDetail(left: ExistingSectionPlacement, right: ExistingSectionPlacement): string | null {
+  if (left.class_id === right.class_id && !isComplementaryLunchPair(left, right)) return 'uses the same class section more than once'
   if (!termsOverlap(left.academic_term, right.academic_term)) return null
   const term = overlappingTermLabel(left.academic_term, right.academic_term)
   if (left.course_id === right.course_id) return `duplicates the same course during ${term}`
