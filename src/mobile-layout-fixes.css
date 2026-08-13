@@ -129,10 +129,41 @@
    */
   .schedule-import-dialog,
   .add-class-dialog,
-  .delete-account-dialog {
+  .delete-account-dialog,
+  .import-issue-choice-dialog {
     height: auto;
     min-height: 0;
     align-content: start;
+  }
+
+  .import-issue-choice-dialog {
+    width: calc(100% - 24px);
+    margin-bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 24px 20px 20px;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-top: 5px solid var(--brand-gold);
+    border-radius: 20px;
+  }
+
+  .import-issue-choice-dialog .import-issue-choice-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .import-issue-choice-dialog .import-issue-choice-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .import-issue-choice-dialog .import-issue-choice-copy h2 {
+    font-size: 21px;
+    line-height: 1.25;
+  }
+
+  .import-issue-choice-dialog .import-issue-choice-copy p {
+    margin-top: 7px;
+    font-size: 14px;
   }
 
   .class-dialog > header {
