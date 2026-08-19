@@ -39,7 +39,7 @@ export function AppShell() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const { user, profile, avatarRevision, signOut } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
-  const { openClubDialog } = useClubPrompt()
+  const { openClubDialog, whyScheduleShareEnabled } = useClubPrompt()
   const location = useLocation()
   const primaryNavigation = user ? authenticatedNavigation : guestNavigation
 
@@ -90,7 +90,7 @@ export function AppShell() {
         <p>{brand.attribution}</p>
         <nav aria-label="Footer navigation">
           {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
-          {user ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
+          {user && whyScheduleShareEnabled ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
           <button className="footer-link-button" type="button" onClick={openClubDialog}>Join Computer and AI club</button>
           <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>

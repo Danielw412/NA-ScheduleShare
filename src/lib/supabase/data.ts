@@ -779,6 +779,11 @@ export async function getClubPromptSettings(): Promise<ClubPromptSettings> {
   }
 }
 
+export async function getWhyScheduleShareEnabled(): Promise<boolean> {
+  const data = await callUntypedRpc('get_why_scheduleshare_enabled')
+  return data === true
+}
+
 export async function adminGetClubPromptSettings(): Promise<AdminClubPromptSettings> {
   const data = await callUntypedRpc('admin_get_club_prompt_settings')
   const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
@@ -786,14 +791,16 @@ export async function adminGetClubPromptSettings(): Promise<AdminClubPromptSetti
   return {
     enabled: Boolean(row.enabled),
     delay_seconds: Number(row.delay_seconds),
+    why_scheduleshare_enabled: Boolean(row.why_scheduleshare_enabled),
     updated_at: String(row.updated_at),
   }
 }
 
-export async function adminUpdateClubPromptSettings(input: ClubPromptSettings): Promise<void> {
+export async function adminUpdateClubPromptSettings(input: Omit<AdminClubPromptSettings, 'updated_at'>): Promise<void> {
   await callUntypedRpc('admin_update_club_prompt_settings', {
     p_enabled: input.enabled,
     p_delay_seconds: input.delay_seconds,
+    p_why_scheduleshare_enabled: input.why_scheduleshare_enabled,
   })
 }
 

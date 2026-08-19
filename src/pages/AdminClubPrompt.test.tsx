@@ -19,7 +19,7 @@ vi.mock('../lib/supabase/data', async (importOriginal) => {
 })
 
 beforeEach(() => {
-  mocks.adminGetSettings.mockResolvedValue({ enabled: true, delay_seconds: 180, updated_at: '2026-08-06T00:00:00Z' })
+  mocks.adminGetSettings.mockResolvedValue({ enabled: true, delay_seconds: 180, why_scheduleshare_enabled: true, updated_at: '2026-08-06T00:00:00Z' })
   mocks.adminUpdateSettings.mockResolvedValue(undefined)
 })
 
@@ -41,8 +41,8 @@ describe('admin club invitation settings', () => {
     await user.type(delay, '600')
     await user.click(screen.getByRole('button', { name: 'Save invitation settings' }))
 
-    await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({ enabled: true, delay_seconds: 600 }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Club invitation settings saved.')
+    await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({ enabled: true, delay_seconds: 600, why_scheduleshare_enabled: true }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Club invitation and page visibility settings saved.')
   })
 
   it('rejects a delay outside the supported range and can disable the popup', async () => {
@@ -62,6 +62,21 @@ describe('admin club invitation settings', () => {
     await user.click(screen.getByRole('checkbox', { name: /Show the timed invitation/ }))
     await user.click(screen.getByRole('button', { name: 'Save invitation settings' }))
 
-    await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({ enabled: false, delay_seconds: 300 }))
+    await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({ enabled: false, delay_seconds: 300, why_scheduleshare_enabled: true }))
+  })
+
+  it('can take down the Why ScheduleShare page independently of the popup', async () => {
+    const user = userEvent.setup()
+    render(<ClubPromptPanel isDemo={false} />)
+
+    const pageToggle = await screen.findByRole('checkbox', { name: /Show the Why ScheduleShare page/ })
+    await user.click(pageToggle)
+    await user.click(screen.getByRole('button', { name: 'Save invitation settings' }))
+
+    await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({
+      enabled: true,
+      delay_seconds: 180,
+      why_scheduleshare_enabled: false,
+    }))
   })
 })

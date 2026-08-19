@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AllowGuest, RequireAdmin, RequireAuth } from './components/auth/RouteGuards'
 import { AuthPromptRoute } from './components/auth/AuthPromptRoute'
+import { WhyScheduleShareRoute } from './components/auth/WhyScheduleShareRoute'
 import { AppShell } from './components/layout/AppShell'
 import { useAuth } from './features/auth/AuthProvider'
 
@@ -41,7 +42,7 @@ export function App() {
           <Route path="schedule" element={deferredPage(<SchedulePage />)} />
           <Route path="classes" element={deferredPage(<ClassesPage />)} />
           <Route path="classes/:classId" element={deferredPage(<ClassesPage />)} />
-          <Route path="why-scheduleshare" element={deferredPage(<WhyScheduleSharePage />)} />
+          <Route path="why-scheduleshare" element={<WhyScheduleShareRoute>{deferredPage(<WhyScheduleSharePage />)}</WhyScheduleShareRoute>} />
           <Route element={<RequireAuth />}>
             <Route path="students" element={deferredPage(<StudentsPage />)} />
             <Route path="schedule-engine" element={deferredPage(<ScheduleEnginePage />)} />

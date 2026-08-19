@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(16);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -27,13 +27,25 @@ select ok(
   'anonymous visitors cannot read the club invitation settings'
 );
 select ok(
+  has_function_privilege('anon', 'public.get_why_scheduleshare_enabled()', 'execute'),
+  'anonymous visitors can read the public page visibility setting'
+);
+select ok(
   has_function_privilege('authenticated', 'public.get_club_prompt_settings()', 'execute'),
   'signed-in students can read the club invitation settings'
 );
 select ok(
-  not has_function_privilege('anon', 'public.admin_update_club_prompt_settings(boolean,integer)', 'execute'),
-  'anonymous visitors cannot change the club invitation settings'
+  not has_function_privilege('anon', 'public.admin_update_club_prompt_settings(boolean,integer,boolean)', 'execute'),
+  'anonymous visitors cannot change the club invitation or page visibility settings'
 );
+
+set local role anon;
+select is(
+  public.get_why_scheduleshare_enabled(),
+  true,
+  'the Why ScheduleShare page is published by default for anonymous visitors'
+);
+reset role;
 
 select set_config('request.jwt.claim.sub', '95000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -49,6 +61,11 @@ select is(
   180,
   'the default delay is three minutes'
 );
+select is(
+  public.get_why_scheduleshare_enabled(),
+  true,
+  'signed-in students can read the public page visibility setting'
+);
 select throws_ok(
   $$select * from public.admin_get_club_prompt_settings()$$,
   '42501',
@@ -56,10 +73,10 @@ select throws_ok(
   'students cannot read the administrator club invitation settings'
 );
 select throws_ok(
-  $$select public.admin_update_club_prompt_settings(false, 600)$$,
+  $$select public.admin_update_club_prompt_settings(false, 600, false)$$,
   '42501',
   'administrator_access_required',
-  'students cannot change the club invitation settings'
+  'students cannot change the club invitation or page visibility settings'
 );
 
 reset role;
@@ -67,14 +84,19 @@ select set_config('request.jwt.claim.sub', '95000000-0000-4000-8000-000000000002
 set local role authenticated;
 
 select lives_ok(
-  $$select public.admin_update_club_prompt_settings(false, 600)$$,
-  'an administrator can disable the invitation and change the delay'
+  $$select public.admin_update_club_prompt_settings(false, 600, false)$$,
+  'an administrator can disable the invitation and Why ScheduleShare page'
 );
 select throws_ok(
-  $$select public.admin_update_club_prompt_settings(true, 5)$$,
+  $$select public.admin_update_club_prompt_settings(true, 5, true)$$,
   '22023',
   'invalid_club_prompt_delay',
   'administrators cannot set a delay outside the allowed range'
+);
+select is(
+  (select why_scheduleshare_enabled from public.admin_get_club_prompt_settings()),
+  false,
+  'administrators can read the updated Why ScheduleShare page setting'
 );
 
 reset role;
@@ -83,9 +105,9 @@ select ok(
   'club invitation changes are audited'
 );
 select is(
-  (select enabled::text || ':' || delay_seconds::text from private.club_prompt_settings where singleton),
-  'false:600',
-  'the administrator toggle and delay are stored'
+  (select enabled::text || ':' || delay_seconds::text || ':' || why_scheduleshare_enabled::text from private.club_prompt_settings where singleton),
+  'false:600:false',
+  'the administrator toggles and delay are stored'
 );
 
 select * from finish();

@@ -10,10 +10,13 @@ const mocks = vi.hoisted(() => ({
   useSchedule: vi.fn(),
   getHomepageStatistic: vi.fn(),
   createScheduleShareUrl: vi.fn(),
+  openClubDialog: vi.fn(),
+  useClubPrompt: vi.fn(),
 }))
 
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
+vi.mock('../components/club/ClubPromptProvider', () => ({ useClubPrompt: mocks.useClubPrompt }))
 vi.mock('../lib/supabase/data', () => ({ getHomepageStatistic: mocks.getHomepageStatistic }))
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
@@ -46,6 +49,7 @@ beforeEach(() => {
   mocks.useSchedule.mockReturnValue({ enrollments: [], loading: false })
   mocks.getHomepageStatistic.mockResolvedValue(null)
   mocks.createScheduleShareUrl.mockResolvedValue('https://share.example/share/99300000-0000-4000-8000-000000000001')
+  mocks.useClubPrompt.mockReturnValue({ openClubDialog: mocks.openClubDialog, whyScheduleShareEnabled: true })
 })
 
 afterEach(() => {
@@ -73,6 +77,13 @@ describe('HomePage hero', () => {
     expect(screen.getByRole('button', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: "Why we're better than Saturn" })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
+  })
+
+  it('hides the Why ScheduleShare link when an administrator takes down the page', () => {
+    mocks.useClubPrompt.mockReturnValue({ openClubDialog: mocks.openClubDialog, whyScheduleShareEnabled: false })
+    renderPage()
+
+    expect(screen.queryByRole('link', { name: "Why we're better than Saturn" })).not.toBeInTheDocument()
   })
 
   it('does not show an incorrect schedule action while the signed-in schedule is loading', () => {

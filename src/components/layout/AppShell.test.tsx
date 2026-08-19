@@ -10,10 +10,13 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn(async () => undefined),
   openAccountPrompt: vi.fn(),
   openSignInPrompt: vi.fn(),
+  openClubDialog: vi.fn(),
+  useClubPrompt: vi.fn(),
 }))
 
 vi.mock('../../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../auth/GuestAccountPrompt', () => ({ useGuestAccountPrompt: () => ({ openAccountPrompt: mocks.openAccountPrompt, openSignInPrompt: mocks.openSignInPrompt }) }))
+vi.mock('../club/ClubPromptProvider', () => ({ useClubPrompt: mocks.useClubPrompt }))
 vi.mock('../ui/BrandLogo', () => ({ BrandLogo: () => <span>NA ScheduleShare</span> }))
 vi.mock('../ui/ProfileAvatar', () => ({ ProfileAvatar: () => <span>Avatar</span> }))
 vi.mock('./ScheduleAccessNotifications', () => ({ ScheduleAccessNotifications: () => <button type="button">Notifications</button> }))
@@ -23,6 +26,7 @@ function renderShell(path = '/classes') {
 }
 
 beforeEach(() => {
+  mocks.useClubPrompt.mockReturnValue({ openClubDialog: mocks.openClubDialog, whyScheduleShareEnabled: true })
   mocks.useAuth.mockReturnValue({
     user: { id: 'student-1' },
     profile: { id: 'student-1', full_name: 'Alex Morgan', updated_at: '2026-07-18T00:00:00Z' },
@@ -80,6 +84,13 @@ describe('AppShell mobile navigation', () => {
     await user.keyboard('{Escape}')
     expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveFocus()
     expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('removes the Why ScheduleShare footer link when the page is taken down', () => {
+    mocks.useClubPrompt.mockReturnValue({ openClubDialog: mocks.openClubDialog, whyScheduleShareEnabled: false })
+    renderShell('/classes')
+
+    expect(within(screen.getByRole('navigation', { name: 'Footer navigation' })).queryByRole('link', { name: 'Why ScheduleShare?' })).not.toBeInTheDocument()
   })
 
   it('shows guest-safe destinations and prompts for an account on protected destinations', async () => {

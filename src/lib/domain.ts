@@ -267,6 +267,7 @@ export interface ClubPromptSettings {
 }
 
 export interface AdminClubPromptSettings extends ClubPromptSettings {
+  why_scheduleshare_enabled: boolean
   updated_at: string
 }
 

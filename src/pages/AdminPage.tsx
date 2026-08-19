@@ -1,6 +1,7 @@
 import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Database, FileClock, Flag, Gauge, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
+import { useClubPrompt } from '../components/club/ClubPromptProvider'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminClubPromptSettings, type AdminCourseNameRecord, type AdminReportRecord, type AdminScheduleEngineJob, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
@@ -403,9 +404,10 @@ export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {
   </section>
 }
 
-const defaultClubPromptSettings: AdminClubPromptSettings = { enabled: true, delay_seconds: 180, updated_at: '' }
+const defaultClubPromptSettings: AdminClubPromptSettings = { enabled: true, delay_seconds: 180, why_scheduleshare_enabled: true, updated_at: '' }
 
 export function ClubPromptPanel({ isDemo }: { isDemo: boolean }) {
+  const { setWhyScheduleShareEnabled } = useClubPrompt()
   const [settings, setSettings] = useState<AdminClubPromptSettings>(defaultClubPromptSettings)
   const [loading, setLoading] = useState(!isDemo)
   const [saving, setSaving] = useState(false)
@@ -437,8 +439,13 @@ export function ClubPromptPanel({ isDemo }: { isDemo: boolean }) {
     setError(null)
     setMessage(null)
     try {
-      if (!isDemo) await adminUpdateClubPromptSettings({ enabled: settings.enabled, delay_seconds: settings.delay_seconds })
-      setMessage('Club invitation settings saved.')
+      if (!isDemo) await adminUpdateClubPromptSettings({
+        enabled: settings.enabled,
+        delay_seconds: settings.delay_seconds,
+        why_scheduleshare_enabled: settings.why_scheduleshare_enabled,
+      })
+      setWhyScheduleShareEnabled(settings.why_scheduleshare_enabled)
+      setMessage('Club invitation and page visibility settings saved.')
       await load()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save club invitation settings.')
@@ -456,6 +463,7 @@ export function ClubPromptPanel({ isDemo }: { isDemo: boolean }) {
       <label className="checkbox-row"><input type="checkbox" checked={settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))} /><span><strong>Show the timed invitation</strong><small>Turning this off hides the popup for everyone without touching the footer link.</small></span></label>
       <label>Delay before it appears (seconds)<input min={30} max={3600} step={10} type="number" disabled={!settings.enabled} value={settings.delay_seconds} onChange={(event) => setSettings((current) => ({ ...current, delay_seconds: Math.round(Number(event.target.value)) }))} /></label>
       <p className="muted club-prompt-delay-hint">{formatDelaySummary(settings.delay_seconds)} of active time on the site. Time paused in a background tab does not count.</p>
+      <label className="checkbox-row"><input type="checkbox" checked={settings.why_scheduleshare_enabled} onChange={(event) => setSettings((current) => ({ ...current, why_scheduleshare_enabled: event.target.checked }))} /><span><strong>Show the Why ScheduleShare page</strong><small>Turning this off removes every link to the page and blocks direct visits for all users.</small></span></label>
       <button className="button button-primary" disabled={saving || isDemo}>{saving ? 'Saving…' : 'Save invitation settings'}</button>
       {isDemo ? <small className="muted">Connect Supabase to save club invitation settings.</small> : null}
     </form>
