@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   useSchedule: vi.fn(),
   getHomepageStatistic: vi.fn(),
+  getMyBellScheduleWindow: vi.fn(),
   createScheduleShareUrl: vi.fn(),
   openClubDialog: vi.fn(),
   useClubPrompt: vi.fn(),
@@ -17,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
 vi.mock('../components/club/ClubPromptProvider', () => ({ useClubPrompt: mocks.useClubPrompt }))
-vi.mock('../lib/supabase/data', () => ({ getHomepageStatistic: mocks.getHomepageStatistic }))
+vi.mock('../lib/supabase/data', () => ({ getHomepageStatistic: mocks.getHomepageStatistic, getMyBellScheduleWindow: mocks.getMyBellScheduleWindow }))
 vi.mock('../lib/scheduleShare', () => ({
   createScheduleShareUrl: mocks.createScheduleShareUrl,
   scheduleShareTitle: 'My A/B-Day Schedule | NA ScheduleShare',
@@ -48,6 +49,7 @@ beforeEach(() => {
   mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
   mocks.useSchedule.mockReturnValue({ enrollments: [], loading: false })
   mocks.getHomepageStatistic.mockResolvedValue(null)
+  mocks.getMyBellScheduleWindow.mockResolvedValue([])
   mocks.createScheduleShareUrl.mockResolvedValue('https://share.example/share/99300000-0000-4000-8000-000000000001')
   mocks.useClubPrompt.mockReturnValue({ openClubDialog: mocks.openClubDialog, whyScheduleShareEnabled: true })
 })
@@ -77,6 +79,17 @@ describe('HomePage hero', () => {
     expect(screen.getByRole('button', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: "Why we're better than Saturn" })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'My Schedule' })).not.toBeInTheDocument()
+  })
+
+  it('places the signed-in next-class card between the hero and schedule/share card', async () => {
+    mocks.useAuth.mockReturnValue({ user: { id: 'student-1' }, isDemo: false, profile: { grade: 11 } })
+    renderPage()
+    await screen.findByText('No upcoming classes.')
+    const hero = screen.getByRole('heading', { name: 'Find out who’s in your classes.' }).closest('section') as HTMLElement
+    const nextClass = screen.getByLabelText('Next class')
+    const statusCard = screen.getByRole('heading', { name: 'Start your schedule' }).closest('section') as HTMLElement
+    expect(hero.compareDocumentPosition(nextClass) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(nextClass.compareDocumentPosition(statusCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('hides the Why ScheduleShare link when an administrator takes down the page', () => {

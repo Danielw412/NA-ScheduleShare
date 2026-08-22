@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(28);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -81,6 +81,8 @@ insert into public.course_names (
 create temporary table site_reset_expectations as
 select
   (select count(*) from public.course_names)::bigint as course_name_count,
+  (select count(*) from private.bell_schedule_definitions)::bigint as bell_definition_count,
+  (select count(*) from private.school_year_settings)::bigint as bell_settings_count,
   (
     select count(*)
     from auth.users
@@ -100,6 +102,21 @@ select is(
   0::bigint,
   'the reset preview reports that no course names will be deleted'
 );
+
+reset role;
+insert into private.bell_schedule_sync_runs (id, trigger_type, status)
+values ('97000000-0000-4000-8000-000000000005', 'manual', 'succeeded');
+insert into private.school_day_assignments (
+  school_date, campus, day_type, no_school, schedule_id, source, sync_run_id
+) values (
+  '2026-08-24', 'NASH', 'A', false,
+  'b1000000-0000-4000-8000-000000000001', 'ai',
+  '97000000-0000-4000-8000-000000000005'
+);
+select set_config('request.jwt.claim.sub', '97000000-0000-4000-8000-000000000003', true);
+set local role authenticated;
+select is((select calendar_assignments from public.super_admin_get_site_reset_preview()), 1::bigint, 'the reset preview counts school-day assignments');
+select is((select sync_runs from public.super_admin_get_site_reset_preview()), 1::bigint, 'the reset preview counts bell-sync history');
 
 reset role;
 set local role service_role;
@@ -127,6 +144,10 @@ select ok(
   'course names created before the reset remain available'
 );
 select is((select count(*) from public.classes), 0::bigint, 'class sections are removed');
+select is((select count(*) from private.school_day_assignments), 0::bigint, 'school-day assignments are cleared for the new year');
+select is((select count(*) from private.bell_schedule_sync_runs), 0::bigint, 'bell-sync history is cleared for the new year');
+select is((select count(*) from private.bell_schedule_definitions), (select bell_definition_count from site_reset_expectations), 'bell definitions survive a new-year reset');
+select is((select count(*) from private.school_year_settings), (select bell_settings_count from site_reset_expectations), 'bell and sync configuration survives a new-year reset');
 select ok(
   exists (
     select 1

@@ -1,6 +1,7 @@
-import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Database, FileClock, Flag, Gauge, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Clock3, Database, FileClock, Flag, Gauge, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
+import { BellScheduleAdminPanel } from '../components/admin/BellScheduleAdminPanel'
 import { useClubPrompt } from '../components/club/ClubPromptProvider'
 import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -11,13 +12,14 @@ import { supabase } from '../lib/supabase/client'
 import { adminDeleteScheduleImportDiagnostic, adminGetClubPromptSettings, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateClubPromptSettings, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
 import { teacherLastNameError } from '../lib/teacher'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'engine' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
+type AdminTab = 'users' | 'reports' | 'classes' | 'engine' | 'bell-schedules' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
 
 const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
   { id: 'users', label: 'User management', icon: Users },
   { id: 'reports', label: 'Reports', icon: Flag },
   { id: 'classes', label: 'Class management', icon: GraduationCap },
   { id: 'engine', label: 'Schedule Engine', icon: Gauge },
+  { id: 'bell-schedules', label: 'Bell schedules', icon: Clock3 },
   { id: 'homepage', label: 'Homepage', icon: BarChart3 },
   { id: 'ai', label: 'AI importer', icon: BrainCircuit },
   { id: 'admins', label: 'Admin management', icon: ShieldCheck },
@@ -276,6 +278,8 @@ export function AdminPage() {
       /> : null}
 
       {tab === 'engine' ? <ScheduleEngineAdminPanel jobs={engineJobs} onRefresh={() => void load()} /> : null}
+
+      {tab === 'bell-schedules' ? <BellScheduleAdminPanel isDemo={isDemo} /> : null}
 
       {tab === 'homepage' ? <><HomepageStatisticPanel isDemo={isDemo} /><ClubPromptPanel isDemo={isDemo} /></> : null}
 
@@ -920,7 +924,7 @@ function ProtectedToolsPanel() {
 
   async function resetSite() {
     if (!acknowledged || confirmation !== resetPhrase) return
-    if (!window.confirm('Final warning: every other account and all profile pictures, profile data, schedules, classes, access requests, and reports will be permanently removed. Your account will return to onboarding, while your admin permissions and the course-name catalog remain. Continue?')) return
+    if (!window.confirm('Final warning: every other account and all profile pictures, profile data, schedules, classes, access requests, reports, school-day assignments, and bell-sync history will be permanently removed. Your account will return to onboarding, while your admin permissions, the course-name catalog, bell definitions, and bell-sync configuration remain. Continue?')) return
     setBusy(true)
     setError(null)
     try {
@@ -938,7 +942,7 @@ function ProtectedToolsPanel() {
     {message ? <p className="form-success" role="status">{message}</p> : null}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <section className="site-reset-card">
-      <div><h3>Reset for a new school year</h3><p>This deletes every other account and all profile pictures, profile data, schedules, classes, access requests, reports, and temporary importer data. Your account returns to onboarding, while its admin permissions, the course-name catalog, configuration, and the protected audit record remain.</p></div>
+      <div><h3>Reset for a new school year</h3><p>This deletes every other account and all profile pictures, profile data, schedules, classes, access requests, reports, school-day assignments, bell-sync history, and temporary importer data. Your account returns to onboarding, while its admin permissions, the course-name catalog, bell definitions, bell/sync configuration, and the protected audit record remain.</p></div>
       {preview ? <dl>{Object.entries(preview).map(([label, value]) => <div key={label}><dt>{label.replaceAll('_', ' ')}</dt><dd>{value.toLocaleString()}</dd></div>)}</dl> : <p className="muted">Loading exact deletion counts…</p>}
       <label className="checkbox-row"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>I understand that this removes every other account and resets my profile.</strong><small>Your sign-in and existing admin permissions remain; everyone else must create a new account.</small></span></label>
       <label className="reset-confirmation-field"><span>Type <strong>{resetPhrase}</strong></span><input autoComplete="off" spellCheck={false} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>

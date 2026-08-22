@@ -4,6 +4,85 @@ export type SemesterTerm = Exclude<AcademicTerm, 'full_year'>
 export type CourseTermPolicy = 'full_year' | 'semester' | 'flexible_attendance' | 'sectioned_attendance' | 'lunch' | 'variable_credit' | 'versioned'
 export type PrivacySetting = 'private' | 'classmates' | 'school'
 export type Grade = 9 | 10 | 11 | 12
+export type BellCampus = 'NAI' | 'NASH'
+export type BellCampusScope = BellCampus | 'BOTH'
+export type BellScheduleSource = 'default' | 'manual' | 'ai'
+
+export interface BellScheduleBlock {
+  id?: string
+  position: number
+  kind: 'class' | 'non_class'
+  label: string
+  period_number: number | null
+  start_time: string
+  end_time: string
+}
+
+export interface BellScheduleDefinition {
+  id: string
+  schedule_key: string
+  display_name: string
+  campus_scope: BellCampusScope
+  warning_time: string | null
+  is_builtin: boolean
+  archived_at: string | null
+  updated_at: string
+  blocks: BellScheduleBlock[]
+}
+
+export interface SchoolDayContext {
+  date: string
+  campus: BellCampus
+  day_type: DayType | null
+  semester: SemesterTerm
+  no_school: boolean
+  source: BellScheduleSource
+  schedule: BellScheduleDefinition | null
+}
+
+export interface AdminSchoolDayContext {
+  date: string
+  campus: BellCampus
+  day_type: DayType | null
+  no_school: boolean
+  schedule_id: string | null
+  schedule_key: string | null
+  source: BellScheduleSource
+  manual_locked: boolean
+  evidence: string | null
+}
+
+export interface BellScheduleSettings {
+  school_year_start: string
+  semester_2_start: string
+  school_year_end: string
+  default_schedule_id: string
+  school_timezone: 'America/New_York'
+  sync_enabled: boolean
+  sync_time: string
+  bell_schedule_document_url: string
+  newsletter_document_url: string
+  updated_at: string
+}
+
+export interface BellScheduleSyncRun {
+  id: string
+  trigger_type: 'scheduled' | 'manual' | 'preview'
+  status: 'running' | 'previewed' | 'succeeded' | 'skipped' | 'failed'
+  actor_id: string | null
+  model_id: string | null
+  source_hash: string | null
+  source_section: string | null
+  raw_gemini_json: unknown
+  validated_extraction: unknown
+  evidence: unknown[]
+  applied_dates: unknown[]
+  skipped_dates: unknown[]
+  error_message: string | null
+  timing_ms: number | null
+  created_at: string
+  completed_at: string | null
+}
 
 export interface MeetingSlot {
   day_type: DayType
@@ -354,4 +433,6 @@ export interface SiteResetPreview {
   enrollments: number
   reports: number
   profile_pictures: number
+  calendar_assignments: number
+  sync_runs: number
 }

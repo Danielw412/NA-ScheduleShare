@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -234,6 +239,63 @@ export type Database = {
           },
           {
             foreignKeyName: "classes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_name_aliases: {
+        Row: {
+          alias: string
+          course_name_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          last_seen_at: string
+          learned_count: number
+          normalized_alias: string
+          source: string
+          source_import_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          alias: string
+          course_name_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_seen_at?: string
+          learned_count?: number
+          normalized_alias: string
+          source?: string
+          source_import_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alias?: string
+          course_name_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_seen_at?: string
+          learned_count?: number
+          normalized_alias?: string
+          source?: string
+          source_import_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_name_aliases_course_name_id_fkey"
+            columns: ["course_name_id"]
+            isOneToOne: false
+            referencedRelation: "course_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_name_aliases_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -812,9 +874,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_add_course_name_alias: {
+        Args: { p_alias: string; p_course_name_id: string; p_reason: string }
+        Returns: string
+      }
+      admin_archive_bell_schedule: {
+        Args: { p_schedule_id: string }
+        Returns: undefined
+      }
       admin_archive_class: {
         Args: { p_class_id: string; p_reason: string }
         Returns: undefined
+      }
+      admin_bulk_assign_school_days: {
+        Args: {
+          p_campuses: string[]
+          p_dates: string[]
+          p_day_type: string
+          p_no_school: boolean
+          p_schedule_id: string
+        }
+        Returns: number
+      }
+      admin_clear_school_day_overrides: {
+        Args: { p_campuses: string[]; p_dates: string[] }
+        Returns: number
       }
       admin_create_course_name: {
         Args: { p_name: string; p_reason: string }
@@ -824,6 +908,10 @@ export type Database = {
         Args: { p_class_id: string; p_reason: string }
         Returns: undefined
       }
+      admin_delete_course_name_alias: {
+        Args: { p_alias_id: string; p_reason: string }
+        Returns: undefined
+      }
       admin_delete_schedule_import_diagnostic: {
         Args: { p_diagnostic_id: string }
         Returns: undefined
@@ -831,6 +919,16 @@ export type Database = {
       admin_delete_user: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
+      }
+      admin_get_bell_schedule_settings: { Args: never; Returns: Json }
+      admin_get_club_prompt_settings: {
+        Args: never
+        Returns: {
+          delay_seconds: number
+          enabled: boolean
+          updated_at: string
+          why_scheduleshare_enabled: boolean
+        }[]
       }
       admin_get_homepage_statistic_settings: {
         Args: never
@@ -842,6 +940,11 @@ export type Database = {
           updated_at: string
         }[]
       }
+      admin_list_bell_schedule_sync_runs: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      admin_list_bell_schedules: { Args: never; Returns: Json }
       admin_list_classes: {
         Args: never
         Returns: {
@@ -865,6 +968,8 @@ export type Database = {
         Args: never
         Returns: {
           active_section_count: number
+          alias_count: number
+          aliases: Json
           course_name: string
           course_name_id: string
           created_at: string
@@ -932,6 +1037,10 @@ export type Database = {
           supports_structured_output: boolean
         }[]
       }
+      admin_list_school_days: {
+        Args: { p_days: number; p_start_date: string }
+        Returns: Json
+      }
       admin_list_users: {
         Args: { p_grade?: number; p_query?: string; p_status?: string }
         Returns: {
@@ -990,6 +1099,7 @@ export type Database = {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
       }
+      admin_save_bell_schedule: { Args: { p_schedule: Json }; Returns: string }
       admin_set_course_name_enabled: {
         Args: { p_course_name_id: string; p_enabled: boolean; p_reason: string }
         Returns: undefined
@@ -1009,6 +1119,14 @@ export type Database = {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
       }
+      admin_unlock_school_day_overrides: {
+        Args: { p_campuses: string[]; p_dates: string[] }
+        Returns: number
+      }
+      admin_update_bell_schedule_settings: {
+        Args: { p_settings: Json }
+        Returns: undefined
+      }
       admin_update_class: {
         Args: {
           p_academic_term: Database["public"]["Enums"]["academic_term"]
@@ -1018,6 +1136,14 @@ export type Database = {
           p_meeting_slots: Json
           p_reason: string
           p_teacher_last_name: string
+        }
+        Returns: undefined
+      }
+      admin_update_club_prompt_settings: {
+        Args: {
+          p_delay_seconds: number
+          p_enabled: boolean
+          p_why_scheduleshare_enabled: boolean
         }
         Returns: undefined
       }
@@ -1059,6 +1185,10 @@ export type Database = {
       allow_schedule_access: {
         Args: { p_viewer_id: string }
         Returns: undefined
+      }
+      apply_schedule_engine_prediction: {
+        Args: { p_job_id: string; p_rank: number }
+        Returns: number
       }
       cancel_my_schedule_engine_job: {
         Args: { p_job_id: string }
@@ -1169,6 +1299,13 @@ export type Database = {
           student_id: string
         }[]
       }
+      get_club_prompt_settings: {
+        Args: never
+        Returns: {
+          delay_seconds: number
+          enabled: boolean
+        }[]
+      }
       get_homepage_statistic: {
         Args: never
         Returns: {
@@ -1185,6 +1322,10 @@ export type Database = {
           suspended: boolean
           suspension_reason: string
         }[]
+      }
+      get_my_bell_schedule_window: {
+        Args: { p_days: number; p_start_date: string }
+        Returns: Json
       }
       get_my_latest_schedule_engine_job: { Args: never; Returns: Json }
       get_or_create_schedule_share: { Args: never; Returns: string }
@@ -1219,6 +1360,7 @@ export type Database = {
           teacher_last_name: string
         }[]
       }
+      get_why_scheduleshare_enabled: { Args: never; Returns: boolean }
       guest_search_classes: {
         Args: {
           p_academic_term?: Database["public"]["Enums"]["academic_term"]
@@ -1294,6 +1436,15 @@ export type Database = {
           p_job_id: string
           p_sent: boolean
           p_worker_id: string
+        }
+        Returns: undefined
+      }
+      record_schedule_import_backend_event: {
+        Args: {
+          p_import_id: string
+          p_metadata?: Json
+          p_result: string
+          p_user_id: string
         }
         Returns: undefined
       }
@@ -1452,6 +1603,23 @@ export type Database = {
           student_id: string
         }[]
       }
+      service_claim_bell_schedule_sync: {
+        Args: { p_actor_id: string; p_preview?: boolean; p_trigger: string }
+        Returns: Json
+      }
+      service_finish_bell_schedule_sync: {
+        Args: {
+          p_error: string
+          p_raw_json: Json
+          p_run_id: string
+          p_source_hash: string
+          p_source_section: string
+          p_status: string
+          p_timing_ms: number
+          p_validated: Json
+        }
+        Returns: Json
+      }
       service_record_account_event: {
         Args: {
           p_event_type: string
@@ -1498,12 +1666,14 @@ export type Database = {
         Args: never
         Returns: {
           accounts: number
+          calendar_assignments: number
           classes: number
           course_names: number
           enrollments: number
           profile_pictures: number
           profiles: number
           reports: number
+          sync_runs: number
         }[]
       }
       super_admin_list_logs: {

@@ -1,6 +1,7 @@
 import type {
   AcademicTerm,
   AdminClassRecord,
+  AdminSchoolDayContext,
   AdminClubPromptSettings,
   AdminCourseNameRecord,
   AdminReportRecord,
@@ -33,8 +34,14 @@ import type {
   ScheduleImportModelRecord,
   ScheduleImportUiSettings,
   ActivitySummary,
+  BellCampus,
+  BellScheduleBlock,
+  BellScheduleDefinition,
+  BellScheduleSettings,
+  BellScheduleSyncRun,
   SiteResetPreview,
   StudentDirectoryResult,
+  SchoolDayContext,
 } from '../domain'
 import { supabase } from './client'
 import type { Json } from './database.types'
@@ -724,6 +731,179 @@ async function callUntypedRpc(functionName: string, args: Record<string, unknown
   return data
 }
 
+function bellScheduleBlockFrom(value: unknown): BellScheduleBlock {
+  const row = recordFrom(value)
+  if (!row) throw new Error('A bell-schedule block was invalid.')
+  const periodNumber = row.period_number === null || row.period_number === undefined ? null : Number(row.period_number)
+  return {
+    id: stringOrNull(row.id) ?? undefined,
+    position: Number(row.position),
+    kind: String(row.kind) as BellScheduleBlock['kind'],
+    label: String(row.label),
+    period_number: periodNumber,
+    start_time: String(row.start_time),
+    end_time: String(row.end_time),
+  }
+}
+
+function bellScheduleDefinitionFrom(value: unknown): BellScheduleDefinition {
+  const row = recordFrom(value)
+  if (!row || !Array.isArray(row.blocks)) throw new Error('A bell-schedule definition was invalid.')
+  return {
+    id: String(row.id),
+    schedule_key: String(row.schedule_key),
+    display_name: String(row.display_name),
+    campus_scope: String(row.campus_scope) as BellScheduleDefinition['campus_scope'],
+    warning_time: stringOrNull(row.warning_time),
+    is_builtin: Boolean(row.is_builtin),
+    archived_at: stringOrNull(row.archived_at),
+    updated_at: String(row.updated_at ?? ''),
+    blocks: row.blocks.map(bellScheduleBlockFrom),
+  }
+}
+
+export async function getMyBellScheduleWindow(startDate: string, days = 21): Promise<SchoolDayContext[]> {
+  const data = await callUntypedRpc('get_my_bell_schedule_window', {
+    p_start_date: startDate,
+    p_days: days,
+  })
+  if (!Array.isArray(data)) throw new Error('The bell-schedule window was invalid.')
+  return data.map((value) => {
+    const row = recordFrom(value)
+    if (!row) throw new Error('A school-day record was invalid.')
+    return {
+      date: String(row.date),
+      campus: String(row.campus) as BellCampus,
+      day_type: row.day_type === null ? null : String(row.day_type) as DayType,
+      semester: String(row.semester) as SchoolDayContext['semester'],
+      no_school: Boolean(row.no_school),
+      source: String(row.source) as SchoolDayContext['source'],
+      schedule: row.schedule === null ? null : bellScheduleDefinitionFrom(row.schedule),
+    }
+  })
+}
+
+export async function adminListBellSchedules(): Promise<BellScheduleDefinition[]> {
+  const data = await callUntypedRpc('admin_list_bell_schedules')
+  if (!Array.isArray(data)) throw new Error('The bell-schedule list was invalid.')
+  return data.map(bellScheduleDefinitionFrom)
+}
+
+export async function adminSaveBellSchedule(schedule: Omit<BellScheduleDefinition, 'updated_at'>): Promise<string> {
+  return String(await callUntypedRpc('admin_save_bell_schedule', { p_schedule: schedule as unknown as Json }))
+}
+
+export async function adminArchiveBellSchedule(scheduleId: string): Promise<void> {
+  await callUntypedRpc('admin_archive_bell_schedule', { p_schedule_id: scheduleId })
+}
+
+export async function adminListSchoolDays(startDate: string, days: number): Promise<AdminSchoolDayContext[]> {
+  const data = await callUntypedRpc('admin_list_school_days', { p_start_date: startDate, p_days: days })
+  if (!Array.isArray(data)) throw new Error('The school calendar response was invalid.')
+  return data.map((value) => {
+    const row = recordFrom(value)
+    if (!row) throw new Error('A school calendar row was invalid.')
+    return {
+      date: String(row.date),
+      campus: String(row.campus) as BellCampus,
+      day_type: row.day_type === null ? null : String(row.day_type) as DayType,
+      no_school: Boolean(row.no_school),
+      schedule_id: stringOrNull(row.schedule_id),
+      schedule_key: stringOrNull(row.schedule_key),
+      source: String(row.source) as AdminSchoolDayContext['source'],
+      manual_locked: Boolean(row.manual_locked),
+      evidence: stringOrNull(row.evidence),
+    }
+  })
+}
+
+export async function adminBulkAssignSchoolDays(input: {
+  dates: string[]
+  campuses: BellCampus[]
+  dayType: DayType | null
+  noSchool: boolean
+  scheduleId: string | null
+}): Promise<number> {
+  return Number(await callUntypedRpc('admin_bulk_assign_school_days', {
+    p_dates: input.dates,
+    p_campuses: input.campuses,
+    p_day_type: input.dayType,
+    p_no_school: input.noSchool,
+    p_schedule_id: input.scheduleId,
+  }))
+}
+
+export async function adminUnlockSchoolDayOverrides(dates: string[], campuses: BellCampus[]): Promise<number> {
+  return Number(await callUntypedRpc('admin_unlock_school_day_overrides', { p_dates: dates, p_campuses: campuses }))
+}
+
+export async function adminClearSchoolDayOverrides(dates: string[], campuses: BellCampus[]): Promise<number> {
+  return Number(await callUntypedRpc('admin_clear_school_day_overrides', { p_dates: dates, p_campuses: campuses }))
+}
+
+export async function adminGetBellScheduleSettings(): Promise<BellScheduleSettings> {
+  const data = await callUntypedRpc('admin_get_bell_schedule_settings')
+  const row = recordFrom(data)
+  if (!row) throw new Error('Bell-schedule settings are unavailable.')
+  return {
+    school_year_start: String(row.school_year_start),
+    semester_2_start: String(row.semester_2_start),
+    school_year_end: String(row.school_year_end),
+    default_schedule_id: String(row.default_schedule_id),
+    school_timezone: 'America/New_York',
+    sync_enabled: Boolean(row.sync_enabled),
+    sync_time: String(row.sync_time),
+    bell_schedule_document_url: String(row.bell_schedule_document_url),
+    newsletter_document_url: String(row.newsletter_document_url),
+    updated_at: String(row.updated_at),
+  }
+}
+
+export async function adminUpdateBellScheduleSettings(settings: BellScheduleSettings): Promise<void> {
+  await callUntypedRpc('admin_update_bell_schedule_settings', { p_settings: settings as unknown as Json })
+}
+
+export async function adminListBellScheduleSyncRuns(limit = 25): Promise<BellScheduleSyncRun[]> {
+  const data = await callUntypedRpc('admin_list_bell_schedule_sync_runs', { p_limit: limit })
+  if (!Array.isArray(data)) throw new Error('Bell-schedule sync history was invalid.')
+  return data.map((value) => {
+    const row = recordFrom(value)
+    if (!row) throw new Error('A bell-schedule sync run was invalid.')
+    return {
+      id: String(row.id),
+      trigger_type: String(row.trigger_type) as BellScheduleSyncRun['trigger_type'],
+      status: String(row.status) as BellScheduleSyncRun['status'],
+      actor_id: stringOrNull(row.actor_id),
+      model_id: stringOrNull(row.model_id),
+      source_hash: stringOrNull(row.source_hash),
+      source_section: stringOrNull(row.source_section),
+      raw_gemini_json: row.raw_gemini_json,
+      validated_extraction: row.validated_extraction,
+      evidence: Array.isArray(row.evidence) ? row.evidence : [],
+      applied_dates: Array.isArray(row.applied_dates) ? row.applied_dates : [],
+      skipped_dates: Array.isArray(row.skipped_dates) ? row.skipped_dates : [],
+      error_message: stringOrNull(row.error_message),
+      timing_ms: row.timing_ms === null ? null : Number(row.timing_ms),
+      created_at: String(row.created_at),
+      completed_at: stringOrNull(row.completed_at),
+    }
+  })
+}
+
+export async function invokeBellScheduleSync(preview: boolean): Promise<Record<string, unknown>> {
+  const client = requireClient()
+  const { data, error } = await client.functions.invoke('bell-schedule-sync', {
+    body: { trigger: 'manual', preview },
+  })
+  if (error) {
+    const context = (error as unknown as { context?: unknown }).context
+    const response = context instanceof Response ? context : null
+    const body = response ? await response.clone().json().catch(() => ({})) as { message?: string } : {}
+    throw new Error(body.message || 'The bell-schedule sync did not complete.')
+  }
+  return recordFrom(data) ?? {}
+}
+
 export async function searchGuestStudents(firstName: string): Promise<GuestStudentResult[]> {
   const data = await callUntypedRpc('guest_search_students', {
     p_first_name: firstName,
@@ -1005,6 +1185,8 @@ export async function superAdminGetSiteResetPreview(): Promise<SiteResetPreview>
     enrollments: Number(row.enrollments),
     reports: Number(row.reports),
     profile_pictures: Number(row.profile_pictures),
+    calendar_assignments: Number(row.calendar_assignments ?? 0),
+    sync_runs: Number(row.sync_runs ?? 0),
   }
 }
 

@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --pretty false && pnpm schedule-engine:typecheck",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:function": "vitest run --config supabase/functions/schedule-import/vitest.config.ts && vitest run --config supabase/functions/delete-account/vitest.config.ts && vitest run --config supabase/functions/site-reset/vitest.config.ts",
+    "test:function": "vitest run --config supabase/functions/schedule-import/vitest.config.ts && vitest run --config supabase/functions/delete-account/vitest.config.ts && vitest run --config supabase/functions/site-reset/vitest.config.ts && vitest run --config supabase/functions/bell-schedule-sync/vitest.config.ts",
     "test:worker": "vitest run --config cloudflare/schedule-import-worker/vitest.config.ts",
     "test:schedule-engine": "vitest run --config schedule-engine-worker/vitest.config.ts",
     "test:watch": "vitest",

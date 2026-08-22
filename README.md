@@ -74,6 +74,7 @@ The protected admin dashboard supports:
 - Course catalogue management
 - Homepage statistic controls
 - Gemini importer model, thinking-level, output-limit, progress-duration, and diagnostic controls
+- Bell-schedule definitions, custom blocks, date/campus assignments, A/B and no-school overrides, daily Google Docs detection, and extraction history
 - Administrator role management
 - Super-admin-only event logs, activity summaries, diagnostic cleanup, and protected site-reset tools
 
@@ -108,6 +109,7 @@ supabase/migrations/               Database schema, RLS, indexes, RPCs, and poli
 supabase/functions/schedule-import Active Gemini screenshot importer
 supabase/functions/delete-account  Auth and account deletion function
 supabase/functions/site-reset      Protected super-admin reset function
+supabase/functions/bell-schedule-sync Google Docs/Gemini bell-calendar detector
 supabase/tests/database/           Database privacy and authorization tests
 cloudflare/schedule-import-worker/ Share Worker and legacy Cloudflare-AI importer
 docs/                              Deployment and design references
@@ -167,6 +169,12 @@ supabase functions deploy schedule-import
 ```
 
 The Edge Function validates requests, rate-limits guest use, sends images to Gemini, checks the structured response, and resolves it against the approved catalogue. New importer behavior belongs in `supabase/functions/schedule-import/`, not in the legacy Cloudflare importer.
+
+## Bell-schedule sync deployment
+
+The signed-in homepage countdown uses browser-side timing with server-resolved bell and school-day data. Administrators manage authoritative bell times, calendar overrides, and newsletter detection in the **Bell schedules** tab.
+
+Follow [`docs/bell-schedule-sync-setup.md`](docs/bell-schedule-sync-setup.md) to enable and restrict the Google Docs API key, configure link-visible source documents, store `GOOGLE_DOCS_API_KEY` and `BELL_SCHEDULE_SYNC_TOKEN` as Edge Function secrets, add the matching project URL/token to Supabase Vault, deploy the function, and verify a preview before enabling the daily run.
 
 ## Common commands
 

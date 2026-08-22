@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { useClubPrompt } from '../components/club/ClubPromptProvider'
+import { NextClassCard } from '../components/schedule/NextClassCard'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useSchedule } from '../hooks/useSchedule'
 import { clearAuthDestination, hasPendingAuthDestination, pendingAuthDestination } from '../lib/authDestination'
@@ -19,7 +20,7 @@ function isMobileShareDevice(): boolean {
 }
 
 export function HomePage() {
-  const { user, isDemo } = useAuth()
+  const { user, isDemo, profile } = useAuth()
   const { openClubDialog, whyScheduleShareEnabled } = useClubPrompt()
   const { enrollments, loading: scheduleLoading } = useSchedule()
   const [statistic, setStatistic] = useState<HomepageStatistic | null>(null)
@@ -109,6 +110,7 @@ export function HomePage() {
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
       </section>
+      {user ? <NextClassCard enrollments={enrollments} isDemo={isDemo} campus={profile?.grade && profile.grade <= 10 ? 'NAI' : 'NASH'} scheduleLoading={scheduleLoading} /> : null}
       {user && !scheduleLoading ? (
         <section className="completion-callout schedule-status-card">
           <CalendarDays aria-hidden="true" />
