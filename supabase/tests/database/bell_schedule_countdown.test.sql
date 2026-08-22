@@ -116,17 +116,23 @@ select lives_ok(
   )$$,
   'a service sync can finish without overwriting a manual lock'
 );
+
+reset role;
+select set_config('request.jwt.claim.sub', 'b9000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
 select is(
-  (select source from private.school_day_assignments where school_date = '2026-08-24' and campus = 'NAI'),
+  public.admin_list_school_days('2026-08-24', 1) -> 0 ->> 'source',
   'manual',
   'AI application preserves the existing manual source'
 );
 select is(
-  (select skipped_dates -> 0 ->> 'reason' from private.bell_schedule_sync_runs where source_hash = 'source-hash-one'),
+  public.admin_list_bell_schedule_sync_runs(1) -> 0 -> 'skipped_dates' -> 0 ->> 'reason',
   'manual_override',
   'preserved manual overrides appear in the run history'
 );
 
+reset role;
+set local role service_role;
 create temporary table bell_sync_claim_two as
 select public.service_claim_bell_schedule_sync(
   'b9000000-0000-4000-8000-000000000002', 'manual', false
@@ -147,7 +153,7 @@ select set_config('request.jwt.claim.sub', 'b9000000-0000-4000-8000-000000000002
 set local role authenticated;
 select is(public.admin_unlock_school_day_overrides(array['2026-08-24'::date], array['NAI']), 1, 'administrators can unlock a manual override for AI management');
 select is(
-  (select source from private.school_day_assignments where school_date = '2026-08-24' and campus = 'NAI'),
+  public.admin_list_school_days('2026-08-24', 1) -> 0 ->> 'source',
   'manual',
   'unlocking preserves manual provenance until an AI run actually replaces the row'
 );
