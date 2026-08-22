@@ -229,3 +229,5 @@ $$;
 
 delete from public.classes
 where status = 'merged';
+
+

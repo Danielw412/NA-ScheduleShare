@@ -153,3 +153,5 @@ comment on function public.get_why_scheduleshare_enabled()
   is 'Returns whether the public Why ScheduleShare page is currently published.';
 
 notify pgrst, 'reload schema';
+
+
