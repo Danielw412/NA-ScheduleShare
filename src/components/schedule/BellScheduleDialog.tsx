@@ -33,7 +33,7 @@ export function BellScheduleDialog({ day, now, onClose }: BellScheduleDialogProp
     <section className="bell-schedule-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <header className="bell-schedule-dialog-header">
         <div className="bell-schedule-dialog-icon"><CalendarDays aria-hidden="true" /></div>
-        <div>
+        <div className="bell-schedule-dialog-heading">
           <span className="eyebrow">{day.campus} · {day.day_type ? `${day.day_type} day` : 'School day'}</span>
           <h2 id={titleId}>{schedule.display_name}</h2>
           <p>{formatEasternDate(easternLocalTime(day.date, '12:00'))}</p>
@@ -51,8 +51,8 @@ export function BellScheduleDialog({ day, now, onClose }: BellScheduleDialogProp
           const isPast = day.date === today && now.getTime() >= endsAt.getTime()
           return <div className={`bell-schedule-row ${isCurrent ? 'is-current' : ''} ${isPast ? 'is-past' : ''}`} key={`${block.position}-${block.label}`}>
             <span className="bell-schedule-row-order">{block.period_number ?? '—'}</span>
-            <span className="bell-schedule-row-label"><strong>{block.label}</strong><small>{block.kind === 'class' ? 'Class period' : 'School block'}</small></span>
-            <span className="bell-schedule-row-time">{formatEasternTime(startsAt)} <span aria-hidden="true">–</span><span className="sr-only">to</span> {formatEasternTime(endsAt)}</span>
+            <span className="bell-schedule-row-label"><strong>{block.label}</strong></span>
+            <span className="bell-schedule-row-time">{formatEasternTime(startsAt)} <span aria-hidden="true">-</span><span className="sr-only">to</span> {formatEasternTime(endsAt)}</span>
             {isCurrent ? <span className="bell-current-badge">Now</span> : null}
           </div>
         })}
