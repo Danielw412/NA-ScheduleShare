@@ -65,38 +65,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function dateScore(section: string, reference: Date): number {
-  const scores: number[] = []
-  for (const match of section.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)) {
-    scores.push(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  }
-  const monthNames: Record<string, number> = {
-    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-    jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
-  }
-  for (const match of section.matchAll(/\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[.]?\s+(\d{1,2})(?:,\s*(20\d{2}))?/gi)) {
-    const month = monthNames[match[1].toLowerCase()]
-    let year = match[3] ? Number(match[3]) : reference.getUTCFullYear()
-    if (!match[3] && month < reference.getUTCMonth() - 6) year += 1
-    if (!match[3] && month > reference.getUTCMonth() + 6) year -= 1
-    scores.push(Date.UTC(year, month, Number(match[2])))
-  }
-  return scores.length ? Math.max(...scores) : 0
+const monthNumbers: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
 }
 
-export function newestWeeklyScheduleSections(text: string, reference = new Date()): string {
+function dateFromScheduleHeading(line: string): string | null {
+  const match = /^\s*(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[.]?\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(20\d{2})\b/i.exec(line)
+  if (!match) return null
+  const month = String(monthNumbers[match[1].toLowerCase()]).padStart(2, '0')
+  const date = `${match[3]}-${month}-${match[2].padStart(2, '0')}`
+  return validIsoDate(date) ? date : null
+}
+
+export function currentEasternWeekBounds(today: string): { start: string; end: string } {
+  if (!validIsoDate(today)) throw new HttpError(500, 'invalid_current_date', 'The current Eastern date is invalid.')
+  const date = new Date(`${today}T12:00:00Z`)
+  const start = addUtcDays(today, -date.getUTCDay())
+  return { start, end: addUtcDays(start, 6) }
+}
+
+export function currentWeeklyScheduleSection(text: string, weekStart: string, weekEnd: string): string {
   const matches = [...text.matchAll(/\bWeekly Schedule\b/gi)]
-  if (matches.length === 0) throw new HttpError(422, 'weekly_schedule_missing', 'No Weekly Schedule section was found in the newsletter.')
-  const sections = matches.map((match, index) => text.slice(match.index, matches[index + 1]?.index ?? text.length).trim())
-    .filter(Boolean)
-    .map((section, index) => ({ section, index, score: dateScore(section, reference) }))
-  return sections.sort((left, right) => right.score - left.score || left.index - right.index)
-    .slice(0, 2)
-    .sort((left, right) => left.index - right.index)
-    .map((item) => item.section)
-    .join('\n\n')
-    .slice(0, 50_000)
+  const candidates = matches.map((match, sectionIndex) => {
+    const section = text.slice(match.index, matches[sectionIndex + 1]?.index ?? text.length)
+    const blocks: string[][] = []
+    let currentBlock: string[] | null = null
+    for (const line of section.split('\n').slice(1)) {
+      const headingDate = dateFromScheduleHeading(line)
+      if (headingDate) {
+        currentBlock = headingDate >= weekStart && headingDate <= weekEnd ? [line.trim()] : null
+        if (currentBlock) blocks.push(currentBlock)
+        continue
+      }
+      if (currentBlock && /^\s*(?:[*\u2022\u25cf\u25aa\u25e6-])\s+\S/.test(line)) currentBlock.push(line.trim())
+      else if (currentBlock && line.trim()) currentBlock = null
+    }
+    return { blocks, sectionIndex }
+  }).filter((candidate) => candidate.blocks.length > 0)
+    .sort((left, right) => right.blocks.length - left.blocks.length || left.sectionIndex - right.sectionIndex)
+  const selected = candidates[0]
+  if (!selected) {
+    throw new HttpError(422, 'current_week_schedule_missing', `No Weekly Schedule was found for the current week (${weekStart} through ${weekEnd}).`)
+  }
+  return ['Weekly Schedule', ...selected.blocks.flat()].join('\n').slice(0, 50_000)
 }
 
 function googleDocumentId(url: string): string {
@@ -118,8 +131,10 @@ export async function fetchPublicGoogleDocumentText(url: string, fetcher: typeof
   return text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim()
 }
 
-function buildPrompt(sourceSection: string): string {
-  return `You extract school-day calendar facts from the newest North Allegheny NASH newsletter sections.
+function buildPrompt(sourceSection: string, weekStart: string, weekEnd: string): string {
+  return `You extract school-day calendar facts from the North Allegheny NASH newsletter for the current Eastern week only.
+
+The current week begins ${weekStart} (Sunday) and ends ${weekEnd} (Saturday). Never return a date outside this exact range.
 
 Return only a JSON array. Every array item must have exactly these keys:
 {"date":"YYYY-MM-DD","day_type":"A|B|UNKNOWN","no_school":false,"schedule_key":"regular","campus":"BOTH","evidence":"exact source quote"}
@@ -136,17 +151,17 @@ Deterministic terminology rules you must follow:
 - The exact whole phrase “activity period” means activity_1.
 - “Activities Fair” or “Student Activities Fair” alone does not mean an activity bell schedule; keep regular unless another explicit phrase changes the schedule.
 - Do not infer a delay, dismissal, activity, reverse activity, or no-school day from unrelated events.
-- Do not include dates outside the supplied sections.
+- Do not include dates outside ${weekStart} through ${weekEnd}, even if other dates appear in context.
 
-Newest two Weekly Schedule sections:
+Current-week Weekly Schedule:
 ---
 ${sourceSection}
 ---`
 }
 
-export function buildGeminiBellSyncRequest(sourceSection: string): Record<string, unknown> {
+export function buildGeminiBellSyncRequest(sourceSection: string, weekStart: string, weekEnd: string): Record<string, unknown> {
   return {
-    contents: [{ role: 'user', parts: [{ text: buildPrompt(sourceSection) }] }],
+    contents: [{ role: 'user', parts: [{ text: buildPrompt(sourceSection, weekStart, weekEnd) }] }],
     generationConfig: {
       maxOutputTokens: 8192,
       responseMimeType: 'application/json',
@@ -188,6 +203,8 @@ function geminiProviderErrorDetail(value: unknown): string | null {
 export async function invokeGeminiBellSync(
   modelId: string,
   sourceSection: string,
+  weekStart: string,
+  weekEnd: string,
   apiKey: string,
   fetcher: typeof fetch = fetch,
   timeoutMs = BELL_SYNC_TIMEOUT_MS,
@@ -199,7 +216,7 @@ export async function invokeGeminiBellSync(
     const response = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildGeminiBellSyncRequest(sourceSection)),
+      body: JSON.stringify(buildGeminiBellSyncRequest(sourceSection, weekStart, weekEnd)),
       signal: controller.signal,
     })
     const providerJson = await response.json().catch(() => null) as unknown
@@ -243,8 +260,9 @@ export function validateBellSyncExtraction(
 ): BellSyncExtraction[] {
   if (!Array.isArray(value) || value.length > 30) throw new HttpError(422, 'invalid_extraction', 'Gemini returned an invalid number of calendar rows.')
   const source = normalizeEvidence(sourceSection)
-  const minimumDate = [schoolYearStart, addUtcDays(today, -14)].sort().at(-1) as string
-  const maximumDate = [schoolYearEnd, addUtcDays(today, 35)].sort()[0]
+  const week = currentEasternWeekBounds(today)
+  const minimumDate = [schoolYearStart, week.start].sort().at(-1) as string
+  const maximumDate = [schoolYearEnd, week.end].sort()[0]
   const seen = new Set<string>()
   return value.flatMap((candidate) => {
     if (!isRecord(candidate)) throw new HttpError(422, 'invalid_extraction', 'Gemini returned an invalid calendar row.')
@@ -329,16 +347,19 @@ export async function handleBellScheduleSyncRequest(request: Request, dependenci
     }
     runId = claim.run_id
     const fetcher = dependencies.fetch ?? fetch
+    const now = dependencies.now?.() ?? new Date()
+    const today = easternToday(now)
+    const week = currentEasternWeekBounds(today)
     const newsletterDocumentText = await fetchPublicGoogleDocumentText(claim.newsletter_document_url, fetcher)
-    const sourceSection = newestWeeklyScheduleSections(newsletterDocumentText, dependencies.now?.() ?? new Date())
+    const sourceSection = currentWeeklyScheduleSection(newsletterDocumentText, week.start, week.end)
     const sourceHash = await sha256(sourceSection)
-    const gemini = await invokeGeminiBellSync(claim.model_id, sourceSection, dependencies.geminiApiKey, fetcher, dependencies.timeoutMs)
+    const gemini = await invokeGeminiBellSync(claim.model_id, sourceSection, week.start, week.end, dependencies.geminiApiKey, fetcher, dependencies.timeoutMs)
     const validated = validateBellSyncExtraction(
       gemini.rawJson,
       sourceSection,
       claim.school_year_start,
       claim.school_year_end,
-      easternToday(dependencies.now?.() ?? new Date()),
+      today,
     )
     const result = await dependencies.finish({
       runId,
