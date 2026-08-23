@@ -163,7 +163,6 @@ export function buildGeminiBellSyncRequest(sourceSection: string): Record<string
   return {
     contents: [{ role: 'user', parts: [{ text: buildPrompt(sourceSection) }] }],
     generationConfig: {
-      temperature: 0,
       maxOutputTokens: 8192,
       responseMimeType: 'application/json',
       responseJsonSchema: responseSchema,

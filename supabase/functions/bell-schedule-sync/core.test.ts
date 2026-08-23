@@ -79,13 +79,13 @@ describe('Google Docs extraction', () => {
 })
 
 describe('Gemini request and deterministic validation', () => {
-  it('forces structured JSON, temperature zero, HIGH thinking, and no thoughts', () => {
+  it('forces structured JSON, HIGH thinking, no thoughts, and model-default sampling', () => {
     const requestBody = buildGeminiBellSyncRequest(source)
     expect(requestBody.generationConfig).toMatchObject({
-      temperature: 0,
       responseMimeType: 'application/json',
       thinkingConfig: { thinkingLevel: 'HIGH', includeThoughts: false },
     })
+    expect(requestBody.generationConfig).not.toHaveProperty('temperature')
     expect(JSON.stringify(requestBody)).not.toContain('maxLength')
     expect(JSON.stringify(requestBody)).not.toContain('"enum":["A","B",null]')
   })
