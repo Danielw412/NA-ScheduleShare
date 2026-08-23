@@ -1,6 +1,7 @@
 import { Archive, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CirclePlus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { demoBellScheduleWindow } from '../../lib/bellSchedule'
+import { NextClassCardView } from '../schedule/NextClassCard'
+import { demoBellScheduleWindow, easternDateKey, easternLocalTime } from '../../lib/bellSchedule'
 import type {
   AdminSchoolDayContext,
   BellCampus,
@@ -10,6 +11,8 @@ import type {
   BellScheduleSettings,
   BellScheduleSyncRun,
   DayType,
+  ScheduleEnrollment,
+  SchoolDayContext,
 } from '../../lib/domain'
 import {
   adminArchiveBellSchedule,
@@ -110,6 +113,54 @@ function demoData() {
   return { schedules: [regular], settings }
 }
 
+function previewSchoolDays(
+  startDate: string,
+  schedule: BellScheduleDefinition,
+  campus: BellCampus,
+  dayType: DayType,
+  noSchool: boolean,
+  semesterTwoStart: string,
+): SchoolDayContext[] {
+  return Array.from({ length: 21 }, (_, index) => {
+    const date = addDays(startDate, index)
+    const weekDay = new Date(`${date}T12:00:00Z`).getUTCDay()
+    const closed = index === 0 ? noSchool : weekDay === 0 || weekDay === 6
+    return {
+      date,
+      campus,
+      day_type: closed ? null : dayType,
+      semester: date >= semesterTwoStart ? 'semester_2' : 'semester_1',
+      no_school: closed,
+      source: index === 0 ? 'manual' : 'default',
+      schedule: closed ? null : schedule,
+    }
+  })
+}
+
+function previewEnrollment(dayType: DayType, periodNumber: number | null, courseName: string): ScheduleEnrollment[] {
+  if (periodNumber === null) return []
+  const meetingSlots = [{ day_type: dayType, period_number: periodNumber }]
+  return [{
+    id: 'admin-preview-enrollment',
+    class_id: 'admin-preview-class',
+    student_id: 'admin-preview-student',
+    academic_term: 'full_year',
+    active: true,
+    created_at: '',
+    updated_at: '',
+    meeting_slots: meetingSlots,
+    class: {
+      id: 'admin-preview-class',
+      course_name_id: 'admin-preview-course',
+      course_name: courseName,
+      teacher_last_name: 'Preview',
+      default_academic_term: 'full_year',
+      is_double_period: false,
+      meeting_slots: meetingSlots,
+    },
+  }]
+}
+
 export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
   const [month, setMonth] = useState(() => monthStart(new Date()))
   const [schedules, setSchedules] = useState<BellScheduleDefinition[]>([])
@@ -128,6 +179,13 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
   const [noSchool, setNoSchool] = useState(false)
   const [assignmentScheduleId, setAssignmentScheduleId] = useState('')
   const [draft, setDraft] = useState<BellScheduleDefinition | null>(null)
+  const [previewDate, setPreviewDate] = useState(() => easternDateKey(new Date()))
+  const [previewTime, setPreviewTime] = useState('07:30')
+  const [previewCampus, setPreviewCampus] = useState<BellCampus>('NASH')
+  const [previewDayType, setPreviewDayType] = useState<DayType>('A')
+  const [previewNoSchool, setPreviewNoSchool] = useState(false)
+  const [previewPeriod, setPreviewPeriod] = useState<number | null>(1)
+  const [previewClassName, setPreviewClassName] = useState('AP Psychology')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -170,6 +228,22 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
   const currentMonthPrefix = month.slice(0, 7)
   const activeSchedules = schedules.filter((schedule) => !schedule.archived_at)
   const sourcesVerified = runs.some((run) => run.status === 'previewed' || run.status === 'succeeded')
+  const previewNow = useMemo(() => easternLocalTime(previewDate, previewTime), [previewDate, previewTime])
+  const previewDays = useMemo(
+    () => draft ? previewSchoolDays(
+      previewDate,
+      draft,
+      previewCampus,
+      previewDayType,
+      previewNoSchool,
+      settings?.semester_2_start ?? previewDate,
+    ) : [],
+    [draft, previewCampus, previewDate, previewDayType, previewNoSchool, settings?.semester_2_start],
+  )
+  const previewEnrollments = useMemo(
+    () => previewEnrollment(previewDayType, previewPeriod, previewClassName),
+    [previewClassName, previewDayType, previewPeriod],
+  )
 
   function chooseDate(date: string, range: boolean) {
     setSelectedDates((current) => {
@@ -332,8 +406,28 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
       </div> : null}
     </section>
 
+    {draft ? <section className="admin-section bell-admin-card bell-home-preview-section">
+      <div className="bell-card-heading">
+        <div><span className="eyebrow">Homepage preview</span><h3>Test the next-class card</h3><p>This is the real homepage component using the current editor draft. Change the date, time, and student context to test every state before saving.</p></div>
+        <span className="connection-badge is-connected">Live preview</span>
+      </div>
+      <div className="bell-preview-controls">
+        <label>Preview date<input aria-label="Preview date" type="date" value={previewDate} onChange={(event) => { if (event.target.value) setPreviewDate(event.target.value) }} /></label>
+        <label>Preview time<input aria-label="Preview time" type="time" step="60" value={previewTime} onChange={(event) => { if (event.target.value) setPreviewTime(event.target.value) }} /></label>
+        <label>Campus<select aria-label="Preview campus" value={previewCampus} onChange={(event) => setPreviewCampus(event.target.value as BellCampus)}><option value="NAI">NAI</option><option value="NASH">NASH</option></select></label>
+        <label>A/B day<select aria-label="Preview A/B day" value={previewDayType} onChange={(event) => setPreviewDayType(event.target.value as DayType)}><option value="A">A day</option><option value="B">B day</option></select></label>
+        <label>Student class period<select aria-label="Preview student class period" value={previewPeriod ?? ''} onChange={(event) => setPreviewPeriod(event.target.value ? Number(event.target.value) : null)}><option value="">Empty schedule</option>{Array.from({ length: 9 }, (_, index) => <option value={index + 1} key={index + 1}>Period {index + 1}</option>)}</select></label>
+        <label>Student class name<input aria-label="Preview student class name" value={previewClassName} onChange={(event) => setPreviewClassName(event.target.value)} /></label>
+        <label className="checkbox-row compact bell-preview-closed"><input aria-label="Preview no school" type="checkbox" checked={previewNoSchool} onChange={(event) => setPreviewNoSchool(event.target.checked)} /> No school on preview date</label>
+      </div>
+      <div className="bell-home-preview-stage">
+        <span className="bell-preview-stage-label">Homepage · {draft.display_name}</span>
+        <NextClassCardView enrollments={previewEnrollments} campus={previewCampus} days={previewDays} now={previewNow} />
+      </div>
+    </section> : null}
+
     {settings ? <section className="admin-section bell-admin-card bell-automation-section">
-      <div className="bell-card-heading"><div><span className="eyebrow">Automation</span><h3>Daily Google Docs detection</h3><p>Runs in Eastern time with Gemini high thinking. Reasoning thoughts are never returned or stored.</p></div><span className={`connection-badge ${sourcesVerified ? 'is-connected' : ''}`}>{sourcesVerified ? 'Sources verified' : 'Not verified yet'}</span></div>
+      <div className="bell-card-heading"><div><span className="eyebrow">Automation</span><h3>Daily Google Docs detection</h3><p>Reads anonymous public text exports, then runs Gemini in Eastern time with high thinking. Reasoning thoughts are never returned or stored.</p></div><span className={`connection-badge ${sourcesVerified ? 'is-connected' : ''}`}>{sourcesVerified ? 'Sources verified' : 'Not verified yet'}</span></div>
       <div className="bell-settings-grid"><label className="checkbox-row"><input type="checkbox" checked={settings.sync_enabled} onChange={(event) => setSettings({ ...settings, sync_enabled: event.target.checked })} /><span><strong>Enable daily detection</strong><small>The five-minute database check invokes the function once when this time is due.</small></span></label><label>Daily time (Eastern)<input type="time" step="60" value={settings.sync_time} onChange={(event) => setSettings({ ...settings, sync_time: event.target.value })} /></label><label>First day<input type="date" value={settings.school_year_start} onChange={(event) => setSettings({ ...settings, school_year_start: event.target.value })} /></label><label>Semester 2 starts<input type="date" value={settings.semester_2_start} onChange={(event) => setSettings({ ...settings, semester_2_start: event.target.value })} /></label><label>Last day<input type="date" value={settings.school_year_end} onChange={(event) => setSettings({ ...settings, school_year_end: event.target.value })} /></label><label>Default schedule<select value={settings.default_schedule_id} onChange={(event) => setSettings({ ...settings, default_schedule_id: event.target.value })}>{activeSchedules.filter((schedule) => schedule.campus_scope === 'BOTH').map((schedule) => <option value={schedule.id} key={schedule.id}>{schedule.display_name}</option>)}</select></label><label className="wide-field">Bell-schedule Google Doc<input value={settings.bell_schedule_document_url} onChange={(event) => setSettings({ ...settings, bell_schedule_document_url: event.target.value })} /></label><label className="wide-field">Newsletter Google Doc<input value={settings.newsletter_document_url} onChange={(event) => setSettings({ ...settings, newsletter_document_url: event.target.value })} /></label></div>
       <div className="form-actions"><button className="button button-secondary" type="button" disabled={busy} onClick={() => void saveSettings()}><Save size={16} /> Save settings</button><button className="button button-secondary" type="button" disabled={busy} onClick={() => void sync(true)}>Preview now</button><button className="button button-primary" type="button" disabled={busy} onClick={() => void sync(false)}>Sync now</button></div>
     </section> : null}

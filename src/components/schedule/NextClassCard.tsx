@@ -1,5 +1,5 @@
-import { Clock3, RefreshCw } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { CalendarClock, Clock3, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BellCampus, ScheduleEnrollment, SchoolDayContext } from '../../lib/domain'
 import {
   demoBellScheduleWindow,
@@ -7,15 +7,24 @@ import {
   formatCountdown,
   formatEasternDate,
   formatEasternTime,
+  resolveBellScheduleDay,
   resolveNextClassTiming,
 } from '../../lib/bellSchedule'
 import { getMyBellScheduleWindow } from '../../lib/supabase/data'
+import { BellScheduleDialog } from './BellScheduleDialog'
 
 interface NextClassCardProps {
   enrollments: ScheduleEnrollment[]
   isDemo: boolean
   campus: BellCampus
   scheduleLoading?: boolean
+}
+
+interface NextClassCardViewProps {
+  enrollments: ScheduleEnrollment[]
+  campus: BellCampus
+  days: SchoolDayContext[]
+  now: Date
 }
 
 export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = false }: NextClassCardProps) {
@@ -76,10 +85,20 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
     }
   }, [])
 
-  const timing = useMemo(
-    () => resolveNextClassTiming(now, days, scheduleLoading ? [] : enrollments),
-    [days, enrollments, now, scheduleLoading],
-  )
+  if (loading || scheduleLoading) {
+    return <section className="next-class-card is-loading" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Finding your next class…</h2><p>Loading today’s bell schedule.</p></div></section>
+  }
+
+  if (error) {
+    return <section className="next-class-card is-error" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Next class unavailable</h2><p>{error}</p></div><button className="icon-button" type="button" aria-label="Retry next class" onClick={() => setRetry((value) => value + 1)}><RefreshCw aria-hidden="true" /></button></section>
+  }
+
+  return <NextClassCardView enrollments={enrollments} campus={campus} days={days} now={now} />
+}
+
+export function NextClassCardView({ enrollments, campus, days, now }: NextClassCardViewProps) {
+  const timing = useMemo(() => resolveNextClassTiming(now, days, enrollments), [days, enrollments, now])
+  const displayDay = useMemo(() => resolveBellScheduleDay(now, days), [days, now])
   const resolvedCampus = days[0]?.campus ?? campus
   const courseCopy = timing.courseName && timing.mode === 'current'
     ? `Time until ${timing.courseName} is over`
@@ -87,8 +106,10 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
       ? `Time until ${timing.courseName} starts`
       : 'Time until next class'
   const [courseCopyFits, setCourseCopyFits] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const titleWrapRef = useRef<HTMLDivElement>(null)
   const measureRef = useRef<HTMLSpanElement>(null)
+  const scheduleButtonRef = useRef<HTMLButtonElement>(null)
 
   useLayoutEffect(() => {
     const wrap = titleWrapRef.current
@@ -102,27 +123,32 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
     return () => observer.disconnect()
   }, [courseCopy])
 
-  if (loading || scheduleLoading) {
-    return <section className="next-class-card is-loading" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Finding your next class…</h2><p>Loading today’s bell schedule.</p></div></section>
-  }
+  const closeDialog = useCallback(() => {
+    setDialogOpen(false)
+    scheduleButtonRef.current?.focus()
+  }, [])
 
-  if (error) {
-    return <section className="next-class-card is-error" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Next class unavailable</h2><p>{error}</p></div><button className="icon-button" type="button" aria-label="Retry next class" onClick={() => setRetry((value) => value + 1)}><RefreshCw aria-hidden="true" /></button></section>
-  }
+  const scheduleButton = displayDay ? <button
+    ref={scheduleButtonRef}
+    className="button button-secondary next-class-schedule-button"
+    type="button"
+    onClick={() => setDialogOpen(true)}
+  ><CalendarClock size={16} aria-hidden="true" /> View bell schedule</button> : null
+  const dialog = dialogOpen && displayDay ? <BellScheduleDialog day={displayDay} now={now} onClose={closeDialog} /> : null
 
   if (timing.status === 'none' || !timing.targetAt) {
-    return <section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>No upcoming classes.</h2><p>There are no future class days in the configured school year.</p></div></section>
+    return <><section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div className="next-class-main"><h2>No upcoming classes.</h2><p>There are no future class days in the configured school year.</p></div>{scheduleButton ? <div className="next-class-actions">{scheduleButton}</div> : null}</section>{dialog}</>
   }
 
   if (timing.status === 'upcoming') {
-    return <section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Next class: {formatEasternDate(timing.targetAt)}</h2><p>Starts at {formatEasternTime(timing.targetAt)} · {resolvedCampus}</p></div></section>
+    return <><section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div className="next-class-main"><h2>Next class: {formatEasternDate(timing.targetAt)}</h2><p>Starts at {formatEasternTime(timing.targetAt)} · {resolvedCampus}</p></div>{scheduleButton ? <div className="next-class-actions">{scheduleButton}</div> : null}</section>{dialog}</>
   }
 
   const genericCopy = 'Time until next class'
   const visibleCopy = timing.courseName && courseCopyFits ? courseCopy : genericCopy
   const targetVerb = timing.mode === 'current' ? 'Ends' : 'Starts'
   const progress = timing.progressPercent ?? 0
-  return <section className="next-class-card is-live" aria-label="Next class">
+  return <><section className="next-class-card is-live" aria-label="Next class">
     <Clock3 aria-hidden="true" />
     <div className="next-class-main">
       <div className="next-class-title-wrap" ref={titleWrapRef}>
@@ -131,7 +157,7 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
       </div>
       <p>{targetVerb} at {formatEasternTime(timing.targetAt)} · {resolvedCampus}</p>
     </div>
-    <div className="next-class-progress-copy" aria-hidden="true"><span>{Math.round(progress)}%</span></div>
+    <div className="next-class-actions"><span className="next-class-progress-copy" aria-hidden="true">{Math.round(progress)}%</span>{scheduleButton}</div>
     <div
       className="next-class-progress"
       role="progressbar"
@@ -140,5 +166,5 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
       aria-valuemax={100}
       aria-valuenow={Math.round(progress)}
     ><span style={{ width: `${progress}%` }} /></div>
-  </section>
+  </section>{dialog}</>
 }

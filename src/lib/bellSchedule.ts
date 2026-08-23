@@ -56,6 +56,11 @@ export function easternDateKey(date: Date): string {
   return `${parts.year}-${parts.month}-${parts.day}`
 }
 
+export function easternTimeKey(date: Date): string {
+  const parts = formattedParts(date)
+  return `${parts.hour}:${parts.minute}`
+}
+
 export function easternLocalTime(dateKey: string, time: string): Date {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey)
   const timeMatch = /^(\d{2}):(\d{2})$/.exec(time)
@@ -231,6 +236,13 @@ export function resolveNextClassTiming(
     progressPercent: null,
     targetDate: null,
   }
+}
+
+export function resolveBellScheduleDay(now: Date, days: SchoolDayContext[]): SchoolDayContext | null {
+  const today = easternDateKey(now)
+  return [...days]
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .find((day) => day.date >= today && !day.no_school && day.schedule !== null) ?? null
 }
 
 const demoRegularSchedule: BellScheduleDefinition = {

@@ -1,20 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildGeminiBellSyncRequest,
-  extractGoogleDocumentText,
+  fetchPublicGoogleDocumentText,
   handleBellScheduleSyncRequest,
   newestWeeklyScheduleSections,
   validateBellSyncExtraction,
   type BellSyncDependencies,
 } from './core'
-
-function paragraph(text: string) {
-  return { paragraph: { elements: [{ textRun: { content: text } }] } }
-}
-
-function googleDoc(text: string) {
-  return { tabs: [{ documentTab: { body: { content: [paragraph(text)] } }, childTabs: [] }] }
-}
 
 const source = `Weekly Schedule
 Monday, August 24, 2026 — A Day — Activity Period
@@ -41,7 +33,6 @@ function dependencies(): BellSyncDependencies {
     evidence: 'Monday, August 24, 2026 — A Day — Activity Period',
   }]
   return {
-    googleDocsApiKey: 'google-key',
     geminiApiKey: 'gemini-key',
     schedulerToken: 'scheduler-token',
     now: () => new Date('2026-08-22T16:00:00Z'),
@@ -59,8 +50,8 @@ function dependencies(): BellSyncDependencies {
     finish: vi.fn(async (input) => ({ run_id: input.runId, status: input.status })),
     fetch: vi.fn(async (input) => {
       const url = String(input)
-      if (url.includes('bell-doc')) return Response.json(googleDoc('Regular Bell Schedule\nPeriod 1 7:28-8:08'))
-      if (url.includes('news-doc')) return Response.json(googleDoc(source))
+      if (url.includes('bell-doc')) return new Response('Regular Bell Schedule\nPeriod 1 7:28-8:08', { headers: { 'Content-Type': 'text/plain' } })
+      if (url.includes('news-doc')) return new Response(source, { headers: { 'Content-Type': 'text/plain' } })
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(extraction) }] } }] })
     }),
   }
@@ -69,17 +60,16 @@ function dependencies(): BellSyncDependencies {
 beforeEach(() => vi.clearAllMocks())
 
 describe('Google Docs extraction', () => {
-  it('traverses paragraphs, tables, tabs, and child tabs', () => {
-    const document = {
-      tabs: [{
-        documentTab: { body: { content: [paragraph('Heading\n'), { table: { tableRows: [{ tableCells: [{ content: [paragraph('A1')] }, { content: [paragraph('B1')] }] }] } }] } },
-        childTabs: [{ documentTab: { body: { content: [paragraph('Child tab')] } } }],
-      }],
-    }
-    const text = extractGoogleDocumentText(document)
-    expect(text).toContain('Heading')
-    expect(text).toContain('A1\tB1')
-    expect(text).toContain('Child tab')
+  it('reads the anonymous plain-text export without an API key or authorization header', async () => {
+    const fetcher = vi.fn(async () => new Response('Public document text', { headers: { 'Content-Type': 'text/plain' } }))
+    await expect(fetchPublicGoogleDocumentText('https://docs.google.com/document/d/public-doc/edit', fetcher)).resolves.toBe('Public document text')
+    const [input, init] = fetcher.mock.calls[0]
+    const endpoint = new URL(String(input))
+    expect(endpoint.origin).toBe('https://docs.google.com')
+    expect(endpoint.pathname).toBe('/document/d/public-doc/export')
+    expect(endpoint.searchParams.get('format')).toBe('txt')
+    expect(endpoint.searchParams.has('key')).toBe(false)
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false)
   })
 
   it('keeps only the newest two Weekly Schedule sections', () => {

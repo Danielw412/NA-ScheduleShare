@@ -1,16 +1,16 @@
 # Bell-schedule Google Docs sync setup
 
-The `bell-schedule-sync` Edge Function reads two link-visible Google Docs, asks the currently active ScheduleShare Gemini model for structured calendar facts, validates every date and evidence quote, and applies only AI-managed school-day rows. Manual assignments stay locked until an administrator explicitly unlocks or clears them.
+The `bell-schedule-sync` Edge Function reads the anonymous plain-text exports of two link-visible Google Docs, asks the currently active ScheduleShare Gemini model for structured calendar facts, validates every date and evidence quote, and applies only AI-managed school-day rows. Manual assignments stay locked until an administrator explicitly unlocks or clears them.
 
-All credentials in this guide are server-side. Do not create `VITE_GOOGLE_DOCS_API_KEY`, `VITE_GEMINI_API_KEY`, or `VITE_BELL_SCHEDULE_SYNC_TOKEN` values.
+Google Docs authentication is not used. The remaining credentials in this guide are server-side; do not create `VITE_GEMINI_API_KEY` or `VITE_BELL_SCHEDULE_SYNC_TOKEN` values.
 
-## 1. Enable and restrict the Google Docs API key
+## 1. Make the source Docs publicly exportable
 
-1. Open the [Google Cloud API Library](https://console.cloud.google.com/apis/library) for the project used by ScheduleShare.
-2. Enable **Google Docs API**. The function calls [`documents.get`](https://developers.google.com/workspace/docs/api/reference/rest/v1/documents/get) with `includeTabsContent=true`, then traverses paragraphs, tables, and child tabs.
-3. Follow [Google's API-key credential setup](https://developers.google.com/workspace/guides/create-credentials) to create an API key.
-4. In the key restrictions, restrict **API restrictions** to **Google Docs API**. Add application restrictions that fit the deployment environment if Google Cloud offers a usable server-side restriction for the Supabase egress path.
-5. Keep both configured source documents set to **Anyone with the link can view**. An API key does not impersonate a Workspace user, so the function can read only content available anonymously to the key's project.
+1. Open each source document's **Share** dialog.
+2. Set **General access** to **Anyone with the link** and the role to **Viewer**.
+3. Confirm the document can be opened in a private/incognito browser window without signing in.
+
+The function extracts the document ID from the configured URL and fetches Google's public `https://docs.google.com/document/d/DOCUMENT_ID/export?format=txt` endpoint. It sends no Google API key, OAuth token, cookie, or authorization header. Keep sensitive information out of these public documents.
 
 The seeded documents are:
 
@@ -23,10 +23,9 @@ Both URLs remain editable in Administration → Bell schedules.
 
 Generate a high-entropy token with a password manager or a cryptographic random generator. Keep one identical value for the Edge Function and Vault scheduler call.
 
-Set the function secrets using the Supabase Dashboard or CLI:
+Set the scheduler secret using the Supabase Dashboard or CLI:
 
 ```bash
-supabase secrets set GOOGLE_DOCS_API_KEY=replace-with-restricted-key
 supabase secrets set BELL_SCHEDULE_SYNC_TOKEN=replace-with-long-random-token
 ```
 
@@ -75,7 +74,7 @@ where jobname = 'bell-schedule-sync-due-check';
 Then open Administration → **Bell schedules**:
 
 1. Confirm both source URLs.
-2. Click **Preview now**. A successful preview proves both Docs are readable, Gemini is configured, and the structured extraction passes validation. It does not change calendar dates.
+2. Click **Preview now**. A successful preview proves both public text exports are readable, Gemini is configured, and the structured extraction passes validation. It does not change calendar dates.
 3. Expand the newest run and inspect the source section, evidence, raw Gemini JSON, validated extraction, applied dates, and skipped manual overrides.
 4. Click **Sync now** once the output is correct.
 5. Set the daily Eastern time (default `6:00 AM`), enable daily detection, and save.
@@ -85,6 +84,7 @@ The database claims a scheduled date atomically, so repeated five-minute checks 
 ## Operational safety
 
 - The detector reads only the newest two `Weekly Schedule` sections and accepts dates only from 14 days ago through 35 days ahead within the configured school year.
+- Source fetches are restricted to Google Docs public plain-text export URLs and are rejected if they return an HTML sign-in page or exceed the bounded document size.
 - Every evidence quote must occur in the selected source text.
 - The exact phrase `activity period` maps to Activity Bell Schedule #1. `Activities Fair` or `Student Activities Fair` alone is forced back to Regular.
 - Gemini uses temperature `0`, structured JSON, `HIGH` thinking, and `includeThoughts=false`; reasoning thoughts are neither returned nor stored.

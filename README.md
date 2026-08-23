@@ -174,7 +174,7 @@ The Edge Function validates requests, rate-limits guest use, sends images to Gem
 
 The signed-in homepage countdown uses browser-side timing with server-resolved bell and school-day data. Administrators manage authoritative bell times, calendar overrides, and newsletter detection in the **Bell schedules** tab.
 
-Follow [`docs/bell-schedule-sync-setup.md`](docs/bell-schedule-sync-setup.md) to enable and restrict the Google Docs API key, configure link-visible source documents, store `GOOGLE_DOCS_API_KEY` and `BELL_SCHEDULE_SYNC_TOKEN` as Edge Function secrets, add the matching project URL/token to Supabase Vault, deploy the function, and verify a preview before enabling the daily run.
+Follow [`docs/bell-schedule-sync-setup.md`](docs/bell-schedule-sync-setup.md) to make the source documents anonymously viewable, configure the public Google Docs URLs, store `BELL_SCHEDULE_SYNC_TOKEN` as an Edge Function secret, add the matching project URL/token to Supabase Vault, deploy the function, and verify a preview before enabling the daily run. No Google API key or OAuth credential is used.
 
 ## Common commands
 

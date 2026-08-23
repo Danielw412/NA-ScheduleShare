@@ -34,7 +34,6 @@ export interface BellSyncFinishInput {
 }
 
 export interface BellSyncDependencies {
-  googleDocsApiKey: string
   geminiApiKey: string
   schedulerToken: string
   fetch?: typeof fetch
@@ -85,48 +84,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function textFromStructuralElements(value: unknown): string {
-  if (!Array.isArray(value)) return ''
-  const output: string[] = []
-  for (const structural of value) {
-    if (!isRecord(structural)) continue
-    const paragraph = isRecord(structural.paragraph) ? structural.paragraph : null
-    if (paragraph && Array.isArray(paragraph.elements)) {
-      for (const element of paragraph.elements) {
-        if (!isRecord(element) || !isRecord(element.textRun) || typeof element.textRun.content !== 'string') continue
-        output.push(element.textRun.content)
-      }
-    }
-    const table = isRecord(structural.table) ? structural.table : null
-    if (table && Array.isArray(table.tableRows)) {
-      for (const row of table.tableRows) {
-        if (!isRecord(row) || !Array.isArray(row.tableCells)) continue
-        output.push(row.tableCells.map((cell) => isRecord(cell) ? textFromStructuralElements(cell.content) : '').join('\t'))
-        output.push('\n')
-      }
-    }
-    const tableOfContents = isRecord(structural.tableOfContents) ? structural.tableOfContents : null
-    if (tableOfContents) output.push(textFromStructuralElements(tableOfContents.content))
-  }
-  return output.join('')
-}
-
-function textFromTab(tab: unknown): string {
-  if (!isRecord(tab)) return ''
-  const documentTab = isRecord(tab.documentTab) ? tab.documentTab : null
-  const body = documentTab && isRecord(documentTab.body) ? documentTab.body : null
-  const ownText = body ? textFromStructuralElements(body.content) : ''
-  const childText = Array.isArray(tab.childTabs) ? tab.childTabs.map(textFromTab).join('\n') : ''
-  return [ownText, childText].filter(Boolean).join('\n')
-}
-
-export function extractGoogleDocumentText(document: unknown): string {
-  if (!isRecord(document)) throw new HttpError(502, 'invalid_google_doc', 'Google Docs returned an invalid document.')
-  const tabText = Array.isArray(document.tabs) ? document.tabs.map(textFromTab).join('\n') : ''
-  const legacyBody = isRecord(document.body) ? textFromStructuralElements(document.body.content) : ''
-  return (tabText || legacyBody).replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim()
-}
-
 function dateScore(section: string, reference: Date): number {
   const scores: number[] = []
   for (const match of section.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)) {
@@ -167,15 +124,17 @@ function googleDocumentId(url: string): string {
   return match[1]
 }
 
-export async function fetchGoogleDocument(url: string, apiKey: string, fetcher: typeof fetch = fetch): Promise<unknown> {
-  if (!apiKey.trim()) throw new HttpError(503, 'google_docs_not_configured', 'The Google Docs API key is not configured.')
-  const endpoint = new URL(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(googleDocumentId(url))}`)
-  endpoint.searchParams.set('includeTabsContent', 'true')
-  endpoint.searchParams.set('key', apiKey)
-  const response = await fetcher(endpoint, { headers: { Accept: 'application/json' } })
-  const body = await response.json().catch(() => null) as unknown
+export async function fetchPublicGoogleDocumentText(url: string, fetcher: typeof fetch = fetch): Promise<string> {
+  const endpoint = new URL(`https://docs.google.com/document/d/${encodeURIComponent(googleDocumentId(url))}/export`)
+  endpoint.searchParams.set('format', 'txt')
+  const response = await fetcher(endpoint, { headers: { Accept: 'text/plain' } })
   if (!response.ok) throw new HttpError(502, 'google_docs_fetch_failed', `Google Docs could not read a configured source (${response.status}).`)
-  return body
+  const contentLength = Number(response.headers.get('content-length') ?? '0')
+  if (contentLength > 1_000_000) throw new HttpError(502, 'google_docs_too_large', 'A configured Google Doc is too large to process safely.')
+  const text = await response.text()
+  if (text.length > 1_000_000) throw new HttpError(502, 'google_docs_too_large', 'A configured Google Doc is too large to process safely.')
+  if (/^\s*(?:<!doctype html|<html\b)/i.test(text)) throw new HttpError(502, 'google_docs_not_public', 'A configured Google Doc is not publicly exportable.')
+  return text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim()
 }
 
 function buildPrompt(sourceSection: string): string {
@@ -363,12 +322,12 @@ export async function handleBellScheduleSyncRequest(request: Request, dependenci
     }
     runId = claim.run_id
     const fetcher = dependencies.fetch ?? fetch
-    const [bellDocument, newsletterDocument] = await Promise.all([
-      fetchGoogleDocument(claim.bell_schedule_document_url, dependencies.googleDocsApiKey, fetcher),
-      fetchGoogleDocument(claim.newsletter_document_url, dependencies.googleDocsApiKey, fetcher),
+    const [bellDocumentText, newsletterDocumentText] = await Promise.all([
+      fetchPublicGoogleDocumentText(claim.bell_schedule_document_url, fetcher),
+      fetchPublicGoogleDocumentText(claim.newsletter_document_url, fetcher),
     ])
-    if (!extractGoogleDocumentText(bellDocument)) throw new HttpError(422, 'bell_schedule_document_empty', 'The bell-schedule Google Doc is empty.')
-    const sourceSection = newestWeeklyScheduleSections(extractGoogleDocumentText(newsletterDocument), dependencies.now?.() ?? new Date())
+    if (!bellDocumentText) throw new HttpError(422, 'bell_schedule_document_empty', 'The bell-schedule Google Doc is empty.')
+    const sourceSection = newestWeeklyScheduleSections(newsletterDocumentText, dependencies.now?.() ?? new Date())
     const sourceHash = await sha256(sourceSection)
     const gemini = await invokeGeminiBellSync(claim.model_id, sourceSection, dependencies.geminiApiKey, fetcher, dependencies.timeoutMs)
     const validated = validateBellSyncExtraction(

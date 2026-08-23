@@ -11,7 +11,6 @@ const SUPABASE_SECRET_KEY = readNamedKey('SUPABASE_SECRET_KEYS')
   || Deno.env.get('SUPABASE_SECRET_KEY')?.trim()
   || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
   || ''
-const GOOGLE_DOCS_API_KEY = Deno.env.get('GOOGLE_DOCS_API_KEY')?.trim() ?? ''
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')?.trim() ?? ''
 const BELL_SCHEDULE_SYNC_TOKEN = Deno.env.get('BELL_SCHEDULE_SYNC_TOKEN')?.trim() ?? ''
 
@@ -36,7 +35,6 @@ function dependencies(): BellSyncDependencies {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   })
   return {
-    googleDocsApiKey: GOOGLE_DOCS_API_KEY,
     geminiApiKey: GEMINI_API_KEY,
     schedulerToken: BELL_SCHEDULE_SYNC_TOKEN,
     verifyUser: async (token) => {

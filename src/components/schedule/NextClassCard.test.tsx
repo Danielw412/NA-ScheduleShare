@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ScheduleEnrollment, SchoolDayContext } from '../../lib/domain'
 import { easternLocalTime } from '../../lib/bellSchedule'
@@ -48,6 +48,30 @@ describe('NextClassCard', () => {
     expect(progress).toHaveAttribute('aria-valuemin', '0')
     expect(progress).toHaveAttribute('aria-valuemax', '100')
     expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(0)
+  })
+
+  it('opens the entire current-day bell schedule in an accessible dialog', async () => {
+    render(<NextClassCard enrollments={[enrollment()]} isDemo={false} campus="NASH" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View bell schedule' }))
+    const dialog = screen.getByRole('dialog', { name: 'Regular' })
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByText('Warning bell at 7:24 AM')).toBeInTheDocument()
+    expect(screen.getByText('Period 1')).toBeInTheDocument()
+    expect(screen.getByText('Now')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close bell schedule' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows the next class day in the dialog when the selected day is closed', async () => {
+    const nextDay = schoolDay()
+    nextDay.date = '2026-08-25'
+    mocks.getMyBellScheduleWindow.mockResolvedValue([
+      { ...schoolDay(), no_school: true, schedule: null, day_type: null },
+      nextDay,
+    ])
+    render(<NextClassCard enrollments={[enrollment()]} isDemo={false} campus="NASH" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View bell schedule' }))
+    expect(screen.getByRole('dialog', { name: 'Regular' })).toHaveTextContent('Tuesday, Aug 25')
   })
 
   it('falls back to generic copy when the reserved single line overflows', async () => {
