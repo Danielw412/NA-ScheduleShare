@@ -69,7 +69,7 @@ const responseSchema = {
     additionalProperties: false,
     properties: {
       date: { type: 'string', description: 'ISO date in YYYY-MM-DD form.' },
-      day_type: { type: ['string', 'null'], enum: ['A', 'B', null] },
+      day_type: { type: ['string', 'null'], description: 'A, B, or null when the source does not explicitly state the day type.' },
       no_school: { type: 'boolean' },
       schedule_key: { type: 'string', enum: [...knownScheduleKeys] },
       campus: { type: 'string', enum: ['BOTH', 'NAI', 'NASH'] },
@@ -184,8 +184,21 @@ function geminiResponseText(value: unknown): string {
 }
 
 function geminiProviderErrorDetail(value: unknown): string | null {
-  if (!isRecord(value) || !isRecord(value.error) || typeof value.error.message !== 'string') return null
-  const detail = value.error.message.replace(/\s+/g, ' ').trim()
+  if (!isRecord(value) || !isRecord(value.error)) return null
+  const details: string[] = []
+  if (typeof value.error.message === 'string') details.push(value.error.message)
+  if (Array.isArray(value.error.details)) {
+    for (const item of value.error.details) {
+      if (!isRecord(item) || !Array.isArray(item.fieldViolations)) continue
+      for (const violation of item.fieldViolations) {
+        if (!isRecord(violation)) continue
+        const field = typeof violation.field === 'string' ? violation.field.trim() : ''
+        const description = typeof violation.description === 'string' ? violation.description.trim() : ''
+        if (field || description) details.push([field, description].filter(Boolean).join(': '))
+      }
+    }
+  }
+  const detail = details.join(' ').replace(/\s+/g, ' ').trim()
   return detail ? detail.slice(0, 500) : null
 }
 

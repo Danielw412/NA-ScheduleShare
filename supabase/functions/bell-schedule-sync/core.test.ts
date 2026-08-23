@@ -87,6 +87,7 @@ describe('Gemini request and deterministic validation', () => {
       thinkingConfig: { thinkingLevel: 'HIGH', includeThoughts: false },
     })
     expect(JSON.stringify(requestBody)).not.toContain('maxLength')
+    expect(JSON.stringify(requestBody)).not.toContain('"enum":["A","B",null]')
   })
 
   it('maps the whole phrase activity period to Activity #1', () => {
@@ -176,12 +177,16 @@ describe('bell-schedule sync request', () => {
     const deps = dependencies()
     deps.fetch = vi.fn(async (input) => {
       if (String(input).includes('news-doc')) return new Response(source, { headers: { 'Content-Type': 'text/plain' } })
-      return Response.json({ error: { message: `Invalid JSON payload. ${'x'.repeat(600)}` } }, { status: 400 })
+      return Response.json({ error: {
+        message: 'Invalid JSON payload.',
+        details: [{ fieldViolations: [{ field: 'generationConfig.responseJsonSchema', description: `Unsupported keyword. ${'x'.repeat(600)}` }] }],
+      } }, { status: 400 })
     })
     const response = await handleBellScheduleSyncRequest(request({ trigger: 'manual' }), deps)
     const body = await response.json()
     expect(response.status).toBe(502)
     expect(body.message).toContain('Invalid JSON payload')
+    expect(body.message).toContain('generationConfig.responseJsonSchema')
     expect(body.message.length).toBeLessThan(560)
     expect(deps.finish).toHaveBeenCalledWith(expect.objectContaining({
       status: 'failed',
