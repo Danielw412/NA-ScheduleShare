@@ -127,15 +127,15 @@ describe('Gemini request and deterministic validation', () => {
     expect(result[0].schedule_key).toBe('regular')
   })
 
-  it('rejects hallucinated evidence and dates outside the bounded source window', () => {
+  it('rejects hallucinated evidence and safely ignores dates outside the bounded source window', () => {
     expect(() => validateBellSyncExtraction([{
       date: '2026-08-24', day_type: 'A', no_school: false,
       schedule_key: 'regular', campus: 'BOTH', evidence: 'This quote is not present',
     }], source, '2026-08-18', '2027-05-28', '2026-08-22')).toThrow(/evidence/i)
-    expect(() => validateBellSyncExtraction([{
+    expect(validateBellSyncExtraction([{
       date: '2027-05-28', day_type: 'A', no_school: false,
       schedule_key: 'regular', campus: 'BOTH', evidence: 'Monday, August 24, 2026 — A Day — Activity Period',
-    }], source, '2026-08-18', '2027-05-28', '2026-08-22')).toThrow(/out-of-bounds/i)
+    }], source, '2026-08-18', '2027-05-28', '2026-08-22')).toEqual([])
   })
 
   it('enforces the evidence length after extraction instead of using an unsupported schema keyword', () => {

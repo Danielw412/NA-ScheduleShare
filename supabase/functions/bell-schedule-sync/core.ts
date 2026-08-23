@@ -246,7 +246,7 @@ export function validateBellSyncExtraction(
   const minimumDate = [schoolYearStart, addUtcDays(today, -14)].sort().at(-1) as string
   const maximumDate = [schoolYearEnd, addUtcDays(today, 35)].sort()[0]
   const seen = new Set<string>()
-  return value.map((candidate) => {
+  return value.flatMap((candidate) => {
     if (!isRecord(candidate)) throw new HttpError(422, 'invalid_extraction', 'Gemini returned an invalid calendar row.')
     const date = String(candidate.date ?? '')
     const evidence = String(candidate.evidence ?? '').trim()
@@ -256,7 +256,8 @@ export function validateBellSyncExtraction(
     const noSchool = candidate.no_school === true
     const campus = String(candidate.campus ?? 'BOTH').toUpperCase()
     let scheduleKey = String(candidate.schedule_key ?? 'regular').toLowerCase()
-    if (!validIsoDate(date) || date < minimumDate || date > maximumDate) throw new HttpError(422, 'date_out_of_bounds', `Gemini returned an out-of-bounds date: ${date || 'unknown'}.`)
+    if (!validIsoDate(date)) throw new HttpError(422, 'invalid_date', `Gemini returned an invalid date: ${date || 'unknown'}.`)
+    if (date < minimumDate || date > maximumDate) return []
     if (dayType !== null && dayType !== 'A' && dayType !== 'B') throw new HttpError(422, 'invalid_day_type', `Gemini returned an invalid A/B day for ${date}.`)
     if (campus !== 'BOTH' && campus !== 'NAI' && campus !== 'NASH') throw new HttpError(422, 'invalid_campus', `Gemini returned an invalid campus for ${date}.`)
     if (evidence.length > 500) throw new HttpError(422, 'evidence_too_long', `Gemini returned overly long evidence for ${date}.`)
@@ -270,7 +271,7 @@ export function validateBellSyncExtraction(
     const uniqueKey = `${date}:${campus}`
     if (seen.has(uniqueKey)) throw new HttpError(422, 'duplicate_extraction_date', `Gemini returned ${date} more than once for ${campus}.`)
     seen.add(uniqueKey)
-    return { date, day_type: dayType as 'A' | 'B' | null, no_school: noSchool, schedule_key: noSchool ? 'regular' : scheduleKey, campus: campus as BellSyncExtraction['campus'], evidence }
+    return [{ date, day_type: dayType as 'A' | 'B' | null, no_school: noSchool, schedule_key: noSchool ? 'regular' : scheduleKey, campus: campus as BellSyncExtraction['campus'], evidence }]
   })
 }
 
