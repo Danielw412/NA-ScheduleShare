@@ -79,15 +79,16 @@ describe('Google Docs extraction', () => {
 })
 
 describe('Gemini request and deterministic validation', () => {
-  it('forces structured JSON, HIGH thinking, no thoughts, and model-default sampling', () => {
+  it('requests JSON with HIGH thinking and relies on strict local validation instead of provider schema support', () => {
     const requestBody = buildGeminiBellSyncRequest(source)
     expect(requestBody.generationConfig).toMatchObject({
       responseMimeType: 'application/json',
       thinkingConfig: { thinkingLevel: 'HIGH', includeThoughts: false },
     })
     expect(requestBody.generationConfig).not.toHaveProperty('temperature')
-    expect(JSON.stringify(requestBody)).not.toContain('maxLength')
-    expect(JSON.stringify(requestBody)).toContain('"enum":["A","B","UNKNOWN"]')
+    expect(requestBody.generationConfig).not.toHaveProperty('responseJsonSchema')
+    expect(JSON.stringify(requestBody)).toContain('day_type')
+    expect(JSON.stringify(requestBody)).toContain('UNKNOWN')
   })
 
   it('maps the whole phrase activity period to Activity #1', () => {

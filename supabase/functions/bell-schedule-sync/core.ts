@@ -61,24 +61,6 @@ const knownScheduleKeys = new Set([
   'reverse_activity_3',
 ])
 
-const responseSchema = {
-  type: 'array',
-  maxItems: 30,
-  items: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      date: { type: 'string', description: 'ISO date in YYYY-MM-DD form.' },
-      day_type: { type: 'string', enum: ['A', 'B', 'UNKNOWN'] },
-      no_school: { type: 'boolean' },
-      schedule_key: { type: 'string', enum: [...knownScheduleKeys] },
-      campus: { type: 'string', enum: ['BOTH', 'NAI', 'NASH'] },
-      evidence: { type: 'string', description: 'A short exact quote from the source, no more than 500 characters.' },
-    },
-    required: ['date', 'day_type', 'no_school', 'schedule_key', 'campus', 'evidence'],
-  },
-} as const
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -139,7 +121,10 @@ export async function fetchPublicGoogleDocumentText(url: string, fetcher: typeof
 function buildPrompt(sourceSection: string): string {
   return `You extract school-day calendar facts from the newest North Allegheny NASH newsletter sections.
 
-Return JSON only in the required schema. Extract only explicitly supported dates in the supplied text. For every row:
+Return only a JSON array. Every array item must have exactly these keys:
+{"date":"YYYY-MM-DD","day_type":"A|B|UNKNOWN","no_school":false,"schedule_key":"regular","campus":"BOTH","evidence":"exact source quote"}
+
+Extract only explicitly supported dates in the supplied text. For every row:
 - date must be YYYY-MM-DD.
 - day_type is A, B, or UNKNOWN when not explicitly stated.
 - no_school is true only when the source explicitly closes school for that date.
@@ -165,7 +150,6 @@ export function buildGeminiBellSyncRequest(sourceSection: string): Record<string
     generationConfig: {
       maxOutputTokens: 8192,
       responseMimeType: 'application/json',
-      responseJsonSchema: responseSchema,
       thinkingConfig: { thinkingLevel: 'HIGH', includeThoughts: false },
     },
   }
