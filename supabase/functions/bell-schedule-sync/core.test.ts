@@ -86,6 +86,7 @@ describe('Gemini request and deterministic validation', () => {
       responseMimeType: 'application/json',
       thinkingConfig: { thinkingLevel: 'HIGH', includeThoughts: false },
     })
+    expect(JSON.stringify(requestBody)).not.toContain('maxLength')
   })
 
   it('maps the whole phrase activity period to Activity #1', () => {
@@ -125,6 +126,14 @@ describe('Gemini request and deterministic validation', () => {
       schedule_key: 'regular', campus: 'BOTH', evidence: 'Monday, August 24, 2026 — A Day — Activity Period',
     }], source, '2026-08-18', '2027-05-28', '2026-08-22')).toThrow(/out-of-bounds/i)
   })
+
+  it('enforces the evidence length after extraction instead of using an unsupported schema keyword', () => {
+    const evidence = 'x'.repeat(501)
+    expect(() => validateBellSyncExtraction([{
+      date: '2026-08-24', day_type: 'A', no_school: false,
+      schedule_key: 'regular', campus: 'BOTH', evidence,
+    }], evidence, '2026-08-18', '2027-05-28', '2026-08-22')).toThrow(/overly long evidence/i)
+  })
 })
 
 describe('bell-schedule sync request', () => {
@@ -161,5 +170,22 @@ describe('bell-schedule sync request', () => {
     const response = await handleBellScheduleSyncRequest(request({ trigger: 'manual' }), deps)
     expect(response.status).toBe(502)
     expect(deps.finish).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: expect.stringContaining('Google Docs') }))
+  })
+
+  it('records the bounded Gemini provider reason when a request is rejected', async () => {
+    const deps = dependencies()
+    deps.fetch = vi.fn(async (input) => {
+      if (String(input).includes('news-doc')) return new Response(source, { headers: { 'Content-Type': 'text/plain' } })
+      return Response.json({ error: { message: `Invalid JSON payload. ${'x'.repeat(600)}` } }, { status: 400 })
+    })
+    const response = await handleBellScheduleSyncRequest(request({ trigger: 'manual' }), deps)
+    const body = await response.json()
+    expect(response.status).toBe(502)
+    expect(body.message).toContain('Invalid JSON payload')
+    expect(body.message.length).toBeLessThan(560)
+    expect(deps.finish).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      error: expect.stringContaining('Invalid JSON payload'),
+    }))
   })
 })

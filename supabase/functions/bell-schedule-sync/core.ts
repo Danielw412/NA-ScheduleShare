@@ -73,7 +73,7 @@ const responseSchema = {
       no_school: { type: 'boolean' },
       schedule_key: { type: 'string', enum: [...knownScheduleKeys] },
       campus: { type: 'string', enum: ['BOTH', 'NAI', 'NASH'] },
-      evidence: { type: 'string', maxLength: 500 },
+      evidence: { type: 'string', description: 'A short exact quote from the source, no more than 500 characters.' },
     },
     required: ['date', 'day_type', 'no_school', 'schedule_key', 'campus', 'evidence'],
   },
@@ -183,6 +183,12 @@ function geminiResponseText(value: unknown): string {
   return text
 }
 
+function geminiProviderErrorDetail(value: unknown): string | null {
+  if (!isRecord(value) || !isRecord(value.error) || typeof value.error.message !== 'string') return null
+  const detail = value.error.message.replace(/\s+/g, ' ').trim()
+  return detail ? detail.slice(0, 500) : null
+}
+
 export async function invokeGeminiBellSync(
   modelId: string,
   sourceSection: string,
@@ -201,7 +207,10 @@ export async function invokeGeminiBellSync(
       signal: controller.signal,
     })
     const providerJson = await response.json().catch(() => null) as unknown
-    if (!response.ok) throw new HttpError(502, 'gemini_provider_error', `Gemini could not extract the newsletter (${response.status}).`)
+    if (!response.ok) {
+      const detail = geminiProviderErrorDetail(providerJson)
+      throw new HttpError(502, 'gemini_provider_error', `Gemini could not extract the newsletter (${response.status})${detail ? `: ${detail}` : '.'}`)
+    }
     let rawJson: unknown
     try { rawJson = JSON.parse(geminiResponseText(providerJson)) }
     catch (caught) {
@@ -253,6 +262,7 @@ export function validateBellSyncExtraction(
     if (!validIsoDate(date) || date < minimumDate || date > maximumDate) throw new HttpError(422, 'date_out_of_bounds', `Gemini returned an out-of-bounds date: ${date || 'unknown'}.`)
     if (dayType !== null && dayType !== 'A' && dayType !== 'B') throw new HttpError(422, 'invalid_day_type', `Gemini returned an invalid A/B day for ${date}.`)
     if (campus !== 'BOTH' && campus !== 'NAI' && campus !== 'NASH') throw new HttpError(422, 'invalid_campus', `Gemini returned an invalid campus for ${date}.`)
+    if (evidence.length > 500) throw new HttpError(422, 'evidence_too_long', `Gemini returned overly long evidence for ${date}.`)
     if (!normalizedEvidence || !source.includes(normalizedEvidence)) throw new HttpError(422, 'unsupported_evidence', `Gemini evidence for ${date} was not found in the source.`)
     const saysActivityPeriod = /\bactivity\s+period\b/i.test(evidence)
     const saysActivitiesFair = /\b(?:student\s+)?activities\s+fair\b/i.test(evidence)
