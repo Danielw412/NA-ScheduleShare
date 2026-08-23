@@ -69,7 +69,7 @@ const responseSchema = {
     additionalProperties: false,
     properties: {
       date: { type: 'string', description: 'ISO date in YYYY-MM-DD form.' },
-      day_type: { type: ['string', 'null'], description: 'A, B, or null when the source does not explicitly state the day type.' },
+      day_type: { type: 'string', enum: ['A', 'B', 'UNKNOWN'] },
       no_school: { type: 'boolean' },
       schedule_key: { type: 'string', enum: [...knownScheduleKeys] },
       campus: { type: 'string', enum: ['BOTH', 'NAI', 'NASH'] },
@@ -141,7 +141,7 @@ function buildPrompt(sourceSection: string): string {
 
 Return JSON only in the required schema. Extract only explicitly supported dates in the supplied text. For every row:
 - date must be YYYY-MM-DD.
-- day_type is A, B, or null when not explicitly stated.
+- day_type is A, B, or UNKNOWN when not explicitly stated.
 - no_school is true only when the source explicitly closes school for that date.
 - schedule_key must be one of: ${[...knownScheduleKeys].join(', ')}.
 - campus is BOTH unless the source explicitly limits the item to NAI or NASH.
@@ -267,7 +267,8 @@ export function validateBellSyncExtraction(
     const date = String(candidate.date ?? '')
     const evidence = String(candidate.evidence ?? '').trim()
     const normalizedEvidence = normalizeEvidence(evidence)
-    const dayType = candidate.day_type === null ? null : String(candidate.day_type).toUpperCase()
+    const rawDayType = candidate.day_type === null ? 'UNKNOWN' : String(candidate.day_type).toUpperCase()
+    const dayType = rawDayType === 'UNKNOWN' ? null : rawDayType
     const noSchool = candidate.no_school === true
     const campus = String(candidate.campus ?? 'BOTH').toUpperCase()
     let scheduleKey = String(candidate.schedule_key ?? 'regular').toLowerCase()

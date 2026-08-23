@@ -87,7 +87,7 @@ describe('Gemini request and deterministic validation', () => {
     })
     expect(requestBody.generationConfig).not.toHaveProperty('temperature')
     expect(JSON.stringify(requestBody)).not.toContain('maxLength')
-    expect(JSON.stringify(requestBody)).not.toContain('"enum":["A","B",null]')
+    expect(JSON.stringify(requestBody)).toContain('"enum":["A","B","UNKNOWN"]')
   })
 
   it('maps the whole phrase activity period to Activity #1', () => {
@@ -106,6 +106,15 @@ describe('Gemini request and deterministic validation', () => {
       evidence: 'Friday, August 21, 2026 — Student Activities Fair — Regular Bell Schedule',
     }], source, '2026-08-18', '2027-05-28', '2026-08-22')
     expect(result[0].schedule_key).toBe('regular')
+  })
+
+  it('maps Gemini UNKNOWN day types back to the app null contract', () => {
+    const result = validateBellSyncExtraction([{
+      date: '2026-08-21', day_type: 'UNKNOWN', no_school: false,
+      schedule_key: 'regular', campus: 'NASH',
+      evidence: 'Friday, August 21, 2026 — Student Activities Fair — Regular Bell Schedule',
+    }], source, '2026-08-18', '2027-05-28', '2026-08-22')
+    expect(result[0].day_type).toBeNull()
   })
 
   it('overrides any hallucinated activity family for an Activities Fair alone', () => {
