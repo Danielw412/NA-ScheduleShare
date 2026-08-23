@@ -1738,7 +1738,8 @@ legend {
 }
 
 .next-class-card>svg {
-  grid-row: 1 / span 2;
+  grid-row: 1;
+  align-self: center;
   width: 32px;
   height: 32px;
   color: var(--brand-gold-dark);
@@ -1882,9 +1883,12 @@ legend {
 }
 
 .bell-schedule-dialog .eyebrow {
+  margin-bottom: 2px;
+  padding-bottom: 3px;
   color: var(--brand-gold-dark);
   font-size: 10px;
   font-weight: 900;
+  line-height: 1.2;
   letter-spacing: .1em;
   text-transform: uppercase;
 }
@@ -7122,7 +7126,7 @@ a.student-access-profile:hover strong {
 
   .next-class-card>svg {
     grid-row: 1;
-    align-self: start;
+    align-self: center;
     width: 22px;
     height: 22px;
   }

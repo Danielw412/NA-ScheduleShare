@@ -63,7 +63,7 @@ describe('resolveNextClassTiming', () => {
     expect(formatCountdown(atEnd.remainingMs ?? 0)).toBe('4:00')
   })
 
-  it('includes passing gaps and skips an empty period to the next occupied class', () => {
+  it('counts down to the end of a named block', () => {
     const context = day('2026-08-24', [
       block(1, 1, '07:28', '08:08'),
       block(2, null, '08:08', '08:21', 'Homeroom'),
@@ -71,9 +71,22 @@ describe('resolveNextClassTiming', () => {
       block(4, 3, '09:09', '09:49'),
     ])
     const timing = resolveNextClassTiming(easternLocalTime(context.date, '08:10'), [context], [enrollment('Chemistry', 'A', 3)])
+    expect(timing).toMatchObject({ mode: 'current', courseName: 'Homeroom' })
+    expect(timing.targetAt?.getTime()).toBe(easternLocalTime(context.date, '08:21').getTime())
+    expect(timing.intervalStart?.getTime()).toBe(easternLocalTime(context.date, '08:08').getTime())
+  })
+
+  it('includes passing gaps and skips an empty period to the next occupied class', () => {
+    const context = day('2026-08-24', [
+      block(1, 1, '07:28', '08:08'),
+      block(2, null, '08:08', '08:21', 'Homeroom'),
+      block(3, 2, '08:25', '09:05'),
+      block(4, 3, '09:09', '09:49'),
+    ])
+    const timing = resolveNextClassTiming(easternLocalTime(context.date, '08:22'), [context], [enrollment('Chemistry', 'A', 3)])
     expect(timing).toMatchObject({ mode: 'next', courseName: 'Chemistry' })
     expect(timing.targetAt?.getTime()).toBe(easternLocalTime(context.date, '09:09').getTime())
-    expect(timing.intervalStart?.getTime()).toBe(easternLocalTime(context.date, '08:08').getTime())
+    expect(timing.intervalStart?.getTime()).toBe(easternLocalTime(context.date, '08:21').getTime())
   })
 
   it('uses generic class bells when the day has no A/B assignment', () => {

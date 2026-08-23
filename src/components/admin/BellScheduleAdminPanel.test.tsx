@@ -46,6 +46,7 @@ describe('BellScheduleAdminPanel', () => {
     expect(screen.getByRole('button', { name: 'View bell schedule' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Preview now/i })).toBeInTheDocument()
     expect((screen.getByLabelText('Newsletter Google Doc') as HTMLInputElement).value).toContain('docs.google.com')
+    expect(screen.queryByLabelText('Bell-schedule Google Doc')).not.toBeInTheDocument()
   })
 
   it('supports custom schedules and accessible add/reorder/remove controls', async () => {

@@ -853,7 +853,6 @@ export async function adminGetBellScheduleSettings(): Promise<BellScheduleSettin
     school_timezone: 'America/New_York',
     sync_enabled: Boolean(row.sync_enabled),
     sync_time: String(row.sync_time),
-    bell_schedule_document_url: String(row.bell_schedule_document_url),
     newsletter_document_url: String(row.newsletter_document_url),
     updated_at: String(row.updated_at),
   }

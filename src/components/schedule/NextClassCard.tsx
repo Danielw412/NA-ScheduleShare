@@ -161,7 +161,7 @@ export function NextClassCardView({ enrollments, campus, days, now }: NextClassC
     <div
       className="next-class-progress"
       role="progressbar"
-      aria-label={timing.mode === 'current' ? 'Current class progress' : 'Progress until next class'}
+      aria-label={timing.mode === 'current' ? 'Current block progress' : 'Progress until next class'}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(progress)}

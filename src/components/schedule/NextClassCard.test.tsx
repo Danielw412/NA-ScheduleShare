@@ -44,10 +44,19 @@ describe('NextClassCard', () => {
     render(<NextClassCard enrollments={[enrollment()]} isDemo={false} campus="NASH" />)
     await waitFor(() => expect(screen.getByRole('heading', { name: /Time until AP Psychology is over/ })).toBeInTheDocument())
     expect(screen.getByText(/Ends at 8:08 AM/)).toBeInTheDocument()
-    const progress = screen.getByRole('progressbar', { name: 'Current class progress' })
+    const progress = screen.getByRole('progressbar', { name: 'Current block progress' })
     expect(progress).toHaveAttribute('aria-valuemin', '0')
     expect(progress).toHaveAttribute('aria-valuemax', '100')
     expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(0)
+  })
+
+  it('names the current non-class block and counts down to its end', async () => {
+    const day = schoolDay()
+    day.schedule!.blocks = [{ position: 1, kind: 'non_class', label: 'Homeroom', period_number: null, start_time: '07:28', end_time: '08:08' }]
+    mocks.getMyBellScheduleWindow.mockResolvedValue([day])
+    render(<NextClassCard enrollments={[]} isDemo={false} campus="NASH" />)
+    expect(await screen.findByRole('heading', { name: /Time until Homeroom is over/ })).toBeInTheDocument()
+    expect(screen.getByText(/Ends at 8:08 AM/)).toBeInTheDocument()
   })
 
   it('opens the entire current-day bell schedule in an accessible dialog', async () => {

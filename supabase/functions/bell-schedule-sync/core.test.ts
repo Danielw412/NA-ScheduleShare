@@ -44,13 +44,11 @@ function dependencies(): BellSyncDependencies {
       model_id: 'gemini-3.1-flash-lite',
       school_year_start: '2026-08-18',
       school_year_end: '2027-05-28',
-      bell_schedule_document_url: 'https://docs.google.com/document/d/bell-doc/edit',
       newsletter_document_url: 'https://docs.google.com/document/d/news-doc/edit',
     })),
     finish: vi.fn(async (input) => ({ run_id: input.runId, status: input.status })),
     fetch: vi.fn(async (input) => {
       const url = String(input)
-      if (url.includes('bell-doc')) return new Response('Regular Bell Schedule\nPeriod 1 7:28-8:08', { headers: { 'Content-Type': 'text/plain' } })
       if (url.includes('news-doc')) return new Response(source, { headers: { 'Content-Type': 'text/plain' } })
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(extraction) }] } }] })
     }),
@@ -130,13 +128,14 @@ describe('Gemini request and deterministic validation', () => {
 })
 
 describe('bell-schedule sync request', () => {
-  it('verifies an admin, reads both Docs, invokes Gemini, and finishes a preview without applying', async () => {
+  it('verifies an admin, reads only the newsletter, invokes Gemini, and finishes a preview without applying', async () => {
     const deps = dependencies()
     const response = await handleBellScheduleSyncRequest(request({ trigger: 'manual', preview: true }), deps)
     expect(response.status).toBe(200)
     expect(deps.verifyAdmin).toHaveBeenCalledWith('admin-token')
     expect(deps.claim).toHaveBeenCalledWith('admin-id', 'manual', true)
-    expect(deps.fetch).toHaveBeenCalledTimes(3)
+    expect(deps.fetch).toHaveBeenCalledTimes(2)
+    expect(deps.fetch).toHaveBeenCalledWith(expect.objectContaining({ pathname: '/document/d/news-doc/export' }), expect.anything())
     expect(deps.finish).toHaveBeenCalledWith(expect.objectContaining({ status: 'previewed', validated: [expect.objectContaining({ schedule_key: 'activity_1' })] }))
   })
 

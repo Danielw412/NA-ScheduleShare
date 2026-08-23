@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(22);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -59,6 +59,11 @@ select is(
   true,
   'admin schedule results include ordered blocks'
 );
+select ok(
+  (public.admin_get_bell_schedule_settings() ? 'newsletter_document_url')
+    and not (public.admin_get_bell_schedule_settings() ? 'bell_schedule_document_url'),
+  'admin detector settings expose only the newsletter Google Doc'
+);
 select throws_ok(
   $$select public.admin_save_bell_schedule('{"schedule_key":"overlap_test","display_name":"Overlap Test","campus_scope":"BOTH","warning_time":"07:24","blocks":[{"label":"Period 1","period_number":1,"start_time":"07:28","end_time":"08:08"},{"label":"Period 2","period_number":2,"start_time":"08:00","end_time":"08:40"}]}'::jsonb)$$,
   '23514', 'bell_schedule_blocks_overlap',
@@ -106,6 +111,10 @@ select public.service_claim_bell_schedule_sync(
   'b9000000-0000-4000-8000-000000000002', 'manual', false
 ) as payload;
 grant select on bell_sync_claim to service_role;
+select ok(
+  (select (payload ? 'newsletter_document_url') and not (payload ? 'bell_schedule_document_url') from bell_sync_claim),
+  'service sync claims include only the newsletter Google Doc'
+);
 select lives_ok(
   $$select public.service_finish_bell_schedule_sync(
     (select (payload ->> 'run_id')::uuid from bell_sync_claim),

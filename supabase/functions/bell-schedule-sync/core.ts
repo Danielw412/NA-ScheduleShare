@@ -9,7 +9,6 @@ export interface BellSyncClaim {
   preview?: boolean
   school_year_start?: string
   school_year_end?: string
-  bell_schedule_document_url?: string
   newsletter_document_url?: string
 }
 
@@ -317,16 +316,12 @@ export async function handleBellScheduleSyncRequest(request: Request, dependenci
     }
     const claim = await dependencies.claim(actorId, scheduled ? 'scheduled' : 'manual', preview)
     if (!claim.claimed) return json(202, { claimed: false, reason: claim.reason ?? 'not_due' })
-    if (!claim.run_id || !claim.model_id || !claim.school_year_start || !claim.school_year_end || !claim.bell_schedule_document_url || !claim.newsletter_document_url) {
+    if (!claim.run_id || !claim.model_id || !claim.school_year_start || !claim.school_year_end || !claim.newsletter_document_url) {
       throw new HttpError(500, 'invalid_sync_claim', 'The database returned an incomplete sync claim.')
     }
     runId = claim.run_id
     const fetcher = dependencies.fetch ?? fetch
-    const [bellDocumentText, newsletterDocumentText] = await Promise.all([
-      fetchPublicGoogleDocumentText(claim.bell_schedule_document_url, fetcher),
-      fetchPublicGoogleDocumentText(claim.newsletter_document_url, fetcher),
-    ])
-    if (!bellDocumentText) throw new HttpError(422, 'bell_schedule_document_empty', 'The bell-schedule Google Doc is empty.')
+    const newsletterDocumentText = await fetchPublicGoogleDocumentText(claim.newsletter_document_url, fetcher)
     const sourceSection = newestWeeklyScheduleSections(newsletterDocumentText, dependencies.now?.() ?? new Date())
     const sourceHash = await sha256(sourceSection)
     const gemini = await invokeGeminiBellSync(claim.model_id, sourceSection, dependencies.geminiApiKey, fetcher, dependencies.timeoutMs)

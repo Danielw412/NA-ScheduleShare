@@ -1,23 +1,22 @@
 # Bell-schedule Google Docs sync setup
 
-The `bell-schedule-sync` Edge Function reads the anonymous plain-text exports of two link-visible Google Docs, asks the currently active ScheduleShare Gemini model for structured calendar facts, validates every date and evidence quote, and applies only AI-managed school-day rows. Manual assignments stay locked until an administrator explicitly unlocks or clears them.
+The `bell-schedule-sync` Edge Function reads the anonymous plain-text export of the link-visible NASH newsletter, asks the currently active ScheduleShare Gemini model for structured calendar facts, validates every date and evidence quote, and applies only AI-managed school-day rows. Bell times come from the database definitions managed in Administration, so the detector never reads the bell-schedule Google Doc. Manual assignments stay locked until an administrator explicitly unlocks or clears them.
 
 Google Docs authentication is not used. The remaining credentials in this guide are server-side; do not create `VITE_GEMINI_API_KEY` or `VITE_BELL_SCHEDULE_SYNC_TOKEN` values.
 
 ## 1. Make the source Docs publicly exportable
 
-1. Open each source document's **Share** dialog.
+1. Open the newsletter's **Share** dialog.
 2. Set **General access** to **Anyone with the link** and the role to **Viewer**.
 3. Confirm the document can be opened in a private/incognito browser window without signing in.
 
 The function extracts the document ID from the configured URL and fetches Google's public `https://docs.google.com/document/d/DOCUMENT_ID/export?format=txt` endpoint. It sends no Google API key, OAuth token, cookie, or authorization header. Keep sensitive information out of these public documents.
 
-The seeded documents are:
+The seeded source is:
 
-- Bell schedules: `https://docs.google.com/document/d/1KJr6cJszOP_UQP2ep5GputRwdC4YDYiShc4E-z5naNE/edit`
 - NASH newsletter: `https://docs.google.com/document/d/1eUkh1tDSTTzIVooFoo5JZs0pzUp6GAqdk0DIse96IJU/edit`
 
-Both URLs remain editable in Administration → Bell schedules.
+The URL remains editable in Administration → Bell schedules.
 
 ## 2. Create the scheduler token and Edge Function secrets
 
@@ -73,8 +72,8 @@ where jobname = 'bell-schedule-sync-due-check';
 
 Then open Administration → **Bell schedules**:
 
-1. Confirm both source URLs.
-2. Click **Preview now**. A successful preview proves both public text exports are readable, Gemini is configured, and the structured extraction passes validation. It does not change calendar dates.
+1. Confirm the newsletter source URL.
+2. Click **Preview now**. A successful preview proves the public text export is readable, Gemini is configured, and the structured extraction passes validation. It does not change calendar dates.
 3. Expand the newest run and inspect the source section, evidence, raw Gemini JSON, validated extraction, applied dates, and skipped manual overrides.
 4. Click **Sync now** once the output is correct.
 5. Set the daily Eastern time (default `6:00 AM`), enable daily detection, and save.

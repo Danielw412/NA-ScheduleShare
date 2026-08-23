@@ -179,6 +179,20 @@ export function resolveNextClassTiming(
         const end = easternLocalTime(day.date, block.end_time).getTime()
         return nowTime >= start && nowTime < end
       })
+      if (currentBlock?.kind === 'non_class') {
+        const start = easternLocalTime(day.date, currentBlock.start_time)
+        const target = easternLocalTime(day.date, currentBlock.end_time)
+        return {
+          status: 'live',
+          mode: 'current',
+          courseName: currentBlock.label.trim() || null,
+          targetAt: target,
+          intervalStart: start,
+          remainingMs: target.getTime() - nowTime,
+          progressPercent: progressFor(now, start, target),
+          targetDate: day.date,
+        }
+      }
       if (currentBlock?.kind === 'class') {
         const course = classAtBlock(day, currentBlock.period_number, enrollments)
         if (course.occupied) {

@@ -60,7 +60,6 @@ export interface BellScheduleSettings {
   school_timezone: 'America/New_York'
   sync_enabled: boolean
   sync_time: string
-  bell_schedule_document_url: string
   newsletter_document_url: string
   updated_at: string
 }
