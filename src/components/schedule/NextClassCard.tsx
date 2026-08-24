@@ -10,12 +10,13 @@ import {
   resolveBellScheduleDay,
   resolveNextClassTiming,
 } from '../../lib/bellSchedule'
-import { getMyBellScheduleWindow } from '../../lib/supabase/data'
+import { getGuestBellScheduleWindow, getMyBellScheduleWindow } from '../../lib/supabase/data'
 import { BellScheduleDialog } from './BellScheduleDialog'
 
 interface NextClassCardProps {
   enrollments: ScheduleEnrollment[]
   isDemo: boolean
+  isGuest?: boolean
   campus: BellCampus
   scheduleLoading?: boolean
 }
@@ -27,7 +28,7 @@ interface NextClassCardViewProps {
   now: Date
 }
 
-export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = false }: NextClassCardProps) {
+export function NextClassCard({ enrollments, isDemo, isGuest = false, campus, scheduleLoading = false }: NextClassCardProps) {
   const [now, setNow] = useState(() => new Date())
   const [startDate, setStartDate] = useState(() => easternDateKey(new Date()))
   const [days, setDays] = useState<SchoolDayContext[]>([])
@@ -41,7 +42,9 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
     setError(null)
     const request = isDemo
       ? Promise.resolve(demoBellScheduleWindow(startDate, 21, campus))
-      : getMyBellScheduleWindow(startDate, 21)
+      : isGuest
+        ? getGuestBellScheduleWindow(startDate, 21, campus)
+        : getMyBellScheduleWindow(startDate, 21)
     void request.then((value) => {
       if (!active) return
       setDays(value)
@@ -52,7 +55,7 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
       setLoading(false)
     })
     return () => { active = false }
-  }, [campus, isDemo, retry, startDate])
+  }, [campus, isDemo, isGuest, retry, startDate])
 
   useEffect(() => {
     let timer: number | null = null
@@ -93,7 +96,7 @@ export function NextClassCard({ enrollments, isDemo, campus, scheduleLoading = f
     return <section className="next-class-card is-error" aria-label="Next class"><Clock3 aria-hidden="true" /><div><h2>Next class unavailable</h2><p>{error}</p></div><button className="icon-button" type="button" aria-label="Retry next class" onClick={() => setRetry((value) => value + 1)}><RefreshCw aria-hidden="true" /></button></section>
   }
 
-  return <NextClassCardView enrollments={enrollments} campus={campus} days={days} now={now} />
+  return <NextClassCardView enrollments={isGuest ? [] : enrollments} campus={campus} days={days} now={now} />
 }
 
 export function NextClassCardView({ enrollments, campus, days, now }: NextClassCardViewProps) {

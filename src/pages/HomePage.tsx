@@ -110,7 +110,13 @@ export function HomePage() {
           {statistic ? <p className="home-statistic"><strong>{new Intl.NumberFormat().format(statistic.statistic_value)}</strong> {statistic.statistic_label}</p> : null}
         </div>
       </section>
-      {user ? <NextClassCard enrollments={enrollments} isDemo={isDemo} campus={profile?.grade && profile.grade <= 10 ? 'NAI' : 'NASH'} scheduleLoading={scheduleLoading} /> : null}
+      <NextClassCard
+        enrollments={user ? enrollments : []}
+        isDemo={isDemo}
+        isGuest={!user}
+        campus={profile?.grade && profile.grade <= 10 ? 'NAI' : 'NASH'}
+        scheduleLoading={Boolean(user) && scheduleLoading}
+      />
       {user && !scheduleLoading ? (
         <section className="completion-callout schedule-status-card">
           <CalendarDays aria-hidden="true" />

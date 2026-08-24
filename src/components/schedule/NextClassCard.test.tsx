@@ -5,8 +5,11 @@ import type { ScheduleEnrollment, SchoolDayContext } from '../../lib/domain'
 import { easternLocalTime } from '../../lib/bellSchedule'
 import { NextClassCard } from './NextClassCard'
 
-const mocks = vi.hoisted(() => ({ getMyBellScheduleWindow: vi.fn() }))
-vi.mock('../../lib/supabase/data', () => ({ getMyBellScheduleWindow: mocks.getMyBellScheduleWindow }))
+const mocks = vi.hoisted(() => ({ getMyBellScheduleWindow: vi.fn(), getGuestBellScheduleWindow: vi.fn() }))
+vi.mock('../../lib/supabase/data', () => ({
+  getMyBellScheduleWindow: mocks.getMyBellScheduleWindow,
+  getGuestBellScheduleWindow: mocks.getGuestBellScheduleWindow,
+}))
 
 function enrollment(name = 'AP Psychology'): ScheduleEnrollment {
   return {
@@ -27,10 +30,12 @@ function schoolDay(): SchoolDayContext {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(easternLocalTime('2026-08-24', '07:30'))
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   mocks.getMyBellScheduleWindow.mockResolvedValue([schoolDay()])
+  mocks.getGuestBellScheduleWindow.mockResolvedValue([schoolDay()])
 })
 
 afterEach(() => {
@@ -48,6 +53,16 @@ describe('NextClassCard', () => {
     expect(progress).toHaveAttribute('aria-valuemin', '0')
     expect(progress).toHaveAttribute('aria-valuemax', '100')
     expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(0)
+  })
+
+  it('uses the public bell window and never shows specific classes to a signed-out guest', async () => {
+    vi.setSystemTime(easternLocalTime('2026-08-24', '07:00'))
+    render(<NextClassCard enrollments={[enrollment()]} isDemo={false} isGuest campus="NASH" />)
+    expect(await screen.findByRole('heading', { name: /Time until next class/ })).toBeInTheDocument()
+    expect(screen.queryByText(/AP Psychology/)).not.toBeInTheDocument()
+    expect(mocks.getGuestBellScheduleWindow).toHaveBeenCalledWith('2026-08-24', 21, 'NASH')
+    expect(mocks.getMyBellScheduleWindow).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'View bell schedule' })).toBeInTheDocument()
   })
 
   it('names the current non-class block and counts down to its end', async () => {

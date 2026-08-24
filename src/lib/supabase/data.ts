@@ -762,11 +762,7 @@ function bellScheduleDefinitionFrom(value: unknown): BellScheduleDefinition {
   }
 }
 
-export async function getMyBellScheduleWindow(startDate: string, days = 21): Promise<SchoolDayContext[]> {
-  const data = await callUntypedRpc('get_my_bell_schedule_window', {
-    p_start_date: startDate,
-    p_days: days,
-  })
+function schoolDayContextsFrom(data: unknown): SchoolDayContext[] {
   if (!Array.isArray(data)) throw new Error('The bell-schedule window was invalid.')
   return data.map((value) => {
     const row = recordFrom(value)
@@ -781,6 +777,23 @@ export async function getMyBellScheduleWindow(startDate: string, days = 21): Pro
       schedule: row.schedule === null ? null : bellScheduleDefinitionFrom(row.schedule),
     }
   })
+}
+
+export async function getMyBellScheduleWindow(startDate: string, days = 21): Promise<SchoolDayContext[]> {
+  const data = await callUntypedRpc('get_my_bell_schedule_window', {
+    p_start_date: startDate,
+    p_days: days,
+  })
+  return schoolDayContextsFrom(data)
+}
+
+export async function getGuestBellScheduleWindow(startDate: string, days = 21, campus: BellCampus = 'NASH'): Promise<SchoolDayContext[]> {
+  const data = await callUntypedRpc('get_guest_bell_schedule_window', {
+    p_start_date: startDate,
+    p_days: days,
+    p_campus: campus,
+  })
+  return schoolDayContextsFrom(data)
 }
 
 export async function adminListBellSchedules(): Promise<BellScheduleDefinition[]> {

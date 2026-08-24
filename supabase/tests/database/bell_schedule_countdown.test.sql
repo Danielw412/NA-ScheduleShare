@@ -1,5 +1,46 @@
 begin;
-select plan(22);
+select plan(29);
+
+select ok(
+  has_function_privilege('anon', 'public.get_guest_bell_schedule_window(date,integer,text)', 'execute'),
+  'anonymous visitors can execute the bounded public bell-window RPC'
+);
+select ok(
+  not has_function_privilege('anon', 'private.get_bell_schedule_window(date,integer,text)', 'execute'),
+  'anonymous visitors cannot bypass the shaped public bell-window wrapper'
+);
+
+select set_config('request.jwt.claim.role', 'anon', true);
+select set_config('request.jwt.claim.sub', '', true);
+set local role anon;
+
+select is(
+  jsonb_array_length(public.get_guest_bell_schedule_window('2026-08-24', 21, 'NASH')),
+  21,
+  'the guest bell window returns the requested bounded number of days'
+);
+select is(
+  public.get_guest_bell_schedule_window('2026-08-24', 1, 'NASH') -> 0 ->> 'campus',
+  'NASH',
+  'the guest bell window uses only the requested validated campus'
+);
+select is(
+  public.get_guest_bell_schedule_window('2026-08-24', 1, 'NASH') -> 0 -> 'schedule' ->> 'schedule_key',
+  'regular',
+  'an anonymous visitor receives the real default bell schedule'
+);
+select throws_ok(
+  $$select public.get_guest_bell_schedule_window('2026-08-24', 22, 'NASH')$$,
+  '22023', 'bell_schedule_window_out_of_bounds',
+  'guest bell windows are capped at 21 days'
+);
+select throws_ok(
+  $$select public.get_guest_bell_schedule_window('2026-08-24', 1, 'OTHER')$$,
+  '22023', 'invalid_bell_schedule_campus',
+  'guest bell windows reject unknown campuses'
+);
+
+reset role;
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
