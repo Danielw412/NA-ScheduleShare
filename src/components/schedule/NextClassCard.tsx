@@ -104,10 +104,12 @@ export function NextClassCardView({ enrollments, campus, days, now }: NextClassC
   const displayDay = useMemo(() => resolveBellScheduleDay(now, days), [days, now])
   const resolvedCampus = days[0]?.campus ?? campus
   const courseCopy = timing.courseName && timing.mode === 'current'
-    ? `Time until ${timing.courseName} is over`
+    ? `${timing.courseName} over in`
     : timing.courseName
-      ? `Time until ${timing.courseName} starts`
-      : 'Time until next class'
+      ? `${timing.courseName} starts in`
+      : timing.mode === 'current'
+        ? 'Current class over in'
+        : 'Next class in'
   const [courseCopyFits, setCourseCopyFits] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const titleWrapRef = useRef<HTMLDivElement>(null)
@@ -147,11 +149,11 @@ export function NextClassCardView({ enrollments, campus, days, now }: NextClassC
     return <><section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div className="next-class-main"><h2>Next class: {formatEasternDate(timing.targetAt)}</h2><p>Starts at {formatEasternTime(timing.targetAt)} · {resolvedCampus}</p></div>{scheduleButton ? <div className="next-class-actions">{scheduleButton}</div> : null}</section>{dialog}</>
   }
 
-  const genericCopy = 'Time until next class'
+  const genericCopy = timing.mode === 'current' ? 'Current class over in' : 'Next class in'
   const visibleCopy = timing.courseName && courseCopyFits ? courseCopy : genericCopy
   const targetVerb = timing.mode === 'current' ? 'Ends' : 'Starts'
   const progress = timing.progressPercent ?? 0
-  return <><section className="next-class-card is-live" aria-label="Next class">
+  return <><section className="next-class-card is-live" aria-label={timing.mode === 'current' ? 'Current class' : 'Next class'}>
     <Clock3 aria-hidden="true" />
     <div className="next-class-main">
       <div className="next-class-title-wrap" ref={titleWrapRef}>

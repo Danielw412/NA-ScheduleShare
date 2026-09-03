@@ -47,7 +47,8 @@ afterEach(() => {
 describe('NextClassCard', () => {
   it('shows occupied course copy, exact end time, and accessible progress', async () => {
     render(<NextClassCard enrollments={[enrollment()]} isDemo={false} campus="NASH" />)
-    await waitFor(() => expect(screen.getByRole('heading', { name: /Time until AP Psychology is over/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: /AP Psychology over in/ })).toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Current class' })).toBeInTheDocument()
     expect(screen.getByText(/Ends at 8:08 AM/)).toBeInTheDocument()
     const progress = screen.getByRole('progressbar', { name: 'Current block progress' })
     expect(progress).toHaveAttribute('aria-valuemin', '0')
@@ -58,7 +59,7 @@ describe('NextClassCard', () => {
   it('uses the public bell window and never shows specific classes to a signed-out guest', async () => {
     vi.setSystemTime(easternLocalTime('2026-08-24', '07:00'))
     render(<NextClassCard enrollments={[enrollment()]} isDemo={false} isGuest campus="NASH" />)
-    expect(await screen.findByRole('heading', { name: /Time until next class/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Next class in/ })).toBeInTheDocument()
     expect(screen.queryByText(/AP Psychology/)).not.toBeInTheDocument()
     expect(mocks.getGuestBellScheduleWindow).toHaveBeenCalledWith('2026-08-24', 21, 'NASH')
     expect(mocks.getMyBellScheduleWindow).not.toHaveBeenCalled()
@@ -70,7 +71,7 @@ describe('NextClassCard', () => {
     day.schedule!.blocks = [{ position: 1, kind: 'non_class', label: 'Homeroom', period_number: null, start_time: '07:28', end_time: '08:08' }]
     mocks.getMyBellScheduleWindow.mockResolvedValue([day])
     render(<NextClassCard enrollments={[]} isDemo={false} campus="NASH" />)
-    expect(await screen.findByRole('heading', { name: /Time until Homeroom is over/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Homeroom over in/ })).toBeInTheDocument()
     expect(screen.getByText(/Ends at 8:08 AM/)).toBeInTheDocument()
   })
 
@@ -100,12 +101,13 @@ describe('NextClassCard', () => {
     expect(screen.getByRole('dialog', { name: 'Regular' })).toHaveTextContent('Tuesday, Aug 25')
   })
 
-  it('falls back to generic copy when the reserved single line overflows', async () => {
+  it('keeps current-class semantics when the course name overflows', async () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(120)
     vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900)
     render(<NextClassCard enrollments={[enrollment('A Very Long Advanced Placement Psychology and Behavioral Science Course')]} isDemo={false} campus="NASH" />)
-    await waitFor(() => expect(screen.getByText('Time until next class:')).toBeInTheDocument())
-    expect(screen.getByRole('heading')).toHaveTextContent('Time until next class:')
+    await waitFor(() => expect(screen.getByText('Current class over in:')).toBeInTheDocument())
+    expect(screen.getByRole('heading')).toHaveTextContent('Current class over in:')
+    expect(screen.getByRole('heading')).not.toHaveTextContent('Next class')
     expect(screen.getByRole('heading')).not.toHaveTextContent('A Very Long')
   })
 
