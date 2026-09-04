@@ -89,11 +89,28 @@ describe('resolveNextClassTiming', () => {
     expect(timing.intervalStart?.getTime()).toBe(easternLocalTime(context.date, '08:21').getTime())
   })
 
-  it('uses generic class bells when the day has no A/B assignment', () => {
+  it('uses the active class bell when the day has no A/B assignment', () => {
     const context = day('2026-08-24', [block(1, 1, '07:28', '08:08'), block(2, 2, '08:12', '08:52')], { day_type: null })
     const timing = resolveNextClassTiming(easternLocalTime(context.date, '07:30'), [context], [enrollment('AP Psychology', 'A', 2)])
-    expect(timing).toMatchObject({ mode: 'next', courseName: null })
-    expect(timing.targetAt?.getTime()).toBe(easternLocalTime(context.date, '08:12').getTime())
+    expect(timing).toMatchObject({ mode: 'current', currentBlockKind: 'class', courseName: null })
+    expect(timing.targetAt?.getTime()).toBe(easternLocalTime(context.date, '08:08').getTime())
+  })
+
+  it('counts down to the current period end when the A/B assignment is missing', () => {
+    const context = day('2026-09-04', [
+      block(1, 2, '08:25', '09:05'),
+      block(2, 3, '09:09', '09:49'),
+    ], { day_type: null })
+    const timing = resolveNextClassTiming(easternLocalTime(context.date, '08:53'), [context], [])
+
+    expect(timing).toMatchObject({
+      status: 'live',
+      mode: 'current',
+      currentBlockKind: 'class',
+      courseName: null,
+    })
+    expect(timing.targetAt?.getTime()).toBe(easternLocalTime(context.date, '09:05').getTime())
+    expect(formatCountdown(timing.remainingMs ?? 0)).toBe('12:00')
   })
 
   it('honors reordered early-dismissal periods instead of numeric period order', () => {

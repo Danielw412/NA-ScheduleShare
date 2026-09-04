@@ -14,6 +14,7 @@ export const LIVE_COUNTDOWN_THRESHOLD_MS = 2 * 60 * 60 * 1000
 export interface NextClassTiming {
   status: 'live' | 'upcoming' | 'none'
   mode: 'current' | 'next' | null
+  currentBlockKind: BellScheduleBlock['kind'] | null
   courseName: string | null
   targetAt: Date | null
   intervalStart: Date | null
@@ -185,6 +186,7 @@ export function resolveNextClassTiming(
         return {
           status: 'live',
           mode: 'current',
+          currentBlockKind: 'non_class',
           courseName: currentBlock.label.trim() || null,
           targetAt: target,
           intervalStart: start,
@@ -195,12 +197,13 @@ export function resolveNextClassTiming(
       }
       if (currentBlock?.kind === 'class') {
         const course = classAtBlock(day, currentBlock.period_number, enrollments)
-        if (course.occupied) {
+        if (day.day_type === null || course.occupied) {
           const start = easternLocalTime(day.date, currentBlock.start_time)
           const target = easternLocalTime(day.date, currentBlock.end_time)
           return {
             status: 'live',
             mode: 'current',
+            currentBlockKind: 'class',
             courseName: course.courseName,
             targetAt: target,
             intervalStart: start,
@@ -231,6 +234,7 @@ export function resolveNextClassTiming(
     return {
       status: live ? 'live' : 'upcoming',
       mode: 'next',
+      currentBlockKind: null,
       courseName,
       targetAt: target,
       intervalStart,
@@ -243,6 +247,7 @@ export function resolveNextClassTiming(
   return {
     status: 'none',
     mode: null,
+    currentBlockKind: null,
     courseName: null,
     targetAt: null,
     intervalStart: null,

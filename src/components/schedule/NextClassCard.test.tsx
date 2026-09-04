@@ -45,9 +45,9 @@ afterEach(() => {
 })
 
 describe('NextClassCard', () => {
-  it('shows occupied course copy, exact end time, and accessible progress', async () => {
+  it('shows explicit current-class copy, exact end time, and accessible progress', async () => {
     render(<NextClassCard enrollments={[enrollment()]} isDemo={false} campus="NASH" />)
-    await waitFor(() => expect(screen.getByRole('heading', { name: /AP Psychology over in/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: /This class ends in/ })).toBeInTheDocument())
     expect(screen.getByRole('region', { name: 'Current class' })).toBeInTheDocument()
     expect(screen.getByText(/Ends at 8:08 AM/)).toBeInTheDocument()
     const progress = screen.getByRole('progressbar', { name: 'Current block progress' })
@@ -101,14 +101,31 @@ describe('NextClassCard', () => {
     expect(screen.getByRole('dialog', { name: 'Regular' })).toHaveTextContent('Tuesday, Aug 25')
   })
 
-  it('keeps current-class semantics when the course name overflows', async () => {
+  it('uses explicit current-class copy regardless of the course name length', async () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(120)
     vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900)
     render(<NextClassCard enrollments={[enrollment('A Very Long Advanced Placement Psychology and Behavioral Science Course')]} isDemo={false} campus="NASH" />)
-    await waitFor(() => expect(screen.getByText('Current class over in:')).toBeInTheDocument())
-    expect(screen.getByRole('heading')).toHaveTextContent('Current class over in:')
+    await waitFor(() => expect(screen.getByText('This class ends in:')).toBeInTheDocument())
+    expect(screen.getByRole('heading')).toHaveTextContent('This class ends in:')
     expect(screen.getByRole('heading')).not.toHaveTextContent('Next class')
     expect(screen.getByRole('heading')).not.toHaveTextContent('A Very Long')
+  })
+
+  it('counts down to the current class end when the bell window has no A/B day', async () => {
+    const day = schoolDay()
+    day.day_type = null
+    day.schedule!.blocks = [
+      { position: 1, kind: 'class', label: 'Period 2', period_number: 2, start_time: '08:25', end_time: '09:05' },
+      { position: 2, kind: 'class', label: 'Period 3', period_number: 3, start_time: '09:09', end_time: '09:49' },
+    ]
+    vi.setSystemTime(easternLocalTime('2026-08-24', '08:53'))
+    mocks.getMyBellScheduleWindow.mockResolvedValue([day])
+
+    render(<NextClassCard enrollments={[]} isDemo={false} campus="NASH" />)
+
+    expect(await screen.findByRole('heading', { name: 'This class ends in: 12:00' })).toBeInTheDocument()
+    expect(screen.getByText('Ends at 9:05 AM · NASH')).toBeInTheDocument()
+    expect(screen.queryByText(/Starts at 9:09 AM/)).not.toBeInTheDocument()
   })
 
   it('pauses the one-second timer in a hidden tab and recomputes immediately when visible', async () => {

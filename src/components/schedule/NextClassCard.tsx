@@ -103,13 +103,16 @@ export function NextClassCardView({ enrollments, campus, days, now }: NextClassC
   const timing = useMemo(() => resolveNextClassTiming(now, days, enrollments), [days, enrollments, now])
   const displayDay = useMemo(() => resolveBellScheduleDay(now, days), [days, now])
   const resolvedCampus = days[0]?.campus ?? campus
-  const courseCopy = timing.courseName && timing.mode === 'current'
-    ? `${timing.courseName} over in`
-    : timing.courseName
-      ? `${timing.courseName} starts in`
-      : timing.mode === 'current'
-        ? 'Current class over in'
-        : 'Next class in'
+  const currentClass = timing.mode === 'current' && timing.currentBlockKind === 'class'
+  const courseCopy = currentClass
+    ? 'This class ends in'
+    : timing.courseName && timing.mode === 'current'
+      ? `${timing.courseName} over in`
+      : timing.courseName
+        ? `${timing.courseName} starts in`
+        : timing.mode === 'current'
+          ? 'Current class over in'
+          : 'Next class in'
   const [courseCopyFits, setCourseCopyFits] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const titleWrapRef = useRef<HTMLDivElement>(null)
@@ -149,7 +152,11 @@ export function NextClassCardView({ enrollments, campus, days, now }: NextClassC
     return <><section className="next-class-card" aria-label="Next class"><Clock3 aria-hidden="true" /><div className="next-class-main"><h2>Next class: {formatEasternDate(timing.targetAt)}</h2><p>Starts at {formatEasternTime(timing.targetAt)} · {resolvedCampus}</p></div>{scheduleButton ? <div className="next-class-actions">{scheduleButton}</div> : null}</section>{dialog}</>
   }
 
-  const genericCopy = timing.mode === 'current' ? 'Current class over in' : 'Next class in'
+  const genericCopy = currentClass
+    ? 'This class ends in'
+    : timing.mode === 'current'
+      ? 'Current class over in'
+      : 'Next class in'
   const visibleCopy = timing.courseName && courseCopyFits ? courseCopy : genericCopy
   const targetVerb = timing.mode === 'current' ? 'Ends' : 'Starts'
   const progress = timing.progressPercent ?? 0
