@@ -222,6 +222,12 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
     if (draft || schedules.length === 0) return
     setDraft(cloneSchedule(schedules.find((schedule) => schedule.archived_at === null) ?? schedules[0]))
   }, [draft, schedules])
+  useEffect(() => {
+    const activeClassPeriod = draft?.blocks.find((block) => block.kind === 'class'
+      && previewTime >= block.start_time
+      && previewTime < block.end_time)?.period_number
+    if (activeClassPeriod !== null && activeClassPeriod !== undefined) setPreviewPeriod(activeClassPeriod)
+  }, [draft, previewTime])
 
   const gridDates = useMemo(() => monthGrid(month), [month])
   const currentMonthPrefix = month.slice(0, 7)
