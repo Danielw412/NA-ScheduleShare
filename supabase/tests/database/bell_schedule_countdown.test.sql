@@ -1,5 +1,5 @@
 begin;
-select plan(29);
+select plan(30);
 
 select ok(
   has_function_privilege('anon', 'public.get_guest_bell_schedule_window(date,integer,text)', 'execute'),
@@ -91,6 +91,13 @@ select throws_ok(
 );
 
 reset role;
+create temporary table bell_sync_target as
+select (clock_timestamp() at time zone 'America/New_York')::date as target_date;
+grant select on bell_sync_target to authenticated, service_role;
+update private.school_year_settings
+set school_year_start = least(school_year_start, (select target_date - 1 from bell_sync_target)),
+    school_year_end = greatest(school_year_end, (select target_date + 1 from bell_sync_target))
+where singleton;
 select set_config('request.jwt.claim.sub', 'b9000000-0000-4000-8000-000000000002', true);
 set local role authenticated;
 
@@ -135,6 +142,14 @@ select is(
   true,
   'manual date assignments are locked against automation'
 );
+select is(
+  public.admin_bulk_assign_school_days(
+    array[(select target_date from bell_sync_target)], array['NAI'], 'A', false,
+    (select id from bell_test_schedule)
+  ),
+  1,
+  'a manual lock can be set on the current Eastern school date'
+);
 
 reset role;
 select set_config('request.jwt.claim.sub', 'b9000000-0000-4000-8000-000000000001', true);
@@ -157,13 +172,16 @@ select ok(
   'service sync claims include only the newsletter Google Doc'
 );
 select lives_ok(
-  $$select public.service_finish_bell_schedule_sync(
+  format($sql$select public.service_finish_bell_schedule_sync(
     (select (payload ->> 'run_id')::uuid from bell_sync_claim),
-    'succeeded', 'source-hash-one', 'Monday Regular Bell Schedule',
+    'succeeded', 'source-hash-one', 'Regular Bell Schedule',
     '[]'::jsonb,
-    '[{"date":"2026-08-24","day_type":"B","no_school":false,"schedule_key":"regular","campus":"NAI","evidence":"Monday Regular Bell Schedule"}]'::jsonb,
+    jsonb_build_array(jsonb_build_object(
+      'date', %L, 'day_type', 'B', 'no_school', false,
+      'schedule_key', 'regular', 'campus', 'NAI', 'evidence', 'Regular Bell Schedule'
+    )),
     null, 100
-  )$$,
+  )$sql$, (select target_date::text from bell_sync_target)),
   'a service sync can finish without overwriting a manual lock'
 );
 
@@ -171,7 +189,7 @@ reset role;
 select set_config('request.jwt.claim.sub', 'b9000000-0000-4000-8000-000000000002', true);
 set local role authenticated;
 select is(
-  public.admin_list_school_days('2026-08-24', 1) -> 0 ->> 'source',
+  public.admin_list_school_days((select target_date from bell_sync_target), 1) -> 0 ->> 'source',
   'manual',
   'AI application preserves the existing manual source'
 );
