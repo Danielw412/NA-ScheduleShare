@@ -1,9 +1,24 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { BellScheduleDefinition } from '../../lib/domain'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { BellScheduleDefinition, BellScheduleSettings } from '../../lib/domain'
+import * as data from '../../lib/supabase/data'
 import { BellScheduleAdminPanel, validateBellScheduleDraft } from './BellScheduleAdminPanel'
+
+vi.mock('../../lib/supabase/data', () => ({
+  adminArchiveBellSchedule: vi.fn(),
+  adminBulkAssignSchoolDays: vi.fn(),
+  adminClearSchoolDayOverrides: vi.fn(),
+  adminGetBellScheduleSettings: vi.fn(),
+  adminListBellScheduleSyncRuns: vi.fn(),
+  adminListBellSchedules: vi.fn(),
+  adminListSchoolDays: vi.fn(),
+  adminSaveBellSchedule: vi.fn(),
+  adminUnlockSchoolDayOverrides: vi.fn(),
+  adminUpdateBellScheduleSettings: vi.fn(),
+  invokeBellScheduleSync: vi.fn(),
+}))
 
 function draft(blocks: BellScheduleDefinition['blocks']): BellScheduleDefinition {
   return {
@@ -12,7 +27,11 @@ function draft(blocks: BellScheduleDefinition['blocks']): BellScheduleDefinition
   }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.useRealTimers()
+})
 
 describe('bell-schedule editor validation', () => {
   it('accepts named blocks and chronological class periods', () => {
@@ -36,6 +55,36 @@ describe('bell-schedule editor validation', () => {
 })
 
 describe('BellScheduleAdminPanel', () => {
+  it('assigns a NASH-only schedule to NASH without including the default NAI selection', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-24T16:00:00Z'))
+    const regular = { ...draft([{ position: 1, kind: 'class' as const, label: 'Period 1', period_number: 1, start_time: '07:28', end_time: '08:08' }]), id: 'regular', display_name: 'Regular' }
+    const nashOnly = { ...regular, id: 'nash-only', display_name: 'NASH-only custom schedule', campus_scope: 'NASH' as const }
+    const settings: BellScheduleSettings = {
+      school_year_start: '2026-08-18', semester_2_start: '2027-01-12', school_year_end: '2027-05-28',
+      default_schedule_id: regular.id, school_timezone: 'America/New_York', sync_enabled: false,
+      sync_time: '06:00', newsletter_document_url: '', updated_at: '',
+    }
+    vi.mocked(data.adminListBellSchedules).mockResolvedValue([regular, nashOnly])
+    vi.mocked(data.adminListSchoolDays).mockResolvedValue([])
+    vi.mocked(data.adminGetBellScheduleSettings).mockResolvedValue(settings)
+    vi.mocked(data.adminListBellScheduleSyncRuns).mockResolvedValue([])
+    vi.mocked(data.adminBulkAssignSchoolDays).mockResolvedValue(1)
+
+    render(<BellScheduleAdminPanel isDemo={false} />)
+    await screen.findByRole('option', { name: 'NASH-only custom schedule · NASH' })
+    fireEvent.change(screen.getByLabelText('Bell schedule'), { target: { value: nashOnly.id } })
+    expect(screen.getByLabelText('NAI')).toBeDisabled()
+    expect(screen.getByLabelText('NAI')).not.toBeChecked()
+    expect(screen.getByLabelText('NASH')).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '25' }))
+    fireEvent.change(screen.getByRole('combobox', { name: /^A\/B day$/ }), { target: { value: 'B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Assign 1 date' }))
+    await waitFor(() => expect(data.adminBulkAssignSchoolDays).toHaveBeenCalledWith({
+      dates: ['2026-09-25'], campuses: ['NASH'], dayType: 'B', noSchool: false, scheduleId: nashOnly.id,
+    }))
+  })
+
   it('renders the calendar, editor, automation settings, and run history responsively', async () => {
     render(<BellScheduleAdminPanel isDemo />)
     expect(await screen.findByRole('heading', { name: 'School-day assignments' })).toBeInTheDocument()

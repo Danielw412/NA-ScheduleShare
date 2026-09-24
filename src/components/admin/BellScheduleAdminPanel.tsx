@@ -82,6 +82,14 @@ function cloneSchedule(schedule: BellScheduleDefinition): BellScheduleDefinition
   return { ...schedule, blocks: schedule.blocks.map((block) => ({ ...block })) }
 }
 
+function assignmentErrorMessage(caught: unknown): string {
+  const message = caught && typeof caught === 'object' && 'message' in caught && typeof caught.message === 'string'
+    ? caught.message
+    : ''
+  if (message.includes('bell_schedule_campus_mismatch')) return 'This bell schedule does not apply to every selected campus.'
+  return message || 'The selected dates could not be assigned.'
+}
+
 function blankSchedule(): BellScheduleDefinition {
   return {
     id: '',
@@ -232,6 +240,7 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
   const gridDates = useMemo(() => monthGrid(month), [month])
   const currentMonthPrefix = month.slice(0, 7)
   const activeSchedules = schedules.filter((schedule) => !schedule.archived_at)
+  const assignmentSchedule = activeSchedules.find((schedule) => schedule.id === assignmentScheduleId)
   const sourcesVerified = runs.some((run) => run.status === 'previewed' || run.status === 'succeeded')
   const previewNow = useMemo(() => easternLocalTime(previewDate, previewTime), [previewDate, previewTime])
   const previewDays = useMemo(
@@ -270,6 +279,11 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
 
   async function assignDates() {
     if (selectedDates.size === 0 || campuses.size === 0) return
+    if (!noSchool && assignmentSchedule && assignmentSchedule.campus_scope !== 'BOTH'
+      && (campuses.size !== 1 || !campuses.has(assignmentSchedule.campus_scope))) {
+      setError(`This bell schedule only applies to ${assignmentSchedule.campus_scope}.`)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -283,7 +297,7 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
       setMessage(`${selectedDates.size} date${selectedDates.size === 1 ? '' : 's'} assigned and manually locked.`)
       await load()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The selected dates could not be assigned.')
+      setError(assignmentErrorMessage(caught))
     } finally { setBusy(false) }
   }
 
@@ -394,9 +408,14 @@ export function BellScheduleAdminPanel({ isDemo }: { isDemo: boolean }) {
         return <button type="button" key={date} className={`${date.startsWith(currentMonthPrefix) ? '' : 'is-outside'} ${selectedDates.has(date) ? 'is-selected' : ''}`} aria-pressed={selectedDates.has(date)} onClick={(event) => chooseDate(date, event.shiftKey)}><strong>{Number(date.slice(-2))}</strong><span>{rows.map((row) => <small key={row.campus} className={`source-${row.source}`}>{row.campus} {row.no_school ? 'Closed' : `${row.day_type ?? '–'} · ${row.schedule_key?.replaceAll('_', ' ') ?? 'Regular'}`}{row.manual_locked ? ' 🔒' : ''}</small>)}</span></button>
       })}</div>
       <div className="bell-assignment-controls">
-        <fieldset><legend>Campus</legend>{(['NAI', 'NASH'] as BellCampus[]).map((campus) => <label key={campus}><input type="checkbox" checked={campuses.has(campus)} onChange={() => setCampuses((current) => { const next = new Set(current); if (next.has(campus)) next.delete(campus); else next.add(campus); return next })} /> {campus}</label>)}</fieldset>
+        <fieldset><legend>Campus</legend>{(['NAI', 'NASH'] as BellCampus[]).map((campus) => <label key={campus}><input type="checkbox" checked={campuses.has(campus)} disabled={!noSchool && !!assignmentSchedule && assignmentSchedule.campus_scope !== 'BOTH' && assignmentSchedule.campus_scope !== campus} onChange={() => setCampuses((current) => { const next = new Set(current); if (next.has(campus)) next.delete(campus); else next.add(campus); return next })} /> {campus}</label>)}</fieldset>
         <label>A/B day<select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Not assigned</option><option value="A">A day</option><option value="B">B day</option></select></label>
-        <label>Bell schedule<select disabled={noSchool} value={assignmentScheduleId} onChange={(event) => setAssignmentScheduleId(event.target.value)}>{activeSchedules.map((schedule) => <option value={schedule.id} key={schedule.id}>{schedule.display_name} · {schedule.campus_scope}</option>)}</select></label>
+        <label>Bell schedule<select disabled={noSchool} value={assignmentScheduleId} onChange={(event) => {
+          const scheduleId = event.target.value
+          setAssignmentScheduleId(scheduleId)
+          const scope = activeSchedules.find((schedule) => schedule.id === scheduleId)?.campus_scope
+          if (scope && scope !== 'BOTH') setCampuses(new Set([scope]))
+        }}>{activeSchedules.map((schedule) => <option value={schedule.id} key={schedule.id}>{schedule.display_name} · {schedule.campus_scope}</option>)}</select></label>
         <label className="checkbox-row compact"><input type="checkbox" checked={noSchool} onChange={(event) => setNoSchool(event.target.checked)} /> No school</label>
         <div className="form-actions"><button className="button button-primary" type="button" disabled={busy || selectedDates.size === 0 || (!noSchool && !assignmentScheduleId)} onClick={() => void assignDates()}>Assign {selectedDates.size || ''} date{selectedDates.size === 1 ? '' : 's'}</button><button className="button button-secondary" type="button" disabled={busy || selectedDates.size === 0} onClick={() => void alterOverrides('unlock')}>Unlock for AI</button><button className="button button-secondary" type="button" disabled={busy || selectedDates.size === 0} onClick={() => void alterOverrides('clear')}>Clear overrides</button></div>
       </div>
