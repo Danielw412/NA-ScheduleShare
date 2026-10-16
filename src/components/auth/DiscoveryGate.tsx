@@ -1,19 +1,30 @@
-import { LockKeyhole } from 'lucide-react'
+import { ImageUp, Users } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useSchedule } from '../../hooks/useSchedule'
+import { EmptyState } from '../ui/EmptyState'
 import { LoadingScreen } from '../ui/LoadingScreen'
+import { PageHeader } from '../ui/PageHeader'
 
-export function DiscoveryGate({ children }: { children: React.ReactNode }) {
+/**
+ * Classmate discovery uses the student's own classes, so it waits until they
+ * have a schedule. The database enforces the same rule; this is only the UI.
+ */
+export function DiscoveryGate({ children }: { children: ReactNode }) {
   const { enrollments, loading } = useSchedule()
   if (loading) return <LoadingScreen label="Checking your schedule…" />
   if (enrollments.length === 0) {
     return (
-      <section className="empty-state discovery-lock">
-        <LockKeyhole size={38} aria-hidden="true" />
-        <h1>Upload your schedule to see which classmates share your courses.</h1>
-        <p>ScheduleShare uses your own active classes to find relevant classmates without weakening anyone’s privacy setting.</p>
-        <Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link>
-      </section>
+      <div className="page students-page students-gate">
+        <PageHeader title="Students" />
+        <EmptyState
+          icon={Users}
+          title="Add your schedule to find classmates"
+          action={<Link className="button button-primary" to="/schedule?import=1"><ImageUp aria-hidden="true" />Upload schedule</Link>}
+        >
+          ScheduleShare finds classmates using your own classes. Everyone’s privacy settings still apply.
+        </EmptyState>
+      </div>
     )
   }
   return children

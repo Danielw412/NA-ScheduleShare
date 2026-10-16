@@ -1,14 +1,13 @@
 import type { DayType, MeetingSlot } from '../../lib/domain'
 import {
   buildNormalMeetingSlots,
-  formatMeetingSlotSummary,
   meetingDaySelectionFromSlots,
   meetingSlotsForDay,
   PERIOD_NUMBERS,
   sortMeetingSlots,
   type MeetingDaySelection,
 } from '../../lib/schedule'
-import { MeetingSlotGrid } from './MeetingSlotGrid'
+import { MeetingSlotGrid, MeetingSlotSummary } from './MeetingSlotGrid'
 
 interface MeetingSlotEditorProps {
   isDoublePeriod: boolean
@@ -49,45 +48,46 @@ export function MeetingSlotEditor({
   }
 
   return (
-    <>
+    <div className="schedule-slot-editor">
       <label className="checkbox-row">
         <input type="checkbox" checked={isDoublePeriod} onChange={(event) => onDoublePeriodChange(event.target.checked)} />
-        <span><strong>Double-period class</strong><small>Use the full A/B-day grid for independent consecutive periods.</small></span>
+        <span><strong>Double-period class</strong><small>Pick each period on A and B days, for classes that run two periods in a row.</small></span>
       </label>
       {isDoublePeriod ? <MeetingSlotGrid meetingSlots={meetingSlots} onChange={onMeetingSlotsChange} /> : (
-        <fieldset className="meeting-slot-picker normal-slot-picker">
+        <fieldset className="schedule-slot-picker">
           <legend>Meeting slots</legend>
-          <p className="meeting-slot-help">Choose the meeting days and period for this class.</p>
-          <div className="two-field-row">
-            <label>Meeting days
+          <p className="schedule-slot-help">Choose the days and period this class meets.</p>
+          <div className="schedule-slot-fields">
+            <label className="field">
+              <span>Meeting days</span>
               <select value={meetingDays} onChange={(event) => changeMeetingDays(event.target.value as MeetingDaySelection)}>
                 <option value="both">Both A and B days</option>
-                <option value="A">A day only</option>
-                <option value="B">B day only</option>
+                <option value="A">A days only</option>
+                <option value="B">B days only</option>
               </select>
             </label>
-            {meetingDays === 'A' ? <PeriodSelect dayType="A" value={aPeriod} onChange={changePeriod} compact /> : null}
-            {meetingDays === 'B' ? <PeriodSelect dayType="B" value={bPeriod} onChange={changePeriod} compact /> : null}
+            <PeriodSelect dayType={meetingDays === 'B' ? 'B' : 'A'} value={selectedPeriod} onChange={changePeriod} />
           </div>
-          {meetingDays === 'both' ? <PeriodSelect dayType="A" value={selectedPeriod} onChange={changePeriod} compact /> : null}
-          <p className="inferred-slot" aria-live="polite">Meeting slots: <strong>{formatMeetingSlotSummary(meetingSlots)}</strong></p>
+          <MeetingSlotSummary meetingSlots={meetingSlots} />
         </fieldset>
       )}
-    </>
+    </div>
   )
 }
 
-function PeriodSelect({ dayType, value, compact = false, onChange }: {
+function PeriodSelect({ dayType, value, onChange }: {
   dayType: DayType
   value: number
-  compact?: boolean
   onChange: (dayType: DayType, period: number) => void
 }) {
-  return <label>{compact ? 'Period' : `${dayType} day period`}
-    <select value={value} onChange={(event) => onChange(dayType, Number(event.target.value))}>
-      {PERIOD_NUMBERS.map((period) => <option value={period} key={period}>Period {period}</option>)}
-    </select>
-  </label>
+  return (
+    <label className="field">
+      <span>Period</span>
+      <select value={value} onChange={(event) => onChange(dayType, Number(event.target.value))}>
+        {PERIOD_NUMBERS.map((period) => <option value={period} key={period}>Period {period}</option>)}
+      </select>
+    </label>
+  )
 }
 
 export function preferredMeetingDay(meetingSlots: MeetingSlot[]): DayType {

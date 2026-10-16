@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as scheduleShare from '../lib/scheduleShare'
@@ -9,10 +9,12 @@ const TOKEN = '99300000-0000-4000-8000-000000000001'
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   useSchedule: vi.fn(),
+  useSchoolDayDefaults: vi.fn(),
 }))
 
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
+vi.mock('../features/students/useSchoolDayDefaults', () => ({ useSchoolDayDefaults: mocks.useSchoolDayDefaults }))
 
 function renderPage() {
   return render(
@@ -34,6 +36,7 @@ function incompleteSchedule() {
 beforeEach(() => {
   mocks.useAuth.mockReturnValue({ user: null })
   mocks.useSchedule.mockReturnValue(incompleteSchedule())
+  mocks.useSchoolDayDefaults.mockReturnValue({ semester: null, dayType: null, todayDayType: null, todaySemester: null })
 })
 
 describe('shared schedule page', () => {
@@ -46,13 +49,13 @@ describe('shared schedule page', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: "Bob's schedule" })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Bob’s schedule' })).toBeInTheDocument()
     expect(screen.getByText('Robotics')).toBeInTheDocument()
     expect(screen.getByText('Lovelace')).toBeInTheDocument()
     expect(screen.getByRole('gridcell', { name: /Robotics/i })).toHaveAttribute('data-period', '9')
     expect(screen.queryByRole('button', { name: /Add class/i })).not.toBeInTheDocument()
     expect(screen.queryByText('A read-only A/B-day schedule shared through ScheduleShare.')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Upload My Schedule' })).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getByRole('link', { name: 'Upload my schedule' })).toHaveAttribute('href', '/schedule?import=1')
     expect(screen.getByRole('link', { name: 'Upload your own schedule' })).toHaveAttribute('href', '/schedule?import=1')
   })
 
@@ -74,8 +77,8 @@ describe('shared schedule page', () => {
 
     renderPage()
 
-    await screen.findByRole('heading', { name: "Bob's schedule" })
-    expect(screen.queryByRole('link', { name: 'Upload My Schedule' })).not.toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Bob’s schedule' })
+    expect(screen.queryByRole('link', { name: 'Upload my schedule' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Upload your own schedule' })).not.toBeInTheDocument()
   })
 
@@ -86,5 +89,41 @@ describe('shared schedule page', () => {
 
     expect(await screen.findByRole('heading', { name: 'This schedule isn’t available' })).toBeInTheDocument()
     expect(screen.getByText(/invalid, disabled, or no longer available/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to ScheduleShare' })).toHaveAttribute('href', '/')
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
+  })
+
+  it('opens on the semester in session and lets the visitor switch', async () => {
+    mocks.useSchoolDayDefaults.mockReturnValue({ semester: 'semester_2', dayType: 'B', todayDayType: 'B', todaySemester: 'semester_2' })
+    vi.spyOn(scheduleShare, 'fetchPublicScheduleShare').mockResolvedValue({
+      available: true,
+      owner_name: 'Bob',
+      schedule: [
+        { day_type: 'A', period_number: 3, course_name: 'Spring Elective', teacher_last_name: 'Hopper', academic_term: 'semester_2' },
+        { day_type: 'A', period_number: 3, course_name: 'Fall Elective', teacher_last_name: 'Turing', academic_term: 'semester_1' },
+      ],
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('radio', { name: 'Semester 2' })).toBeChecked()
+    expect(screen.getByText('Spring Elective')).toBeInTheDocument()
+    expect(screen.queryByText('Fall Elective')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Semester 1' }))
+    expect(screen.getByText('Fall Elective')).toBeInTheDocument()
+  })
+
+  it('keeps a failed load generic and lets the visitor try again', async () => {
+    const fetchShare = vi.spyOn(scheduleShare, 'fetchPublicScheduleShare')
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ available: true, owner_name: 'Bob', schedule: [] })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Schedule temporarily unavailable' })).toBeInTheDocument()
+    expect(screen.queryByText(/Bob/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { name: 'Bob’s schedule' })).toBeInTheDocument()
+    expect(fetchShare).toHaveBeenCalledTimes(2)
   })
 })

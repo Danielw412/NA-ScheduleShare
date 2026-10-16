@@ -1,16 +1,19 @@
-import { CalendarDays, ChevronDown, ChevronRight, Flag, LockKeyhole, Search, SlidersHorizontal, Users, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { AlertCircle, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Flag, ImageUp, LockKeyhole, RefreshCw, Search, Users } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ProfileAvatar } from '../components/ui/ProfileAvatar'
-import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
+import { meetingSlotFacts, periodsLabel } from '../components/schedule/periodLabels'
+import { EmptyState } from '../components/ui/EmptyState'
+import { LoadingScreen } from '../components/ui/LoadingScreen'
+import { PageHeader } from '../components/ui/PageHeader'
+import { ProfileAvatar } from '../components/ui/ProfileAvatar'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useClassSearch, type ClassSearchExecutor } from '../hooks/useClassSearch'
 import { useNoIndex } from '../hooks/useNoIndex'
 import { useSchedule } from '../hooks/useSchedule'
 import { demoEnrollments } from '../lib/demo-data'
 import type { ClassMemberResult, ClassSearchResult, DayType, MeetingSlot, ScheduleEnrollment } from '../lib/domain'
-import { compactMeetingSlotLabels, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, PERIOD_NUMBERS } from '../lib/schedule'
+import { PERIOD_NUMBERS } from '../lib/schedule'
 import { getClassMembers, searchClasses, searchGuestClasses } from '../lib/supabase/data'
 
 const demoClasses: ClassSearchResult[] = demoEnrollments.map((enrollment, index) => ({ ...enrollment.class, score: 100 - index }))
@@ -63,61 +66,6 @@ function findSelectedView(views: ClassMeetingView[], classId: string | undefined
     ?? views.find((view) => view.result.id === classId)
 }
 
-export function ClassesPage() {
-  const { user } = useAuth()
-  useNoIndex(!user)
-  return user ? <AuthenticatedClassesPage /> : <GuestClassesPage />
-}
-
-function GuestClassesPage() {
-  const { classId } = useParams()
-  const [searchParams] = useSearchParams()
-  const { openAccountPrompt } = useGuestAccountPrompt()
-  const [query, setQuery] = useState('')
-  const [dayType, setDayType] = useState<DayType | ''>('')
-  const [period, setPeriod] = useState<number | ''>('')
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const { error, loading, results } = useClassSearch({
-    query,
-    dayType: dayType || undefined,
-    period: period || undefined,
-    limit: 1000,
-  }, { search: searchGuestClasses })
-  const classViews = useMemo(() => expandSearchResults(results)
-    .filter((view) => matchesFilters(view.result, query, dayType, period)), [dayType, period, query, results])
-  const selected = findSelectedView(classViews, classId, searchParams.get('day'), searchParams.get('period'))
-
-  return (
-    <div className="classes-page guest-classes-page">
-      <header className="page-heading"><div><h1>View Classes</h1><p>Create an account to see who is in each class.</p></div></header>
-      <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <div className="class-browser">
-        <section className="class-list-panel organized-class-list">
-          <section className="other-classes-section" aria-labelledby="guest-classes-heading">
-            <div><h2 id="guest-classes-heading">Classes</h2><span>Current class catalog</span></div>
-            <div className="class-list" aria-live="polite">
-              {loading ? <p className="muted">Searching…</p> : <GroupedClassList activeViewKey={selected?.key} views={classViews} />}
-              {!loading && !error && classViews.length === 0 ? <p className="empty-inline">No matching classes.</p> : null}
-            </div>
-          </section>
-        </section>
-        {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
-        <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>
-          {selected ? <>
-            <div className="sheet-handle" aria-hidden="true" />
-            <Link className="mobile-class-detail-close icon-button" to="/classes" aria-label="Close class details"><X aria-hidden="true" /></Link>
-            <div className="class-detail-heading"><div><h2>{selected.result.course_name}</h2><p>{selected.result.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.result.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
-            <ClassMeetingSwitch selected={selected} views={classViews.filter((view) => view.result.id === selected.result.id && view.meeting?.period_number === selected.meeting?.period_number)} />
-            <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{formatMeetingSlotSummary(selected.result.meeting_slots)}</dd></div><div><dt>Default term</dt><dd>{classTermLabel(selected.result.default_academic_term)}</dd></div></dl>
-            <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Create an account and add your schedule to see who is in this class. Student privacy settings still apply.</p><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create Account</button></section>
-          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Create an account, then click a class to see who’s in it.</p></div>}
-        </section>
-      </div>
-    </div>
-  )
-}
-
 function matchesFilters(result: ClassSearchResult, query: string, dayType: DayType | '', period: number | ''): boolean {
   const normalized = query.trim().toLowerCase()
   const matchesQuery = !normalized || `${result.course_name} ${result.teacher_last_name}`.toLowerCase().includes(normalized)
@@ -131,10 +79,13 @@ function classResultFromEnrollment(enrollment: ScheduleEnrollment): ClassSearchR
   return { ...enrollment.class, default_academic_term: enrollment.academic_term, score: 1000 }
 }
 
-function compareBySchedulePosition(left: ClassSearchResult, right: ClassSearchResult): number {
-  const firstSlot = (result: ClassSearchResult) => [...result.meeting_slots].sort(
+function firstSlot(result: ClassSearchResult): MeetingSlot | undefined {
+  return [...result.meeting_slots].sort(
     (leftSlot, rightSlot) => leftSlot.period_number - rightSlot.period_number || leftSlot.day_type.localeCompare(rightSlot.day_type),
   )[0]
+}
+
+function compareBySchedulePosition(left: ClassSearchResult, right: ClassSearchResult): number {
   const leftSlot = firstSlot(left)
   const rightSlot = firstSlot(right)
   return (leftSlot?.period_number ?? Number.MAX_SAFE_INTEGER) - (rightSlot?.period_number ?? Number.MAX_SAFE_INTEGER)
@@ -149,62 +100,250 @@ function compareViewsBySchedulePosition(left: ClassMeetingView, right: ClassMeet
 function classTermLabel(term: ClassSearchResult['default_academic_term']): string {
   if (term === 'semester_1') return 'Semester 1'
   if (term === 'semester_2') return 'Semester 2'
-  return 'Full Year'
+  return 'Full year'
 }
 
-function ClassMeetingSwitch({ selected, views }: { selected: ClassMeetingView; views: ClassMeetingView[] }) {
-  const dayViews = views.filter((view): view is ClassMeetingView & { meeting: MeetingSlot } => Boolean(view.meeting))
-  if (dayViews.length < 2) return null
-  return <nav className="class-meeting-switch" aria-label="Class meeting">
-    {dayViews.map((view) => <Link
-      aria-current={view.key === selected.key ? 'page' : undefined}
-      className={view.key === selected.key ? 'is-active' : ''}
-      key={view.key}
-      to={classViewPath(view)}
-    >{view.meeting.day_type} Day</Link>)}
-  </nav>
+function isPlaceholderTeacher(teacher: string): boolean {
+  return teacher.trim().toUpperCase() === 'N/A'
 }
 
-interface ClassFilterControlsProps {
+function uniquePeriods(result: ClassSearchResult): number[] {
+  return [...new Set(result.meeting_slots.map((slot) => slot.period_number))].sort((left, right) => left - right)
+}
+
+/** Short facts that tell two sections of the same course apart in a list row. */
+function rowFacts(result: ClassSearchResult): string[] {
+  const facts: string[] = []
+  const days = [...new Set(result.meeting_slots.map((slot) => slot.day_type))]
+  if (days.length === 1) facts.push(`${days[0]} day`)
+  const periods = uniquePeriods(result)
+  if (periods.length > 1) facts.push(periodsLabel(periods))
+  if (result.default_academic_term !== 'full_year') facts.push(classTermLabel(result.default_academic_term))
+  return facts
+}
+
+export function ClassesPage() {
+  const { user } = useAuth()
+  useNoIndex(!user)
+  return user ? <AuthenticatedClassesPage /> : <GuestClassesPage />
+}
+
+/* ---------- Layout: list and detail side by side, or one at a time on narrow screens ---------- */
+
+interface ClassesLayoutProps {
+  header: ReactNode
+  master: ReactNode
+  detail: ReactNode
+  selectedKey: string | undefined
+  headingRef: RefObject<HTMLHeadingElement | null>
+  listScroll: RefObject<number | null>
+}
+
+function ClassesLayout({ header, master, detail, selectedKey, headingRef, listScroll }: ClassesLayoutProps) {
+  const masterRef = useRef<HTMLDivElement | null>(null)
+  const previousKey = useRef(selectedKey)
+  const openedNarrow = useRef(false)
+
+  // On narrow screens the list and the class replace each other, so a new
+  // class starts at the top with focus on its name, and going back returns
+  // to the spot in the list the student left, with focus on that class's row.
+  useLayoutEffect(() => {
+    const leftKey = previousKey.current
+    if (leftKey === selectedKey) return
+    previousKey.current = selectedKey
+    const master = masterRef.current
+    if (!master) return
+    const listHidden = window.getComputedStyle(master).display === 'none'
+    if (selectedKey && listHidden) {
+      openedNarrow.current = true
+      window.scrollTo({ top: 0 })
+      headingRef.current?.focus({ preventScroll: true })
+      return
+    }
+    if (selectedKey) return
+    // The class (and the back link that may have had focus) just went away.
+    const focusLost = !document.activeElement || document.activeElement === document.body
+    if (!openedNarrow.current && !focusLost) return
+    const restoreScroll = openedNarrow.current && listScroll.current !== null
+    if (restoreScroll) window.scrollTo({ top: listScroll.current ?? 0 })
+    openedNarrow.current = false
+    listScroll.current = null
+    const row = [...master.querySelectorAll<HTMLElement>('[data-view-key]')].find((element) => element.dataset.viewKey === leftKey)
+    const fallback = document.getElementById('main-content')
+    ;(row ?? fallback)?.focus({ preventScroll: restoreScroll || !row })
+  }, [headingRef, listScroll, selectedKey])
+
+  return (
+    <div className={selectedKey ? 'page classes-page has-selection' : 'page classes-page'}>
+      {header}
+      <div className="classes-layout">
+        <div className="classes-master" ref={masterRef}>{master}</div>
+        <section className="classes-detail" aria-label="Class details">{detail}</section>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Guest ---------- */
+
+function GuestClassesPage() {
+  const { classId } = useParams()
+  const [searchParams] = useSearchParams()
+  const { openAccountPrompt } = useGuestAccountPrompt()
+  const [query, setQuery] = useState('')
+  const [dayType, setDayType] = useState<DayType | ''>('')
+  const [period, setPeriod] = useState<number | ''>('')
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+  const listScroll = useRef<number | null>(null)
+  const { error, loading, results } = useClassSearch({
+    query,
+    dayType: dayType || undefined,
+    period: period || undefined,
+    limit: 1000,
+  }, { search: searchGuestClasses })
+  const classViews = useMemo(() => expandSearchResults(results)
+    .filter((view) => matchesFilters(view.result, query, dayType, period)), [dayType, period, query, results])
+  const selected = findSelectedView(classViews, classId, searchParams.get('day'), searchParams.get('period'))
+  const rememberScroll = () => { listScroll.current = window.scrollY }
+
+  return (
+    <ClassesLayout
+      selectedKey={selected?.key}
+      headingRef={headingRef}
+      listScroll={listScroll}
+      header={<PageHeader title="Classes" description="Browse every class and when it meets. Create an account to see who’s in each one." />}
+      master={<>
+        <ClassFilters dayType={dayType} period={period} query={query} setDayType={setDayType} setPeriod={setPeriod} setQuery={setQuery} />
+        {error ? <p className="form-error" role="alert"><AlertCircle aria-hidden="true" />{error}</p> : null}
+        <section className="section classes-group" aria-labelledby="classes-catalog-title">
+          <div className="section-header">
+            <h2 id="classes-catalog-title">All classes</h2>
+            {!loading ? <span className="section-count">{courseCount(classViews)}</span> : null}
+          </div>
+          {loading && classViews.length === 0 ? <p className="classes-searching">Searching…</p> : <GroupedClassList activeViewKey={selected?.key} views={classViews} onNavigate={rememberScroll} />}
+          {!loading && !error && classViews.length === 0 ? <p className="empty-inline">No classes match. Try another course or teacher, or clear the filters.</p> : null}
+        </section>
+      </>}
+      detail={selected ? <ClassDetail
+        selected={selected}
+        meetingViews={classViews.filter((view) => view.result.id === selected.result.id && view.meeting?.period_number === selected.meeting?.period_number)}
+        headingRef={headingRef}
+      >
+        <section className="classes-roster" aria-labelledby="classes-roster-title">
+          <h3 id="classes-roster-title">Students in this class</h3>
+          <div className="classes-locked">
+            <LockKeyhole aria-hidden="true" />
+            <p>Create an account and add your schedule to see who is in this class. Student privacy settings still apply.</p>
+            <button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>
+          </div>
+        </section>
+      </ClassDetail> : <EmptyState icon={BookOpen} title="Pick a class" centered>Choose a class to see when it meets. Create an account to see who’s in it.</EmptyState>}
+    />
+  )
+}
+
+function courseCount(views: ClassMeetingView[]): string {
+  const count = new Set(views.map((view) => view.result.course_name.trim().replace(/\s+/g, ' ').toLocaleLowerCase())).size
+  return `${count} ${count === 1 ? 'course' : 'courses'}`
+}
+
+/* ---------- Filters ---------- */
+
+interface ClassFiltersProps {
   query: string
   dayType: DayType | ''
   period: number | ''
-  filtersOpen: boolean
   setQuery: (value: string) => void
   setDayType: (value: DayType | '') => void
   setPeriod: (value: number | '') => void
-  setFiltersOpen: (value: boolean) => void
 }
 
-function ClassFilterControls({ query, dayType, period, filtersOpen, setQuery, setDayType, setPeriod, setFiltersOpen }: ClassFilterControlsProps) {
-  const activeFilterCount = Number(Boolean(dayType)) + Number(Boolean(period))
-  return <>
-    <div className="search-toolbar class-page-search-toolbar">
-      <label className="search-input"><Search aria-hidden="true" /><span className="sr-only">Search classes</span><input placeholder="Course or teacher last name" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <button aria-controls="class-mobile-filter-panel" aria-expanded={filtersOpen} className="mobile-filter-toggle" type="button" onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={18} aria-hidden="true" /> Filters{activeFilterCount > 0 ? <span>{activeFilterCount}</span> : null}</button>
-      <div className={filtersOpen ? 'mobile-filter-panel is-open' : 'mobile-filter-panel'} id="class-mobile-filter-panel">
-        <label><span className="sr-only">Day</span><select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}><option value="">Any day</option><option value="A">A Day</option><option value="B">B Day</option></select></label>
-        <label><span className="sr-only">Period</span><select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}><option value="">Any period</option>{PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}</select></label>
+function ClassFilters({ query, dayType, period, setQuery, setDayType, setPeriod }: ClassFiltersProps) {
+  const filtered = Boolean(dayType) || Boolean(period)
+  return (
+    <div className="classes-filters" role="search" aria-label="Find a class">
+      <label className="search-input">
+        <Search aria-hidden="true" />
+        <span className="sr-only">Search classes</span>
+        <input type="search" placeholder="Course or teacher" value={query} onChange={(event) => setQuery(event.target.value)} />
+      </label>
+      <div className="classes-filter-row">
+        <label className="classes-select">
+          <span className="sr-only">Day</span>
+          <select value={dayType} onChange={(event) => setDayType(event.target.value as DayType | '')}>
+            <option value="">Any day</option>
+            <option value="A">A day</option>
+            <option value="B">B day</option>
+          </select>
+        </label>
+        <label className="classes-select">
+          <span className="sr-only">Period</span>
+          <select value={period} onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : '')}>
+            <option value="">Any period</option>
+            {PERIOD_NUMBERS.map((value) => <option value={value} key={value}>Period {value}</option>)}
+          </select>
+        </label>
+        {filtered ? <button className="text-button classes-clear" type="button" onClick={() => { setDayType(''); setPeriod('') }}>Clear filters</button> : null}
       </div>
     </div>
-    {activeFilterCount > 0 ? <div className="mobile-active-filters" aria-label="Active class filters">
-      {dayType ? <button type="button" onClick={() => setDayType('')}>{dayType} Day <X size={14} aria-hidden="true" /></button> : null}
-      {period ? <button type="button" onClick={() => setPeriod('')}>Period {period} <X size={14} aria-hidden="true" /></button> : null}
-      <button className="clear-filter-button" type="button" onClick={() => { setDayType(''); setPeriod('') }}>Clear filters</button>
-    </div> : null}
-  </>
+  )
 }
 
-function ClassListRow({ view, active, grouped = false }: { view: ClassMeetingView; active: boolean; grouped?: boolean }) {
-  const { result } = view
-  return <Link className={active ? 'class-list-row is-active' : 'class-list-row'} to={classViewPath(view)}>
-    <div className="class-list-copy"><strong>{grouped ? result.teacher_last_name : result.course_name}</strong><span>{grouped ? 'Teacher' : result.teacher_last_name}</span></div>
-    <div className="class-list-meta"><span>{compactMeetingSlotLabels(result.meeting_slots).join(' · ')}</span><small>{classTermLabel(result.default_academic_term)}</small></div>
-    <ChevronRight className="class-list-chevron" size={19} aria-hidden="true" />
-  </Link>
+/* ---------- Lists ---------- */
+
+/** Second line of a class row: the teacher, then chips for anything unusual about when it meets. */
+function ItemMeta({ teacher, facts }: { teacher?: string | null; facts: string[] }) {
+  if (!teacher && facts.length === 0) return null
+  return (
+    <span className="classes-item-meta">
+      {teacher ? <span className="classes-item-teacher">{teacher}</span> : null}
+      {facts.map((fact) => <span className="chip" key={fact}>{fact}</span>)}
+    </span>
+  )
 }
 
-function GroupedClassList({ views, activeViewKey }: { views: ClassMeetingView[]; activeViewKey?: string }) {
+function OwnClassList({ views, activeViewKey, onNavigate }: { views: ClassMeetingView[]; activeViewKey?: string; onNavigate: () => void }) {
+  const groups = useMemo(() => {
+    const byPeriod: Array<{ period: number; views: ClassMeetingView[] }> = []
+    views.forEach((view) => {
+      const period = firstSlot(view.result)?.period_number ?? 0
+      const last = byPeriod[byPeriod.length - 1]
+      if (last && last.period === period) last.views.push(view)
+      else byPeriod.push({ period, views: [view] })
+    })
+    return byPeriod
+  }, [views])
+
+  return (
+    <ol className="classes-periods">
+      {groups.map((group) => (
+        <li className="classes-period" key={group.period}>
+          <span className="period-numeral"><span className="sr-only">Period </span>{group.period || '–'}</span>
+          <ul className="classes-period-items">
+            {group.views.map((view) => {
+              const { result } = view
+              const active = activeViewKey === view.key
+              const teacher = isPlaceholderTeacher(result.teacher_last_name) ? null : result.teacher_last_name
+              return (
+                <li key={view.key}>
+                  <Link className={active ? 'classes-item is-active' : 'classes-item'} to={classViewPath(view)} aria-current={active ? 'page' : undefined} data-view-key={view.key} onClick={onNavigate}>
+                    <span className="classes-item-text">
+                      <strong>{result.course_name}</strong>
+                      <ItemMeta teacher={teacher} facts={rowFacts(result)} />
+                    </span>
+                    <ChevronRight className="classes-item-chevron" aria-hidden="true" />
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function GroupedClassList({ views, activeViewKey, onNavigate }: { views: ClassMeetingView[]; activeViewKey?: string; onNavigate: () => void }) {
   const groups = useMemo(() => {
     const byName = new Map<string, { name: string; sections: ClassMeetingView[] }>()
     views.forEach((view) => {
@@ -214,8 +353,9 @@ function GroupedClassList({ views, activeViewKey }: { views: ClassMeetingView[];
       if (group) group.sections.push(view)
       else byName.set(key, { name: result.course_name, sections: [view] })
     })
-    return [...byName.entries()].map(([key, group]) => ({ key, ...group }))
+    return [...byName.entries()].map(([key, group]) => ({ key, ...group, sections: [...group.sections].sort(compareViewsBySchedulePosition) }))
   }, [views])
+  const idPrefix = useId()
   const activeGroup = groups.find((group) => group.sections.some((section) => section.key === activeViewKey))?.key
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(activeGroup ? [activeGroup] : []))
 
@@ -224,32 +364,182 @@ function GroupedClassList({ views, activeViewKey }: { views: ClassMeetingView[];
     setExpanded((current) => current.has(activeGroup) ? current : new Set(current).add(activeGroup))
   }, [activeGroup])
 
-  return <>
-    {groups.map((group) => {
-      const isExpanded = expanded.has(group.key)
-      const sectionLabel = `${group.sections.length} ${group.sections.length === 1 ? 'period' : 'periods'}`
-      return <section className="course-class-group" key={group.key}>
-        <button
-          aria-expanded={isExpanded}
-          className="course-class-group-toggle"
-          type="button"
-          onClick={() => setExpanded((current) => {
-            const next = new Set(current)
-            if (next.has(group.key)) next.delete(group.key)
-            else next.add(group.key)
-            return next
-          })}
-        >
-          <span><strong>{group.name}</strong><small>{sectionLabel}</small></span>
-          <ChevronDown className={isExpanded ? 'is-expanded' : ''} size={20} aria-hidden="true" />
-        </button>
-        {isExpanded ? <div className="course-class-group-sections">
-          {group.sections.map((view) => <ClassListRow active={activeViewKey === view.key} grouped key={view.key} view={view} />)}
-        </div> : null}
-      </section>
-    })}
-  </>
+  if (groups.length === 0) return null
+
+  return (
+    <ul className="classes-courses">
+      {groups.map((group, index) => {
+        const isExpanded = expanded.has(group.key)
+        const sectionLabel = `${group.sections.length} ${group.sections.length === 1 ? 'period' : 'periods'}`
+        const panelId = `${idPrefix}-course-${index}`
+        return (
+          <li className={isExpanded ? 'classes-course is-expanded' : 'classes-course'} key={group.key}>
+            <button
+              aria-controls={isExpanded ? panelId : undefined}
+              aria-expanded={isExpanded}
+              className="classes-course-toggle"
+              type="button"
+              onClick={() => setExpanded((current) => {
+                const next = new Set(current)
+                if (next.has(group.key)) next.delete(group.key)
+                else next.add(group.key)
+                return next
+              })}
+            >
+              <span className="classes-course-text"><strong>{group.name}</strong><small>{sectionLabel}</small></span>
+              <ChevronDown aria-hidden="true" />
+            </button>
+            {isExpanded ? (
+              <ul className="classes-sections" id={panelId}>
+                {group.sections.map((view) => {
+                  const { result } = view
+                  const active = activeViewKey === view.key
+                  const periods = uniquePeriods(result)
+                  const label = isPlaceholderTeacher(result.teacher_last_name) ? periodsLabel(periods) : result.teacher_last_name
+                  return (
+                    <li key={view.key}>
+                      <Link className={active ? 'classes-item is-section is-active' : 'classes-item is-section'} to={classViewPath(view)} aria-current={active ? 'page' : undefined} data-view-key={view.key} onClick={onNavigate}>
+                        <span className="period-numeral is-muted"><span className="sr-only">Period </span>{periods[0] ?? '–'}</span>
+                        <span className="classes-item-text">
+                          <strong>{label}</strong>
+                          <ItemMeta facts={rowFacts(result)} />
+                        </span>
+                        <ChevronRight className="classes-item-chevron" aria-hidden="true" />
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
+
+/* ---------- Detail ---------- */
+
+function ClassMeetingSwitch({ selected, views }: { selected: ClassMeetingView; views: ClassMeetingView[] }) {
+  const dayViews = views.filter((view): view is ClassMeetingView & { meeting: MeetingSlot } => Boolean(view.meeting))
+  if (dayViews.length < 2) return null
+  return (
+    <nav className="classes-meeting-switch" aria-label="Class meeting">
+      {dayViews.map((view) => (
+        <Link
+          aria-current={view.key === selected.key ? 'page' : undefined}
+          className={view.key === selected.key ? 'is-active' : undefined}
+          key={view.key}
+          to={classViewPath(view)}
+        >{view.meeting.day_type} day</Link>
+      ))}
+    </nav>
+  )
+}
+
+interface ClassDetailProps {
+  selected: ClassMeetingView
+  meetingViews: ClassMeetingView[]
+  headingRef: RefObject<HTMLHeadingElement | null>
+  owned?: boolean
+  reportLink?: ReactNode
+  children: ReactNode
+}
+
+function ClassDetail({ selected, meetingViews, headingRef, owned = false, reportLink, children }: ClassDetailProps) {
+  const { result } = selected
+  const teacher = isPlaceholderTeacher(result.teacher_last_name) ? null : result.teacher_last_name
+  return (
+    <article className="classes-detail-body" aria-labelledby="classes-detail-title">
+      <div className="classes-detail-bar">
+        <Link className="back-link classes-detail-back" to="/classes"><ChevronLeft aria-hidden="true" />All classes</Link>
+      </div>
+      <header className="classes-detail-header">
+        <h2 id="classes-detail-title" ref={headingRef} tabIndex={-1}>{result.course_name}</h2>
+        {teacher || owned ? (
+          <div className="classes-detail-meta">
+            {teacher ? <span>{teacher}</span> : null}
+            {owned ? <span className="badge badge-gold">On your schedule</span> : null}
+          </div>
+        ) : null}
+      </header>
+      <ClassMeetingSwitch selected={selected} views={meetingViews} />
+      <dl className="facts classes-facts">
+        <dt>Meets</dt>
+        <dd><span className="chip-list">{meetingSlotFacts(result.meeting_slots).map((fact) => <span className="chip" key={fact}>{fact}</span>)}</span></dd>
+        <dt>Term</dt>
+        <dd>{classTermLabel(result.default_academic_term)}</dd>
+      </dl>
+      {owned ? <Link className="inline-link classes-manage" to="/schedule">Manage this class on your schedule</Link> : null}
+      {children}
+      {reportLink}
+    </article>
+  )
+}
+
+interface RosterProps {
+  members: ClassMemberResult[]
+  loading: boolean
+  error: string | null
+  onRetry: () => void
+}
+
+function ClassRoster({ members, loading, error, onRetry }: RosterProps) {
+  return (
+    <section className="classes-roster" aria-labelledby="classes-roster-title">
+      <div className="section-header">
+        <h3 id="classes-roster-title">Students in this class</h3>
+        {!loading && !error ? <span className="section-count">{members.length}</span> : null}
+      </div>
+      {loading ? (
+        <div className="classes-roster-loading" role="status">
+          <span className="sr-only">Loading students…</span>
+          <span className="skeleton" aria-hidden="true" />
+          <span className="skeleton" aria-hidden="true" />
+          <span className="skeleton" aria-hidden="true" />
+        </div>
+      ) : error ? (
+        <div className="notice notice-danger" role="alert">
+          <AlertCircle aria-hidden="true" />
+          <div><strong>Students didn’t load.</strong> {error}</div>
+          <button className="button button-secondary button-sm" type="button" onClick={onRetry}><RefreshCw aria-hidden="true" />Try again</button>
+        </div>
+      ) : members.length === 0 ? (
+        <p className="empty-inline">No other students are listed for this class yet.</p>
+      ) : (
+        <ul className="list classes-members">
+          {members.map((member) => {
+            const identity = <>
+              <ProfileAvatar userId={member.student_id} fullName={member.full_name} />
+              <span className="classes-member-text"><strong>{member.full_name}</strong><span>Grade {member.grade}</span></span>
+            </>
+            return (
+              <li key={member.student_id} style={{ viewTransitionName: `student-${member.student_id}` }}>
+                {member.can_view_schedule
+                  ? <Link
+                    className="classes-member is-link"
+                    viewTransition
+                    to={`/students/${member.student_id}`}
+                    state={{ reportedUser: { student_id: member.student_id, full_name: member.full_name, grade: member.grade } }}
+                  >
+                    {identity}
+                    <span className="classes-member-action">View schedule<ChevronRight aria-hidden="true" /></span>
+                  </Link>
+                  : <div className="classes-member">
+                    {identity}
+                    <span className="classes-member-private"><LockKeyhole aria-hidden="true" />Schedule hidden</span>
+                  </div>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {!loading && !error ? <p className="classes-roster-note">Students only appear here when their privacy settings allow it.</p> : null}
+    </section>
+  )
+}
+
+/* ---------- Signed in ---------- */
 
 function AuthenticatedClassesPage() {
   const { classId } = useParams()
@@ -259,10 +549,12 @@ function AuthenticatedClassesPage() {
   const [query, setQuery] = useState('')
   const [dayType, setDayType] = useState<DayType | ''>('')
   const [period, setPeriod] = useState<number | ''>('')
-  const [filtersOpen, setFiltersOpen] = useState(false)
   const [members, setMembers] = useState<ClassMemberResult[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [memberError, setMemberError] = useState<string | null>(null)
+  const [rosterAttempt, setRosterAttempt] = useState(0)
+  const headingRef = useRef<HTMLHeadingElement | null>(null)
+  const listScroll = useRef<number | null>(null)
   const executeSearch = useMemo<ClassSearchExecutor>(() => isDemo
     ? async (input) => demoClasses.filter((item) => matchesFilters(item, input.query, input.dayType ?? '', input.period ?? ''))
     : searchClasses, [isDemo])
@@ -298,6 +590,7 @@ function AuthenticatedClassesPage() {
   const selectedClassId = selected?.result.id
   const selectedMeetingDay = selected?.meeting?.day_type
   const selectedMeetingPeriod = selected?.meeting?.period_number
+  const rememberScroll = () => { listScroll.current = window.scrollY }
 
   useEffect(() => {
     let active = true
@@ -321,43 +614,77 @@ function AuthenticatedClassesPage() {
       .catch((caught: unknown) => { if (active) setMemberError(caught instanceof Error ? caught.message : 'Could not load class members.') })
       .finally(() => { if (active) setMembersLoading(false) })
     return () => { active = false }
-  }, [hasSchedule, isDemo, selectedClassId, selectedMeetingDay, selectedMeetingPeriod])
+  }, [hasSchedule, isDemo, rosterAttempt, selectedClassId, selectedMeetingDay, selectedMeetingPeriod])
 
   if (schedule.loading) return <LoadingScreen label="Loading your classes…" />
 
+  const reportState = selected ? { reportedClass: selected.result } : undefined
+
   return (
-    <div className="classes-page">
-      <header className="page-heading"><div><h1>View Classes</h1><p>See who's in your classes and browse other classes</p></div><Link className="button button-secondary desktop-report-action" to="/report" state={selected ? { reportedClass: selected.result } : undefined}><Flag size={17} /> {selected ? 'Report this class' : 'Report class info'}</Link></header>
-      <ClassFilterControls dayType={dayType} filtersOpen={filtersOpen} period={period} query={query} setDayType={setDayType} setFiltersOpen={setFiltersOpen} setPeriod={setPeriod} setQuery={setQuery} />
-      <Link className="mobile-report-action" to="/report" state={selected ? { reportedClass: selected.result } : undefined}><Flag size={15} aria-hidden="true" /> {selected ? 'Report this class' : 'Report class info'}</Link>
-      {searchError ? <p className="form-error" role="alert">{searchError}</p> : null}
-      {memberError ? <p className="form-error" role="alert">{memberError}</p> : null}
-      <div className="class-browser">
-        <section className="class-list-panel organized-class-list">
-          {hasSchedule ? <section className="your-classes-section" aria-labelledby="your-classes-heading"><div><h2 id="your-classes-heading">Your Classes</h2><span>{ownViews.length} classes</span></div><p></p><div className="class-list">{filteredOwnViews.map((view) => <ClassListRow active={selected?.key === view.key} key={view.key} view={view} />)}{filteredOwnViews.length === 0 ? <p className="empty-inline">None of your classes match these filters.</p> : null}</div></section> : <section className="your-classes-empty"><ImagePrompt /></section>}
-          <section className="other-classes-section" aria-labelledby="other-classes-heading"><div><h2 id="other-classes-heading">Other Classes</h2><span>Classes that aren't on your schedule</span></div><div className="class-list grouped-class-list" aria-live="polite">{loading ? <p className="muted">Searching…</p> : <GroupedClassList activeViewKey={selected?.key} views={otherViews} />}{!loading && !searchError && otherViews.length === 0 ? <p className="empty-inline">No other matching classes.</p> : null}</div></section>
+    <ClassesLayout
+      selectedKey={selected?.key}
+      headingRef={headingRef}
+      listScroll={listScroll}
+      header={<PageHeader
+        title="Classes"
+        description="See who’s in your classes and browse every other class."
+        actions={<Link className="button button-secondary" to="/report" state={reportState}><Flag aria-hidden="true" />{selected ? 'Report this class' : 'Report class info'}</Link>}
+      />}
+      master={<>
+        <ClassFilters dayType={dayType} period={period} query={query} setDayType={setDayType} setPeriod={setPeriod} setQuery={setQuery} />
+        {searchError ? <p className="form-error" role="alert"><AlertCircle aria-hidden="true" />{searchError}</p> : null}
+        {hasSchedule ? (
+          <section className="section classes-group" aria-labelledby="classes-own-title">
+            <div className="section-header">
+              <h2 id="classes-own-title">Your classes</h2>
+              <span className="section-count">{ownViews.length} {ownViews.length === 1 ? 'class' : 'classes'}</span>
+            </div>
+            {filteredOwnViews.length > 0
+              ? <OwnClassList views={filteredOwnViews} activeViewKey={selected?.key} onNavigate={rememberScroll} />
+              : <p className="empty-inline">None of your classes match these filters.</p>}
+          </section>
+        ) : (
+          <div className="classes-group classes-own-empty">
+            <EmptyState
+              icon={ImageUp}
+              title="Your classes show up here"
+              headingLevel={2}
+              action={<Link className="button button-primary" to="/schedule?import=1"><ImageUp aria-hidden="true" />Upload schedule</Link>}
+            >You have not joined any classes yet. Upload your schedule to find and join your classes.</EmptyState>
+          </div>
+        )}
+        <section className="section classes-group" aria-labelledby="classes-other-title">
+          <div className="section-header">
+            <div>
+              <h2 id="classes-other-title">Other classes</h2>
+              <p>Classes that aren’t on your schedule</p>
+            </div>
+            {!loading ? <span className="section-count">{courseCount(otherViews)}</span> : null}
+          </div>
+          {loading && otherViews.length === 0 ? <p className="classes-searching">Searching…</p> : <GroupedClassList activeViewKey={selected?.key} views={otherViews} onNavigate={rememberScroll} />}
+          {!loading && !searchError && otherViews.length === 0
+            ? <p className="empty-inline">{query.trim() || dayType || period ? 'No other classes match. Try another course or teacher, or clear the filters.' : 'Every class in the catalog is already on your schedule.'}</p>
+            : null}
         </section>
-        {selected ? <Link className="mobile-class-detail-backdrop" to="/classes" aria-label="Close class details" /> : null}
-        <section className={selected ? 'class-detail-panel is-open' : 'class-detail-panel'}>
-          {selected ? <>
-            <div className="sheet-handle" aria-hidden="true" />
-            <Link className="mobile-class-detail-close icon-button" to="/classes" aria-label="Close class details"><X aria-hidden="true" /></Link>
-            <div className="class-detail-heading"><div><h2>{selected.result.course_name}</h2><p>{selected.result.teacher_last_name}</p></div>{hasMultiplePeriodsOnAnyDay(selected.result.meeting_slots) ? <span className="status-tag">Multiple periods</span> : null}</div>
-            <ClassMeetingSwitch selected={selected} views={meetingSwitchViews} />
-            <dl className="class-facts"><div><dt><CalendarDays size={18} /> Meeting slots</dt><dd>{formatMeetingSlotSummary(selected.result.meeting_slots)}</dd></div><div><dt>Default term</dt><dd>{classTermLabel(selected.result.default_academic_term)}</dd></div></dl>
-            {selectedIsOwned ? <Link className="manage-class-link" to="/schedule">Manage this class on your schedule</Link> : null}
-            {hasSchedule ? <><div className="member-heading"><h3><Users size={19} /> Students in this class</h3><span>{membersLoading ? '…' : members.length}</span></div>{membersLoading ? <p className="muted" role="status">Loading students…</p> : <><div className="member-list">{members.map((member) => <div key={member.student_id} style={{ viewTransitionName: `student-${member.student_id}` }}><ProfileAvatar userId={member.student_id} fullName={member.full_name} /><div><strong>{member.full_name}</strong><small>Grade {member.grade}</small></div>{member.can_view_schedule ? <Link viewTransition to={`/students/${member.student_id}`}>View schedule</Link> : <span className="private-label">Schedule hidden</span>}</div>)}</div>{members.length === 0 && !memberError ? <p className="empty-inline">No students in this class are visible under their privacy settings.</p> : null}</>}</> : <section className="class-roster-locked"><LockKeyhole aria-hidden="true" /><p>Upload your schedule to see which classmates share your courses.</p><Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link></section>}
-          </> : <div className="empty-state compact"><CalendarDays size={36} /><h2>Select a class</h2><p>Click on a class to see who's in it. Students with schedules set to private or classmates will not be shown. </p></div>}
-        </section>
-      </div>
-    </div>
+      </>}
+      detail={selected ? <ClassDetail
+        selected={selected}
+        meetingViews={meetingSwitchViews}
+        headingRef={headingRef}
+        owned={selectedIsOwned}
+        reportLink={<Link className="text-button classes-detail-report" to="/report" state={reportState}><Flag aria-hidden="true" />Report this class</Link>}
+      >
+        {hasSchedule
+          ? <ClassRoster members={members} loading={membersLoading} error={memberError} onRetry={() => setRosterAttempt((value) => value + 1)} />
+          : <section className="classes-roster" aria-labelledby="classes-roster-title">
+            <h3 id="classes-roster-title">Students in this class</h3>
+            <div className="classes-locked">
+              <LockKeyhole aria-hidden="true" />
+              <p>Upload your schedule to see which classmates share your courses.</p>
+              <Link className="button button-primary" to="/schedule?import=1"><ImageUp aria-hidden="true" />Upload schedule</Link>
+            </div>
+          </section>}
+      </ClassDetail> : <EmptyState icon={Users} title="Pick a class" centered>Choose a class to see who’s in it. Students only appear when their privacy settings allow it.</EmptyState>}
+    />
   )
-}
-
-function ImagePrompt() {
-  return <><ImagePlusIcon /><div><h2>Your Classes</h2><p>You have not joined any classes yet. Upload your schedule to find and join your classes.</p></div><Link className="button button-primary" to="/schedule?import=1">Upload Schedule</Link></>
-}
-
-function ImagePlusIcon() {
-  return <CalendarDays aria-hidden="true" />
 }

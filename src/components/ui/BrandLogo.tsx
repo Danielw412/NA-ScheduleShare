@@ -1,10 +1,11 @@
 import { brand } from '../../config/brand'
+import { BrandMark } from './BrandMark'
 
-export function BrandLogo({ compact = false, logoPath = brand.logoPath }: { compact?: boolean; logoPath?: string }) {
+export function BrandLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="brand-logo" aria-label={brand.siteName}>
-      <img src={`${import.meta.env.BASE_URL}${logoPath}`} alt="NA Computer and AI Club logo" />
-      {compact ? null : <span>{brand.siteName}</span>}
+    <span className="brand-logo" aria-label={brand.siteName} role="img">
+      <BrandMark />
+      {compact ? null : <span className="brand-wordmark" aria-hidden="true"><span>NA</span> ScheduleShare</span>}
     </span>
   )
 }

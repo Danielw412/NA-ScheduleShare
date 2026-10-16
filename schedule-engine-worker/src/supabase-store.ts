@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { WorkerIssueEvent } from './observability.js'
 import type { ClaimedScheduleEngineJob, NotificationDelivery, PredictionOutcome, ScheduleEngineInput, ScheduleEngineStore, WorkerJobSummary } from './types.js'
 
 interface RpcResponse {
@@ -37,6 +38,11 @@ export class SupabaseScheduleEngineStore implements ScheduleEngineStore {
     const { data, error } = await call(name, args)
     if (error) throw new Error(error.message)
     return data
+  }
+
+  /** Sends a failure to the first-party issue store (service role only). */
+  async reportIssue(event: WorkerIssueEvent): Promise<void> {
+    await this.rpc('service_report_app_issue', { p_event: event, p_source: 'schedule_engine' })
   }
 
   async claimNext(workerId: string): Promise<ClaimedScheduleEngineJob | null> {

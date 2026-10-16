@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BellScheduleBlock, ScheduleEnrollment, SchoolDayContext } from './domain'
-import { easternLocalTime, formatCountdown, resolveNextClassTiming } from './bellSchedule'
+import { blockMark, blockTitle, coursesAtBlock, easternLocalTime, formatCountdown, formatEasternDayLabel, formatEasternTimeRange, resolveBellNow, resolveNextClassTiming } from './bellSchedule'
 
 function enrollment(courseName: string, day: 'A' | 'B', period: number, term: ScheduleEnrollment['academic_term'] = 'full_year'): ScheduleEnrollment {
   return {
@@ -156,5 +156,93 @@ describe('resolveNextClassTiming', () => {
   it('constructs Eastern school times correctly on both sides of daylight saving time', () => {
     expect(easternLocalTime('2026-10-30', '07:28').toISOString()).toBe('2026-10-30T11:28:00.000Z')
     expect(easternLocalTime('2026-11-06', '07:28').toISOString()).toBe('2026-11-06T12:28:00.000Z')
+  })
+})
+
+describe('resolveBellNow', () => {
+  const regular = [
+    block(1, 1, '07:28', '08:08'),
+    block(2, null, '08:08', '08:21', 'Homeroom'),
+    block(3, 2, '08:25', '09:05'),
+  ]
+
+  it('reports the block in progress with its end time and progress', () => {
+    const bell = resolveBellNow(easternLocalTime('2026-08-24', '07:48'), [day('2026-08-24', regular)])
+    expect(bell.state).toBe('in_block')
+    expect(bell.isToday).toBe(true)
+    expect(bell.current?.period_number).toBe(1)
+    expect(bell.next?.label).toBe('Homeroom')
+    expect(bell.targetAt).toEqual(easternLocalTime('2026-08-24', '08:08'))
+    expect(bell.remainingMs).toBe(20 * 60_000)
+    expect(bell.progressPercent).toBe(50)
+  })
+
+  it('treats the gap between blocks as passing time toward the next bell', () => {
+    const bell = resolveBellNow(easternLocalTime('2026-08-24', '08:23'), [day('2026-08-24', regular)])
+    expect(bell.state).toBe('passing')
+    expect(bell.current).toBeNull()
+    expect(bell.next?.period_number).toBe(2)
+    expect(bell.remainingMs).toBe(2 * 60_000)
+    expect(bell.progressPercent).toBe(50)
+  })
+
+  it('counts toward the first bell before school without a progress bar', () => {
+    const bell = resolveBellNow(easternLocalTime('2026-08-24', '07:00'), [day('2026-08-24', regular)])
+    expect(bell.state).toBe('before_school')
+    expect(bell.next?.period_number).toBe(1)
+    expect(bell.progressPercent).toBeNull()
+  })
+
+  it('moves to the next school day after dismissal and on closed days', () => {
+    const days = [
+      day('2026-08-24', regular),
+      day('2026-08-25', [], { no_school: true, schedule: null, day_type: null }),
+      day('2026-08-26', regular, { day_type: 'B' }),
+    ]
+    const afterSchool = resolveBellNow(easternLocalTime('2026-08-24', '15:00'), days)
+    expect(afterSchool.state).toBe('after_school')
+    expect(afterSchool.isToday).toBe(false)
+    expect(afterSchool.day?.date).toBe('2026-08-26')
+    expect(afterSchool.targetAt).toEqual(easternLocalTime('2026-08-26', '07:28'))
+
+    const closedDay = resolveBellNow(easternLocalTime('2026-08-25', '09:00'), days)
+    expect(closedDay.state).toBe('no_school')
+    expect(closedDay.day?.date).toBe('2026-08-26')
+  })
+
+  it('reports nothing when the calendar has no upcoming school days', () => {
+    expect(resolveBellNow(easternLocalTime('2026-08-24', '09:00'), []).state).toBe('none')
+    const finalDay = resolveBellNow(easternLocalTime('2026-08-24', '15:00'), [day('2026-08-24', regular)])
+    expect(finalDay.state).toBe('after_school')
+    expect(finalDay.isToday).toBe(true)
+    expect(finalDay.targetAt).toBeNull()
+  })
+
+  it('names and marks blocks for display', () => {
+    expect(blockTitle(regular[0])).toBe('Period 1')
+    expect(blockMark(regular[0])).toBe('1')
+    expect(blockTitle(regular[1])).toBe('Homeroom')
+    expect(blockMark(regular[1])).toBe('H')
+  })
+
+  it('finds the student\'s courses for a block by A/B day and semester', () => {
+    const today = day('2026-08-24', regular)
+    const courses = coursesAtBlock(today, regular[0], [
+      enrollment('AP Psychology', 'A', 1),
+      enrollment('Chemistry', 'B', 1),
+      enrollment('Spanish', 'A', 1, 'semester_2'),
+    ])
+    expect(courses.map((course) => course.class.course_name)).toEqual(['AP Psychology'])
+    expect(coursesAtBlock(today, regular[1], [enrollment('AP Psychology', 'A', 1)])).toEqual([])
+    expect(coursesAtBlock({ ...today, day_type: null }, regular[0], [enrollment('AP Psychology', 'A', 1)])).toEqual([])
+  })
+
+  it('formats Eastern time ranges and relative day labels', () => {
+    expect(formatEasternTimeRange(easternLocalTime('2026-08-24', '09:09'), easternLocalTime('2026-08-24', '09:49')).replace(/\s/g, ' ')).toBe('9:09 – 9:49 AM')
+    expect(formatEasternTimeRange(easternLocalTime('2026-08-24', '11:21'), easternLocalTime('2026-08-24', '12:01')).replace(/\s/g, ' ')).toBe('11:21 AM – 12:01 PM')
+    const now = easternLocalTime('2026-08-24', '10:00')
+    expect(formatEasternDayLabel('2026-08-24', now)).toBe('Today')
+    expect(formatEasternDayLabel('2026-08-25', now)).toBe('Tomorrow')
+    expect(formatEasternDayLabel('2026-08-27', now)).toBe('Thursday')
   })
 })

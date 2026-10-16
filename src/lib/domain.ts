@@ -349,6 +349,14 @@ export interface AdminClubPromptSettings extends ClubPromptSettings {
   updated_at: string
 }
 
+/** Administrator-selected homepage focus. */
+export type HomepageLayout = 'balanced' | 'bell_schedule'
+
+export interface AdminHomepageLayoutSettings {
+  layout: HomepageLayout
+  updated_at: string
+}
+
 export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
 
 export interface ScheduleImportModelRecord {
@@ -434,4 +442,65 @@ export interface SiteResetPreview {
   profile_pictures: number
   calendar_assignments: number
   sync_runs: number
+}
+
+/** Grouped problems from the first-party issue store (docs/observability.md). */
+export type AppIssueStatus = 'open' | 'resolved' | 'ignored'
+export type AppIssueLevel = 'debug' | 'info' | 'warning' | 'error' | 'fatal'
+export type AppIssueSource = 'web' | 'edge_function' | 'worker' | 'schedule_engine'
+
+export interface AppIssueSummary {
+  id: string
+  fingerprint: string
+  source: AppIssueSource
+  level: AppIssueLevel
+  title: string
+  culprit: string | null
+  status: AppIssueStatus
+  event_count: number
+  user_count: number
+  first_seen_at: string
+  last_seen_at: string
+  first_release: string | null
+  last_release: string | null
+  environment: string | null
+  regressed_at: string | null
+}
+
+export interface AppIssueStackFrame {
+  function?: string
+  filename?: string
+  lineno?: number
+  colno?: number
+  in_app?: boolean
+}
+
+export interface AppIssueBreadcrumb {
+  timestamp: number
+  category: string
+  message: string
+  level: string
+  data?: Record<string, unknown>
+}
+
+export interface AppIssueEvent {
+  event_id: string
+  level: AppIssueLevel
+  message: string
+  exception_type: string | null
+  user_id: string | null
+  stacktrace: AppIssueStackFrame[]
+  breadcrumbs: AppIssueBreadcrumb[]
+  tags: Record<string, string>
+  context: Record<string, unknown>
+  created_at: string
+}
+
+export interface AppIssueDetail extends AppIssueSummary {
+  events: AppIssueEvent[]
+}
+
+export interface AppIssuePage {
+  issues: AppIssueSummary[]
+  total: number
 }

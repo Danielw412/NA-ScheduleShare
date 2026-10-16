@@ -1,0 +1,622 @@
+/*
+ * Classes: a master–detail browser. Your classes (by period) and the rest of
+ * the catalog on the left, the selected class and its roster on the right.
+ * Below 680px of page width the two take turns: list, then a full-screen
+ * class with a back link.
+ */
+
+.classes-page {
+  container: classes / inline-size;
+}
+
+.classes-layout {
+  display: grid;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.classes-master {
+  display: grid;
+  align-content: start;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+/* ---------- Search and filters ---------- */
+.classes-filters {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.classes-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.classes-select {
+  flex: 1 1 128px;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.classes-clear {
+  flex: none;
+}
+
+.classes-searching {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.classes-group {
+  gap: var(--space-3);
+}
+
+/* ---------- Class rows (shared by your classes and catalog sections) ---------- */
+.classes-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) ease;
+}
+
+@media (hover: hover) {
+  .classes-item:hover {
+    background: var(--chalk);
+  }
+}
+
+.classes-item.is-active {
+  background: var(--gold-wash);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.classes-item-text {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.classes-item-text > strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.classes-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  min-width: 0;
+}
+
+.classes-item-teacher {
+  color: var(--slate);
+  font-size: var(--text-sm);
+  line-height: 1.3;
+}
+
+.classes-item-meta .chip {
+  min-height: 22px;
+  padding: 0 6px;
+}
+
+.classes-item-chevron {
+  width: 18px;
+  height: 18px;
+  color: var(--slate);
+}
+
+.classes-item.is-active .classes-item-chevron {
+  color: var(--ink);
+}
+
+/* ---------- Your classes, grouped under period numerals ---------- */
+.classes-periods {
+  display: grid;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.classes-period {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.classes-period > .period-numeral {
+  margin-top: 10px;
+}
+
+.classes-period-items {
+  display: grid;
+  list-style: none;
+}
+
+/* ---------- Other classes, grouped by course ---------- */
+.classes-courses {
+  display: grid;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.classes-course {
+  border-bottom: 1px solid var(--line);
+}
+
+.classes-course-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  transition: background-color var(--duration-fast) ease;
+}
+
+@media (hover: hover) {
+  .classes-course-toggle:hover {
+    background: var(--chalk);
+  }
+}
+
+.classes-course-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.classes-course-text strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.classes-course-text small {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.classes-course-toggle svg {
+  width: 20px;
+  height: 20px;
+  color: var(--slate);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.classes-course.is-expanded .classes-course-toggle svg {
+  transform: rotate(180deg);
+}
+
+.classes-sections {
+  display: grid;
+  padding: 0 0 var(--space-2) var(--space-3);
+  list-style: none;
+}
+
+.classes-item.is-section {
+  min-height: 52px;
+  padding-left: var(--space-2);
+}
+
+.classes-item.is-section .period-numeral {
+  width: 32px;
+  height: 32px;
+  font-size: var(--text-sm);
+}
+
+.classes-item.is-section.is-active .period-numeral {
+  background: var(--paper-raised);
+  box-shadow: inset 0 0 0 1px var(--gold);
+  color: var(--ink);
+}
+
+/* ---------- Detail ---------- */
+.classes-detail {
+  min-width: 0;
+}
+
+.classes-detail > .empty-state {
+  padding: var(--space-14) var(--space-4);
+}
+
+.classes-detail-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.classes-detail-bar {
+  display: flex;
+  margin-bottom: calc(-1 * var(--space-4));
+}
+
+.classes-detail-back {
+  min-height: 44px;
+  margin: 0 0 0 calc(-1 * var(--space-1));
+  padding-right: var(--space-2);
+}
+
+.classes-detail-header {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.classes-detail-header h2 {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.classes-detail-header h2:focus {
+  outline: none;
+}
+
+.classes-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--slate);
+}
+
+.classes-meeting-switch {
+  display: inline-flex;
+  justify-self: start;
+  padding: 3px;
+  border-radius: calc(var(--radius-control) + 2px);
+  background: var(--chalk-strong);
+}
+
+.classes-meeting-switch a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  color: var(--slate);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.classes-meeting-switch a:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 639px), (pointer: coarse) {
+  .classes-meeting-switch a {
+    min-height: 44px;
+  }
+}
+
+.classes-meeting-switch a.is-active {
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 10%, transparent), 0 0 0 1px var(--line);
+}
+
+.classes-facts {
+  align-items: center;
+}
+
+/* A 44px tap target that still sits in the layout like a line of text. */
+.classes-manage {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  margin-block: calc(-1 * var(--space-3));
+  font-size: var(--text-sm);
+}
+
+.classes-detail-report {
+  justify-self: start;
+  color: var(--slate);
+}
+
+.classes-detail-report svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Roster ---------- */
+.classes-roster {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--line);
+}
+
+.classes-roster h3 {
+  font-size: var(--text-lg);
+}
+
+.classes-roster .section-header {
+  align-items: baseline;
+}
+
+.classes-roster .empty-inline {
+  padding: var(--space-3) 0;
+}
+
+.classes-roster-loading {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.classes-roster-loading .skeleton {
+  height: 52px;
+}
+
+.classes-roster-loading .skeleton:nth-child(3) {
+  width: 82%;
+}
+
+.classes-roster-loading .skeleton:nth-child(4) {
+  width: 64%;
+}
+
+.classes-roster .notice {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.classes-roster .notice > div {
+  flex: 1 1 200px;
+}
+
+.classes-members {
+  margin-top: var(--space-1);
+}
+
+.classes-member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-3) var(--space-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.classes-member.is-link {
+  border-radius: var(--radius-control);
+  transition: background-color var(--duration-fast) ease;
+}
+
+@media (hover: hover) {
+  .classes-member.is-link:hover {
+    background: var(--chalk);
+  }
+}
+
+.classes-member-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.classes-member-text strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.classes-member-text span {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.classes-member-action,
+.classes-member-private {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.classes-member-action svg {
+  width: 18px;
+  height: 18px;
+  color: var(--slate);
+}
+
+.classes-member-private {
+  gap: 6px;
+  color: var(--slate);
+  font-weight: 500;
+}
+
+.classes-member-private svg {
+  width: 15px;
+  height: 15px;
+}
+
+.classes-roster-note {
+  color: var(--slate);
+  font-size: var(--text-xs);
+}
+
+/* Locked roster: guests, and students who haven't added a schedule yet. */
+.classes-locked {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-panel);
+  background: var(--chalk);
+}
+
+.classes-locked > svg {
+  width: 22px;
+  height: 22px;
+  color: var(--slate);
+}
+
+.classes-locked p {
+  max-width: 48ch;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.classes-own-empty .empty-state {
+  padding: var(--space-2) 0 0;
+}
+
+/* ---------- Wide: list and class side by side ---------- */
+@container classes (min-width: 680px) {
+  .classes-layout {
+    grid-template-columns: minmax(300px, 5fr) minmax(0, 7fr);
+    align-items: start;
+    gap: var(--space-8);
+  }
+
+  .classes-detail {
+    position: sticky;
+    top: calc(var(--topbar-height) + var(--safe-top) + var(--space-4));
+    max-height: calc(100dvh - var(--topbar-height) - var(--safe-top) - var(--tabbar-height) - var(--safe-bottom) - var(--space-8));
+    padding: var(--space-6);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+    background: var(--paper-raised);
+  }
+
+  .classes-detail:has(> .empty-state) {
+    border-color: transparent;
+    background: var(--chalk);
+  }
+
+  .classes-detail-bar,
+  .classes-detail-report {
+    display: none;
+  }
+}
+
+/* ---------- Narrow: one at a time ---------- */
+@container classes (max-width: 679px) {
+  .classes-page:not(.has-selection) .classes-detail,
+  .classes-page.has-selection .classes-master {
+    display: none;
+  }
+
+  /* The page title stays in the outline while the class takes the screen. */
+  .classes-page.has-selection > .page-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  /* Nothing focusable may hide inside the visually hidden header. */
+  .classes-page.has-selection > .page-header .page-header-actions {
+    display: none;
+  }
+
+  .classes-detail-header h2 {
+    font-size: var(--text-2xl);
+    letter-spacing: -0.025em;
+  }
+
+  .classes-detail-body {
+    gap: var(--space-5);
+  }
+
+  /* The way back to the list stays under the top bar while a long roster scrolls. */
+  .classes-detail-bar {
+    position: sticky;
+    z-index: 2;
+    top: calc(var(--topbar-height) + var(--safe-top));
+    margin-inline: calc(-1 * var(--page-gutter));
+    padding-inline: var(--page-gutter);
+    background: var(--paper);
+  }
+}
+
+@supports (container-type: scroll-state) {
+  .classes-detail-bar {
+    container-type: scroll-state;
+  }
+
+  .classes-detail-back::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    background: var(--line);
+    content: "";
+    opacity: 0;
+  }
+
+  @container scroll-state(stuck: top) {
+    .classes-detail-back::after {
+      opacity: 1;
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  @container classes (min-width: 680px) {
+    .classes-detail {
+      top: var(--space-6);
+      max-height: calc(100dvh - var(--space-12));
+    }
+  }
+
+  /* No top bar here. */
+  @container classes (max-width: 679px) {
+    .classes-detail-bar {
+      top: 0;
+    }
+  }
+}
+
+@media (max-width: 639px) {
+  .classes-master {
+    gap: var(--space-8);
+  }
+
+  .classes-item,
+  .classes-course-toggle {
+    padding-left: var(--space-2);
+  }
+
+  .classes-sections {
+    padding-left: 0;
+  }
+}

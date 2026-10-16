@@ -2,12 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#050505" />
-    <meta name="description" content="Build and share your A/B-day schedule with classmates." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141517" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="See the bell schedule, build your A/B-day schedule, and find out who’s in your classes at North Allegheny." />
+    <meta name="apple-mobile-web-app-title" content="ScheduleShare" />
     <link rel="icon" type="image/png" sizes="1200x1200" href="na-club-logo.png" />
     <link rel="apple-touch-icon" href="na-club-logo.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <title>NA ScheduleShare</title>
+    <script>
+      // Apply a saved light/dark choice before first paint to avoid a theme flash.
+      try {
+        var theme = localStorage.getItem('scheduleshare.theme')
+        if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme)
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

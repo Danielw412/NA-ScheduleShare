@@ -10,11 +10,13 @@ import {
   type ScheduleImportDependencies,
 } from './core.ts'
 import { defaultUnknownSingleDayTerms } from './single-day-term.ts'
+import { createFunctionLogger, errorFields, observeHandler, rpcIssueReporter } from '../_shared/observability.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')?.trim().replace(/\/$/, '') ?? ''
 const SUPABASE_PUBLISHABLE_KEYS = readPublishableKeys()
 const SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEYS[0] ?? ''
 const SUPABASE_SECRET_KEY = readSecretKey()
+const auditLogger = createFunctionLogger('schedule-import', 'audit')
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')?.trim() ?? ''
 const CUSTOM_DOMAIN_ORIGIN = 'https://schedule.naclubs.net'
 const LEGACY_PRODUCTION_ORIGIN = 'https://danielw412.github.io'
@@ -538,11 +540,9 @@ async function recordBackendImportAudit(context: ImportAuditContext, response: R
       p_result: succeeded ? 'succeeded' : 'failed',
       p_metadata: metadata,
     })
-    if (error) console.error('Schedule import audit logging failed.', { message: error.message })
+    if (error) auditLogger.error('import_audit_failed', errorFields(error))
   } catch (caught) {
-    console.error('Schedule import audit logging failed.', {
-      message: caught instanceof Error ? caught.message : String(caught),
-    })
+    auditLogger.error('import_audit_failed', errorFields(caught))
   }
 }
 
@@ -570,13 +570,33 @@ function responseForBrowserOrigin(response: Response, origin: string | null): Re
   })
 }
 
+const unavailable = () => Response.json(
+  { error: 'schedule_import_unavailable', message: 'The schedule importer is temporarily unavailable. Try again in a few minutes.' },
+  { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } },
+)
+
+function serviceRpc() {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return null
+  const client = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+  return (name: string, args: Record<string, unknown>) => client.rpc(name, args)
+}
+
+// Request logs and crash reports: supabase/functions/_shared/observability.ts.
+// Uploaded screenshots are never logged; only sizes and outcomes are.
 export default {
-  async fetch(request: Request): Promise<Response> {
+  fetch: observeHandler(async (request) => {
     const context = createAuditContext()
     await captureUploadMetadata(request, context)
     const bridged = requestForGeminiHandler(request)
     const response = await handleScheduleImportRequest(bridged.request, dependencies(context))
     await recordBackendImportAudit(context, response)
     return responseForBrowserOrigin(response, bridged.responseOrigin)
-  },
+  }, {
+    functionName: 'schedule-import',
+    unavailable,
+    reportIssue: rpcIssueReporter(serviceRpc()),
+    release: Deno.env.get('APP_RELEASE')?.trim() || undefined,
+  }),
 }

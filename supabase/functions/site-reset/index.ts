@@ -1,6 +1,7 @@
 import '@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from '@supabase/supabase-js'
 import { handleSiteResetRequest, type SiteResetDependencies } from './core.ts'
+import { observeHandler, rpcIssueReporter } from '../_shared/observability.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')?.trim() ?? ''
 const SUPABASE_PUBLISHABLE_KEY = Deno.env.get('SUPABASE_PUBLISHABLE_KEY')?.trim()
@@ -60,15 +61,25 @@ function dependencies(): SiteResetDependencies {
   }
 }
 
+const unavailable = () => Response.json(
+  { error: 'site_reset_unavailable', message: 'Website reset is temporarily unavailable.' },
+  { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } },
+)
+
+function serviceRpc() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null
+  const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+  return (name: string, args: Record<string, unknown>) => client.rpc(name, args)
+}
+
+// Request logs and crash reports: supabase/functions/_shared/observability.ts.
 export default {
-  fetch(request: Request): Promise<Response> {
-    try {
-      return handleSiteResetRequest(request, dependencies())
-    } catch {
-      return Promise.resolve(Response.json(
-        { error: 'site_reset_unavailable', message: 'Website reset is temporarily unavailable.' },
-        { status: 503, headers: { 'Access-Control-Allow-Origin': '*' } },
-      ))
-    }
-  },
+  fetch: observeHandler((request) => handleSiteResetRequest(request, dependencies()), {
+    functionName: 'site-reset',
+    unavailable,
+    reportIssue: rpcIssueReporter(serviceRpc()),
+    release: Deno.env.get('APP_RELEASE')?.trim() || undefined,
+  }),
 }

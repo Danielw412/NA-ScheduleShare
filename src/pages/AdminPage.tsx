@@ -1,39 +1,86 @@
-import { BarChart3, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, Clock3, Database, FileClock, Flag, Gauge, GraduationCap, Merge, Plus, RefreshCw, ShieldCheck, Trash2, Users, X } from 'lucide-react'
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
-import { MeetingSlotEditor, preferredMeetingDay } from '../components/schedule/MeetingSlotEditor'
+import { AlertCircle, BarChart3, BookOpen, BrainCircuit, Bug, Clock3, Database, FileClock, Flag, Gauge, GraduationCap, ShieldCheck, Users, X, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { HomepageLayoutPanel } from '../components/admin/HomepageLayoutPanel'
 import { BellScheduleAdminPanel } from '../components/admin/BellScheduleAdminPanel'
-import { useClubPrompt } from '../components/club/ClubPromptProvider'
-import { ProfileAvatar } from '../components/ui/ProfileAvatar'
+import { IssuesPanel } from '../components/admin/IssuesPanel'
+import { useAdminDialogs } from '../components/admin/AdminDialogs'
+import { AdminClassEditDialog, ClassSectionsPanel, classEditErrorMessage, CourseCatalogPanel } from '../components/admin/AdminClassPanels'
+import { ScheduleEngineAdminPanel } from '../components/admin/AdminEnginePanel'
+import { AdministratorsSection, ReportDialog, ReportsSection, UsersSection } from '../components/admin/AdminPeoplePanels'
+import { AiImporterManagementPanel, ClubPromptPanel, HomepageStatisticPanel } from '../components/admin/AdminSettingsPanels'
+import { EventLogsPanel, ProtectedToolsPanel } from '../components/admin/AdminSuperAdminPanels'
+import { useCopyToClipboard, type AdminActionRunner } from '../components/admin/adminShared'
+import { PageHeader } from '../components/ui/PageHeader'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../features/auth/AuthProvider'
-import { privacyLabels, termLabels, type AcademicTerm, type ActivitySummary, type AdminClassRecord, type AdminClubPromptSettings, type AdminCourseNameRecord, type AdminReportRecord, type AdminScheduleEngineJob, type AdminUserRecord, type EventLogCategory, type EventLogRecord, type GeminiThinkingLevel, type HomepageActivityScope, type HomepageStatisticKey, type HomepageStatisticSettings, type MeetingSlot, type ScheduleImportDiagnosticLog, type ScheduleImportModelRecord, type SiteResetPreview } from '../lib/domain'
+import type { AcademicTerm, AdminClassRecord, AdminCourseNameRecord, AdminReportRecord, AdminScheduleEngineJob, AdminUserRecord, MeetingSlot } from '../lib/domain'
 import { adminRemoveProfilePicture } from '../lib/profile'
-import { defaultDoubleMeetingSlots, formatMeetingSlotSummary, hasMultiplePeriodsOnAnyDay, meetingSlotsForDay, sortMeetingSlots, validateMeetingSlots } from '../lib/schedule'
 import { supabase } from '../lib/supabase/client'
-import { adminDeleteScheduleImportDiagnostic, adminGetClubPromptSettings, adminGetHomepageStatisticSettings, adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListScheduleImportDiagnostics, adminListScheduleImportModels, adminListUsers, adminUpdateClass, adminUpdateClubPromptSettings, adminUpdateHomepageStatisticSettings, adminUpdateScheduleImportProgressDuration, adminUpdateScheduleImportRetrySetting, adminUpdateScheduleImportSettings, callAdminAction, getHomepageStatistic, getScheduleImportUiSettings, isCurrentUserSuperAdmin, superAdminAdd, superAdminDeleteLog, superAdminDeleteLogs, superAdminGetActivitySummary, superAdminGetSiteResetPreview, superAdminListLogsPage, superAdminResetSite } from '../lib/supabase/data'
-import { teacherLastNameError } from '../lib/teacher'
+import { adminListClasses, adminListCourseNames, adminListReports, adminListScheduleEngineJobs, adminListUsers, adminUpdateClass, callAdminAction, isCurrentUserSuperAdmin } from '../lib/supabase/data'
 
-type AdminTab = 'users' | 'reports' | 'classes' | 'engine' | 'bell-schedules' | 'homepage' | 'ai' | 'admins' | 'logs' | 'protected'
+// Panels other modules and tests import from the page.
+export { ClubPromptPanel, HomepageStatisticPanel } from '../components/admin/AdminSettingsPanels'
+export { EventLogsPanel, eventLogPageNumbers } from '../components/admin/AdminSuperAdminPanels'
 
-const tabs: Array<{ id: AdminTab; label: string; icon: typeof Users }> = [
-  { id: 'users', label: 'User management', icon: Users },
-  { id: 'reports', label: 'Reports', icon: Flag },
-  { id: 'classes', label: 'Class management', icon: GraduationCap },
-  { id: 'engine', label: 'Schedule Engine', icon: Gauge },
-  { id: 'bell-schedules', label: 'Bell schedules', icon: Clock3 },
-  { id: 'homepage', label: 'Homepage', icon: BarChart3 },
-  { id: 'ai', label: 'AI importer', icon: BrainCircuit },
-  { id: 'admins', label: 'Admin management', icon: ShieldCheck },
+type AdminSection = 'users' | 'reports' | 'admins' | 'classes' | 'catalog' | 'engine' | 'homepage' | 'bell-schedules' | 'ai' | 'issues' | 'logs' | 'protected'
+
+interface SectionLink {
+  id: AdminSection
+  label: string
+  icon: LucideIcon
+}
+
+interface SectionGroup {
+  label: string
+  superAdminOnly?: boolean
+  sections: SectionLink[]
+}
+
+const sectionGroups: SectionGroup[] = [
+  {
+    label: 'People',
+    sections: [
+      { id: 'users', label: 'Users', icon: Users },
+      { id: 'reports', label: 'Reports', icon: Flag },
+      { id: 'admins', label: 'Administrators', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: 'Classes',
+    sections: [
+      { id: 'classes', label: 'Class sections', icon: GraduationCap },
+      { id: 'catalog', label: 'Course catalog', icon: BookOpen },
+      { id: 'engine', label: 'Schedule Engine', icon: Gauge },
+    ],
+  },
+  {
+    label: 'Site',
+    sections: [
+      { id: 'homepage', label: 'Homepage', icon: BarChart3 },
+      { id: 'bell-schedules', label: 'Bell schedules', icon: Clock3 },
+      { id: 'ai', label: 'AI importer', icon: BrainCircuit },
+      { id: 'issues', label: 'Issues', icon: Bug },
+    ],
+  },
+  {
+    label: 'Super administrator',
+    superAdminOnly: true,
+    sections: [
+      { id: 'logs', label: 'Audit logs', icon: FileClock },
+      { id: 'protected', label: 'Protected tools', icon: Database },
+    ],
+  },
 ]
+
+const demoNow = Date.now()
+const minutesAgo = (minutes: number) => new Date(demoNow - minutes * 60_000).toISOString()
 
 const demoUsers = [
-  { user_id: 'a', full_name: 'Jordan Smith', grade: 11, privacy_setting: 'classmates', status: 'active', is_admin: true, created_at: new Date().toISOString(), last_login_at: new Date().toISOString(), last_active_at: new Date().toISOString() },
-  { user_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', status: 'active', is_admin: false, created_at: new Date().toISOString(), last_login_at: null, last_active_at: null },
-  { user_id: 'c', full_name: 'Suspicious Account', grade: 9, privacy_setting: 'school', status: 'suspended', is_admin: false, created_at: new Date().toISOString(), last_login_at: null, last_active_at: null },
+  { user_id: 'a', full_name: 'Jordan Smith', grade: 11, privacy_setting: 'classmates', status: 'active', is_admin: true, created_at: minutesAgo(60 * 24 * 40), last_login_at: minutesAgo(3), last_active_at: minutesAgo(1) },
+  { user_id: 'b', full_name: 'Taylor Reed', grade: 11, privacy_setting: 'private', status: 'active', is_admin: false, created_at: minutesAgo(60 * 24 * 12), last_login_at: null, last_active_at: null },
+  { user_id: 'c', full_name: 'Suspicious Account', grade: 9, privacy_setting: 'school', status: 'suspended', is_admin: false, created_at: minutesAgo(60 * 24 * 2), last_login_at: null, last_active_at: null },
 ]
-
-function activityTimestamp(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : 'Never'
-}
 
 const demoReports: AdminReportRecord[] = [{
   report_id: 'demo-report',
@@ -49,8 +96,24 @@ const demoReports: AdminReportRecord[] = [{
   assigned_admin_id: null,
   assigned_admin_name: null,
   resolution_notes: null,
-  created_at: new Date().toISOString(),
+  created_at: minutesAgo(90),
   resolved_at: null,
+}, {
+  report_id: 'demo-report-resolved',
+  reason_category: 'incorrect_class_information',
+  explanation: 'AP Language with Carter is listed as period 2 on B days, but it meets period 1.',
+  status: 'resolved',
+  reporter_id: 'demo-reporter-2',
+  reporter_name: 'Taylor Reed',
+  reported_user_id: null,
+  reported_user_name: null,
+  reported_class_id: 'demo-class',
+  reported_course_name: 'AP Language',
+  assigned_admin_id: 'a',
+  assigned_admin_name: 'Jordan Smith',
+  resolution_notes: 'Corrected the B-day period for every enrolled student.',
+  created_at: minutesAgo(60 * 30),
+  resolved_at: minutesAgo(60 * 26),
 }]
 
 const demoClasses: AdminClassRecord[] = [{
@@ -66,8 +129,23 @@ const demoClasses: AdminClassRecord[] = [{
   total_enrollment_count: 19,
   report_count: 1,
   created_by: null,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: minutesAgo(60 * 24 * 40),
+  updated_at: minutesAgo(60 * 24 * 3),
+}, {
+  id: 'demo-class-chem',
+  course_name_id: 'demo-course-chem',
+  course_name: 'Honors Chemistry',
+  teacher_last_name: 'Nguyen',
+  default_academic_term: 'full_year',
+  is_double_period: true,
+  meeting_slots: [{ day_type: 'A', period_number: 3 }, { day_type: 'A', period_number: 4 }],
+  status: 'active',
+  active_enrollment_count: 0,
+  total_enrollment_count: 2,
+  report_count: 0,
+  created_by: null,
+  created_at: minutesAgo(60 * 24 * 20),
+  updated_at: minutesAgo(60 * 24 * 20),
 }]
 
 const demoCourseNames: AdminCourseNameRecord[] = [{
@@ -77,35 +155,89 @@ const demoCourseNames: AdminCourseNameRecord[] = [{
   source: 'approved',
   section_count: 1,
   active_section_count: 1,
+  alias_count: 1,
+  aliases: [{ id: 'demo-alias', alias: 'AP Lang and Comp', source: 'import_correction', source_import_id: null, learned_count: 4, last_seen_at: minutesAgo(60 * 5), created_at: minutesAgo(60 * 24 * 9) }],
+  created_at: minutesAgo(60 * 24 * 40),
+  updated_at: minutesAgo(60 * 24 * 40),
+}, {
+  id: 'demo-course-chem',
+  course_name: 'Honors Chemistry',
+  status: 'active',
+  source: 'approved',
+  section_count: 1,
+  active_section_count: 1,
   alias_count: 0,
   aliases: [],
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: minutesAgo(60 * 24 * 40),
+  updated_at: minutesAgo(60 * 24 * 40),
 }]
 
-const reportReasonLabels: Record<AdminReportRecord['reason_category'], string> = {
-  suspicious_user: 'Suspicious user',
-  inappropriate_name: 'Inappropriate name',
-  incorrect_class_information: 'Incorrect class information',
-  duplicate_class: 'Duplicate classes',
-  other: 'Other issue',
-}
+const demoEngineJobs: AdminScheduleEngineJob[] = [{
+  id: 'demo-engine-queued',
+  status: 'queued',
+  emailNotification: true,
+  notificationStatus: 'pending',
+  queuedAt: minutesAgo(4),
+  processingStartedAt: null,
+  completedAt: null,
+  failedAt: null,
+  cancelledAt: null,
+  errorMessage: null,
+  noValidScheduleReason: null,
+  createdAt: minutesAgo(4),
+  updatedAt: minutesAgo(4),
+  sourceCourses: [{ position: 1, enrollmentId: 'demo-enrollment', courseId: 'demo-course', courseName: 'AP Language' }],
+  replacementCourses: [{ position: 1, courseId: 'demo-course-chem', courseName: 'Honors Chemistry' }],
+  predictions: [],
+  userId: 'b',
+  userName: 'Taylor Reed',
+  workerId: null,
+  attemptCount: 0,
+  claimedAt: null,
+  heartbeatAt: null,
+  notificationSentAt: null,
+  notificationError: null,
+}, {
+  id: 'demo-engine-completed',
+  status: 'completed',
+  emailNotification: false,
+  notificationStatus: 'not_requested',
+  queuedAt: minutesAgo(60 * 6),
+  processingStartedAt: minutesAgo(60 * 6 - 1),
+  completedAt: minutesAgo(60 * 6 - 3),
+  failedAt: null,
+  cancelledAt: null,
+  errorMessage: null,
+  noValidScheduleReason: null,
+  createdAt: minutesAgo(60 * 6),
+  updatedAt: minutesAgo(60 * 6 - 3),
+  sourceCourses: [{ position: 1, enrollmentId: 'demo-enrollment-2', courseId: 'demo-course-chem', courseName: 'Honors Chemistry' }],
+  replacementCourses: [{ position: 1, courseId: 'demo-course', courseName: 'AP Language' }],
+  predictions: [],
+  userId: 'a',
+  userName: 'Jordan Smith',
+  workerId: 'laptop-worker-1',
+  attemptCount: 1,
+  claimedAt: minutesAgo(60 * 6 - 1),
+  heartbeatAt: minutesAgo(60 * 6 - 3),
+  notificationSentAt: null,
+  notificationError: null,
+}]
 
-function classEditErrorMessage(caught: unknown) {
-  const message = caught instanceof Error ? caught.message : ''
-  if (message.includes('class_edit_schedule_conflict')) return 'This edit would create a schedule conflict for at least one enrolled student. Choose different meeting slots.'
-  if (message.includes('meeting_slots_required')) return 'Select at least one meeting slot.'
-  if (message.includes('only_active_classes_can_be_edited')) return 'Only active classes can be edited.'
-  if (message.includes('active_course_name_not_found')) return 'Select an active course name from the catalog.'
-  if (message.includes('invalid_teacher_last_name')) return 'Enter only a valid teacher last name without a title.'
-  if (message.includes('normal_class_multiple_periods')) return 'Normal classes can use only one period on each selected day.'
-  if (message.includes('double_period_slots_not_consecutive')) return 'Double-period slots must be consecutive on each selected day.'
-  if (message.includes('double_period_requires_two_slots')) return 'Select two consecutive periods on at least one day for a double-period class.'
-  if (message.includes('double_period_too_many_slots')) return 'A double-period class can use at most two periods on a day.'
-  return message || 'Class update failed.'
-}
 
-function adminActionErrorMessage(caught: unknown) {
+
+
+
+
+
+
+
+
+
+
+
+
+function adminActionErrorMessage(caught: unknown, action: string) {
   const message = caught instanceof Error ? caught.message : ''
   if (message.includes('class_not_found')) return 'That class section no longer exists. Refresh the class list and try again.'
   if (message.includes('not_admin') || message.includes('administrator')) return 'Administrator access is required for this action.'
@@ -113,24 +245,38 @@ function adminActionErrorMessage(caught: unknown) {
   if (message.includes('alias_conflicts_with_course_name') || message.includes('course_name_conflicts_with_alias')) return 'That name is already used by another catalogue course.'
   if (message.includes('alias_matches_canonical_name')) return 'The possible name is already the course’s canonical name.'
   if (message.includes('invalid_course_alias')) return 'Enter a possible course name between 2 and 160 characters.'
-  if (message.includes('foreign key') || message.includes('violates')) return 'The class section could not be deleted because a related record was not handled safely. No changes were kept; refresh and try again.'
+  if (message.includes('invalid_course_name')) return 'Enter a course name between 2 and 120 characters.'
+  if (message.includes('foreign key') || message.includes('violates')) {
+    return action === 'admin_delete_class_section'
+      ? 'The class section could not be deleted because a related record was not handled safely. No changes were kept; refresh and try again.'
+      : 'The database didn’t accept this change, so nothing was saved. Check what you entered and try again.'
+  }
   return message || 'Admin action failed.'
+}
+
+
+function isSection(value: string | null, allowed: AdminSection[]): value is AdminSection {
+  return value !== null && (allowed as string[]).includes(value)
 }
 
 export function AdminPage() {
   const { isDemo } = useAuth()
-  const [tab, setTab] = useState<AdminTab>('users')
+  const { showToast } = useToast()
+  const dialogs = useAdminDialogs()
+  const copy = useCopyToClipboard()
+  const [searchParams] = useSearchParams()
   const [users, setUsers] = useState<AdminUserRecord[]>(isDemo ? demoUsers as AdminUserRecord[] : [])
   const [reports, setReports] = useState<AdminReportRecord[]>(isDemo ? demoReports : [])
   const [classes, setClasses] = useState<AdminClassRecord[]>(isDemo ? demoClasses : [])
   const [courseNames, setCourseNames] = useState<AdminCourseNameRecord[]>(isDemo ? demoCourseNames : [])
-  const [engineJobs, setEngineJobs] = useState<AdminScheduleEngineJob[]>([])
+  const [engineJobs, setEngineJobs] = useState<AdminScheduleEngineJob[]>(isDemo ? demoEngineJobs : [])
+  const [loaded, setLoaded] = useState(isDemo || !supabase)
+  const [loading, setLoading] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState(0)
   const [query, setQuery] = useState('')
   const [grade, setGrade] = useState<number | ''>('')
   const [status, setStatus] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [canonicalId, setCanonicalId] = useState('')
   const [duplicateId, setDuplicateId] = useState('')
@@ -138,10 +284,19 @@ export function AdminPage() {
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
   const [editingClass, setEditingClass] = useState<AdminClassRecord | null>(null)
   const [classSaving, setClassSaving] = useState(false)
+  const [classEditError, setClassEditError] = useState<string | null>(null)
   const [courseFilter, setCourseFilter] = useState<string | null>(null)
+
+  const groups = sectionGroups.filter((group) => !group.superAdminOnly || isSuperAdmin)
+  const allowedSections = groups.flatMap((group) => group.sections.map((item) => item.id))
+  const requestedSection = searchParams.get('section')
+  const section: AdminSection = isSection(requestedSection, allowedSections) ? requestedSection : 'users'
+  const queuedCount = engineJobs.filter((job) => job.status === 'queued').length
+  const openReportCount = reports.filter((report) => report.status === 'open' || report.status === 'in_review').length
 
   const load = useCallback(async () => {
     if (isDemo || !supabase) return
+    setLoading(true)
     try {
       const [nextUsers, nextReports, nextClasses, nextCourseNames, nextEngineJobs] = await Promise.all([
         adminListUsers(query, grade || undefined, status || undefined),
@@ -157,6 +312,9 @@ export function AdminPage() {
       setEngineJobs(nextEngineJobs)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load administrative data.')
+    } finally {
+      setLoading(false)
+      setLoaded(true)
     }
   }, [grade, isDemo, query, status])
 
@@ -170,16 +328,33 @@ export function AdminPage() {
     return () => window.clearTimeout(timer)
   }, [load])
 
-  async function adminAction(name: string, args: Record<string, unknown>, success: string) {
+  // A message about one section shouldn't follow the administrator to another.
+  useEffect(() => { setError(null) }, [section])
+
+  // Switching sections from far down a long table starts the new section at its top.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const previousSection = useRef(section)
+  useEffect(() => {
+    if (previousSection.current === section) return
+    previousSection.current = section
+    const content = contentRef.current
+    if (content && content.getBoundingClientRect().top < 0 && typeof content.scrollIntoView === 'function') content.scrollIntoView({ block: 'start' })
+  }, [section])
+
+  const adminAction: AdminActionRunner = useCallback(async (name, args, success, options) => {
     setError(null)
     try {
       if (!isDemo) await callAdminAction(name, args)
-      setMessage(success)
+      showToast(success)
       await load()
+      return true
     } catch (caught) {
-      setError(adminActionErrorMessage(caught))
+      const message = adminActionErrorMessage(caught, name)
+      if (options?.onError) options.onError(message)
+      else setError(message)
+      return false
     }
-  }
+  }, [isDemo, load, showToast])
 
   async function saveClass(input: {
     courseNameId: string
@@ -191,37 +366,61 @@ export function AdminPage() {
   }) {
     if (!editingClass) return
     setClassSaving(true)
-    setError(null)
+    setClassEditError(null)
     try {
       if (!isDemo) await adminUpdateClass({ classId: editingClass.id, ...input })
       setEditingClass(null)
       const courseName = courseNames.find((item) => item.id === input.courseNameId)?.course_name ?? 'The class section'
-      setMessage(`${courseName} was updated everywhere this shared section is used.`)
+      showToast(`${courseName} was updated everywhere this shared section is used.`)
       await load()
     } catch (caught) {
-      setError(classEditErrorMessage(caught))
+      setClassEditError(classEditErrorMessage(caught))
     } finally {
       setClassSaving(false)
     }
   }
 
-  function confirmDelete(user: AdminUserRecord) {
-    const expected = user.full_name
-    const typed = window.prompt(`Type “${expected}” to permanently delete this account. This revokes access and removes Auth data.`)
-    if (typed !== expected) return
-    void adminAction('admin_delete_user', { p_user_id: user.user_id, p_reason: 'Deleted from admin console' }, `${expected} was deleted.`)
+  async function suspendUser(user: AdminUserRecord) {
+    const reasonText = await dialogs.prompt({
+      title: `Suspend ${user.full_name}?`,
+      description: 'They lose access right away and stay signed out until an administrator restores the account.',
+      label: 'Reason for suspending',
+      help: 'Recorded in the audit log.',
+      multiline: true,
+      maxLength: 1000,
+      submitLabel: 'Suspend account',
+      tone: 'danger',
+    })
+    if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, `${user.full_name} was suspended.`)
   }
 
-  function permanentlyDeleteClass(course: AdminClassRecord) {
-    if (course.active_enrollment_count > 0) {
-      const count = course.active_enrollment_count
-      if (!window.confirm(`Delete ${course.course_name} with ${course.teacher_last_name}? ${count} active student${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} currently enrolled.`)) return
-    }
-    void adminAction('admin_delete_class_section', { p_class_id: course.id, p_reason: 'Permanently deleted from admin console' }, `${course.course_name} was permanently deleted.`)
+  function restoreUser(user: AdminUserRecord) {
+    void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, `${user.full_name} was restored.`)
   }
 
-  function changeGrade(user: AdminUserRecord) {
-    const nextGrade = Number(window.prompt('Corrected grade (9-12)', String(user.grade)))
+  async function editName(user: AdminUserRecord) {
+    const fullName = await dialogs.prompt({
+      title: 'Edit name',
+      description: `Correct how ${user.full_name} appears to other students.`,
+      label: 'Full name',
+      defaultValue: user.full_name,
+      maxLength: 100,
+      submitLabel: 'Save name',
+    })
+    if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.')
+  }
+
+  async function changeGrade(user: AdminUserRecord) {
+    const typed = await dialogs.prompt({
+      title: 'Change grade',
+      description: `Correct ${user.full_name}’s grade level.`,
+      label: 'Grade',
+      defaultValue: String(user.grade ?? 9),
+      options: [9, 10, 11, 12].map((value) => ({ value: String(value), label: `Grade ${value}` })),
+      submitLabel: 'Save grade',
+    })
+    if (typed === null) return
+    const nextGrade = Number(typed)
     if (![9, 10, 11, 12].includes(nextGrade)) {
       setError('Grade must be 9, 10, 11, or 12.')
       return
@@ -237,716 +436,181 @@ export function AdminPage() {
 
   async function removeUserPicture(user: AdminUserRecord) {
     const name = user.full_name
-    if (!window.confirm(`Remove ${name}'s profile picture? Their initials will be shown instead.`)) return
+    const confirmed = await dialogs.confirm({
+      title: `Remove ${name}’s profile picture?`,
+      message: 'Their initials will be shown instead.',
+      confirmLabel: 'Remove picture',
+      tone: 'danger',
+    })
+    if (!confirmed) return
     setError(null)
     try {
       if (!isDemo) await adminRemoveProfilePicture(String(user.user_id))
       setAvatarRevision(Date.now())
-      setMessage(`${name}'s profile picture was removed.`)
+      showToast(`${name}'s profile picture was removed.`)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The profile picture could not be removed.')
     }
   }
 
+  async function deleteUser(user: AdminUserRecord) {
+    const expected = user.full_name
+    const typed = await dialogs.prompt({
+      title: `Delete ${expected}’s account?`,
+      description: 'This permanently deletes the account, revokes access, and removes their sign-in data. It can’t be undone.',
+      label: `Type “${expected}” to confirm`,
+      match: expected,
+      submitLabel: 'Delete account',
+      tone: 'danger',
+    })
+    if (typed !== expected) return
+    void adminAction('admin_delete_user', { p_user_id: user.user_id, p_reason: 'Deleted from admin console' }, `${expected} was deleted.`)
+  }
+
   const selectedReport = reports.find((report) => report.report_id === selectedReportId) ?? null
+  const counts: Partial<Record<AdminSection, { value: number; label: string }>> = {
+    engine: { value: queuedCount, label: 'queued' },
+    reports: { value: openReportCount, label: 'open' },
+  }
 
   return (
-    <div className="admin-page">
-      <header className="page-heading"><div><h1>Administration</h1><p>Protected user, class, report, schedule, role, and audit operations.</p></div><span className="admin-lock"><ShieldCheck /> Admin only</span></header>
-      <div className="admin-tabs" role="tablist">{[...tabs, ...(isSuperAdmin ? [{ id: 'logs' as const, label: 'Logs', icon: FileClock }, { id: 'protected' as const, label: 'Protected tools', icon: Database }] : [])].map((item) => { const Icon = item.icon; const queuedCount = item.id === 'engine' ? engineJobs.filter((job) => job.status === 'queued').length : null; return <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setTab(item.id)}><Icon size={17} /> {item.label}{queuedCount !== null ? <span className="admin-tab-count" aria-label={`${queuedCount} queued`}>{queuedCount}</span> : null}</button> })}</div>
-      {message ? <div className="toast-message" role="status">{message}<button onClick={() => setMessage(null)}>×</button></div> : null}{error ? <p className="form-error" role="alert">{error}</p> : null}
+    <div className="page admin-page">
+      <PageHeader
+        title="Administration"
+        description="Manage accounts, reports, classes, and site settings for everyone who uses ScheduleShare."
+        actions={<span className="badge badge-outline admin-role-badge"><ShieldCheck aria-hidden="true" />{isSuperAdmin ? 'Super administrator' : 'Administrator'}</span>}
+      />
 
-      {tab === 'users' ? <section className="admin-section">
-        <div className="admin-toolbar"><input placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /><select value={grade} onChange={(event) => setGrade(event.target.value ? Number(event.target.value) : '')}><option value="">All grades</option>{[9, 10, 11, 12].map((value) => <option key={value}>{value}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
-        <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Grade</span><span>Privacy</span><span>Status / activity</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.user_id}><span className="admin-user-cell"><ProfileAvatar userId={user.user_id} fullName={user.full_name} revision={avatarRevision} /><span><strong>{user.full_name}</strong><small>{user.user_id}</small></span></span><span>{user.grade ?? '—'}</span><span>{privacyLabels[user.privacy_setting]}</span><span className={`status-${user.status}`}><strong>{user.status}</strong><small>Last online: {activityTimestamp(user.last_active_at)}</small><small>Last login: {activityTimestamp(user.last_login_at)}</small></span><span className="row-actions">{user.status === 'suspended' ? <button onClick={() => void adminAction('admin_restore_user', { p_user_id: user.user_id, p_reason: 'Restored from admin console' }, 'User restored.')}>Restore</button> : <button onClick={() => { const reasonText = window.prompt('Suspension reason'); if (reasonText) void adminAction('admin_suspend_user', { p_user_id: user.user_id, p_reason: reasonText }, 'User suspended immediately.') }}>Suspend</button>}<button onClick={() => { const fullName = window.prompt('Corrected full name', user.full_name); if (fullName) void adminAction('admin_update_user', { p_user_id: user.user_id, p_full_name: fullName, p_grade: user.grade, p_privacy_setting: user.privacy_setting, p_reason: 'Profile name correction' }, 'Profile updated.') }}>Edit name</button><button onClick={() => changeGrade(user)}>Change grade</button><button onClick={() => void removeUserPicture(user)}>Remove picture</button><button className="danger-text" onClick={() => confirmDelete(user)}>Delete</button></span></div>)}</div>
-      </section> : null}
+      <div className="admin-layout">
+        <AdminNav groups={groups} active={section} counts={counts} />
 
-      {tab === 'reports' ? <section className="admin-section"><h2>Reports</h2><div className="admin-table admin-report-table"><div className="admin-table-head"><span>Category</span><span>Reported account or class</span><span>Reporter</span><span>Status / submitted</span><span>Actions</span></div>{reports.map((report) => <div className="admin-table-row" key={report.report_id}><span><strong>{reportReasonLabels[report.reason_category]}</strong></span><span><strong>{report.reported_user_name ?? report.reported_course_name ?? 'General issue'}</strong><small>{report.reported_user_id ? 'User' : report.reported_class_id || report.reported_course_name ? 'Class' : 'No target'}</small></span><span>{report.reporter_name ?? 'Deleted user'}</span><span><strong>{report.status.replace('_', ' ')}</strong><small>{new Date(report.created_at).toLocaleString()}</small></span><span className="row-actions"><button onClick={() => setSelectedReportId((current) => current === report.report_id ? null : report.report_id)}>{selectedReportId === report.report_id ? 'Hide details' : 'View details'}</button>{report.status === 'resolved' || report.status === 'dismissed' ? null : <button onClick={() => { const notes = window.prompt('Resolution notes'); if (notes) void adminAction('admin_resolve_report', { p_report_id: report.report_id, p_status: 'resolved', p_resolution_notes: notes }, 'Report resolved.') }}>Resolve</button>}</span></div>)}</div>{selectedReport ? <ReportDetails report={selectedReport} onClose={() => setSelectedReportId(null)} /> : null}</section> : null}
+        <div className="admin-content" id="admin-content" ref={contentRef}>
+          {error ? <div className="notice notice-danger admin-error" role="alert">
+            <AlertCircle aria-hidden="true" />
+            <p>{error}</p>
+            <button className="icon-button" type="button" aria-label="Dismiss error" onClick={() => setError(null)}><X aria-hidden="true" /></button>
+          </div> : null}
 
-      {tab === 'classes' ? <ClassManagementPanel
-        classes={classes}
-        courseNames={courseNames}
-        courseFilter={courseFilter}
-        canonicalId={canonicalId}
-        duplicateId={duplicateId}
-        onCourseFilter={setCourseFilter}
-        onCanonicalId={setCanonicalId}
-        onDuplicateId={setDuplicateId}
-        onEdit={setEditingClass}
-        onPermanentDelete={permanentlyDeleteClass}
-        onAdminAction={adminAction}
+          {section === 'users' ? <UsersSection
+            users={users}
+            loaded={loaded}
+            loading={loading}
+            query={query}
+            grade={grade}
+            status={status}
+            avatarRevision={avatarRevision}
+            onQuery={setQuery}
+            onGrade={setGrade}
+            onStatus={setStatus}
+            menuFor={(user) => [
+              { label: 'Copy user ID', onSelect: () => void copy(user.user_id, 'User ID') },
+              'separator',
+              { label: 'Edit name', onSelect: () => void editName(user) },
+              { label: 'Change grade', onSelect: () => void changeGrade(user) },
+              { label: 'Remove picture', onSelect: () => void removeUserPicture(user) },
+              'separator',
+              user.status === 'suspended'
+                ? { label: 'Restore account', onSelect: () => restoreUser(user) }
+                : { label: 'Suspend account', onSelect: () => void suspendUser(user) },
+              { label: 'Delete account', tone: 'danger', onSelect: () => void deleteUser(user) },
+            ]}
+          /> : null}
+
+          {section === 'reports' ? <ReportsSection reports={reports} loaded={loaded} openCount={openReportCount} onReview={setSelectedReportId} /> : null}
+
+          {section === 'admins' ? <AdministratorsSection
+            userId={adminUserId}
+            onUserId={setAdminUserId}
+            onPromote={() => void adminAction('admin_promote_user', { p_user_id: adminUserId, p_reason: 'Promoted from admin console' }, 'Administrator access granted.')}
+            onRemove={() => void adminAction('admin_remove_user_role', { p_user_id: adminUserId, p_reason: 'Removed from admin console' }, 'Administrator access removed.')}
+          /> : null}
+
+          {section === 'classes' ? <ClassSectionsPanel
+            classes={classes}
+            courseNames={courseNames}
+            loaded={loaded}
+            courseFilter={courseFilter}
+            canonicalId={canonicalId}
+            duplicateId={duplicateId}
+            onCourseFilter={setCourseFilter}
+            onCanonicalId={setCanonicalId}
+            onDuplicateId={setDuplicateId}
+            onEdit={(course) => { setClassEditError(null); setEditingClass(course) }}
+            onAdminAction={adminAction}
+          /> : null}
+
+          {section === 'catalog' ? <CourseCatalogPanel
+            courseNames={courseNames}
+            loaded={loaded}
+            onViewSections={setCourseFilter}
+            onAdminAction={adminAction}
+          /> : null}
+
+          {section === 'engine' ? <ScheduleEngineAdminPanel jobs={engineJobs} loaded={loaded} loading={loading} onRefresh={() => void load()} /> : null}
+
+          {section === 'homepage' ? <div className="admin-stack">
+            <HomepageLayoutPanel isDemo={isDemo} />
+            <HomepageStatisticPanel isDemo={isDemo} />
+            <ClubPromptPanel isDemo={isDemo} />
+          </div> : null}
+
+          {section === 'bell-schedules' ? <BellScheduleAdminPanel isDemo={isDemo} /> : null}
+
+          {section === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
+
+          {section === 'issues' ? <IssuesPanel isDemo={isDemo} /> : null}
+
+          {section === 'logs' && isSuperAdmin ? <EventLogsPanel /> : null}
+          {section === 'protected' && isSuperAdmin ? <ProtectedToolsPanel /> : null}
+        </div>
+      </div>
+
+      {selectedReport ? <ReportDialog
+        key={selectedReport.report_id}
+        report={selectedReport}
+        onClose={() => setSelectedReportId(null)}
+        onResolve={(notes, onError) => adminAction('admin_resolve_report', { p_report_id: selectedReport.report_id, p_status: 'resolved', p_resolution_notes: notes }, 'Report resolved.', { onError })}
       /> : null}
-
-      {tab === 'engine' ? <ScheduleEngineAdminPanel jobs={engineJobs} onRefresh={() => void load()} /> : null}
-
-      {tab === 'bell-schedules' ? <BellScheduleAdminPanel isDemo={isDemo} /> : null}
-
-      {tab === 'homepage' ? <><HomepageStatisticPanel isDemo={isDemo} /><ClubPromptPanel isDemo={isDemo} /></> : null}
-
-      {tab === 'ai' ? <AiImporterManagementPanel isDemo={isDemo} /> : null}
-
-      {tab === 'logs' && isSuperAdmin ? <EventLogsPanel /> : null}
-      {tab === 'protected' && isSuperAdmin ? <ProtectedToolsPanel /> : null}
-      {tab === 'admins' ? <section className="admin-section narrow-admin"><h2>Admin management</h2><p>Role changes require an existing administrator. The last administrator cannot remove their own access.</p><label>User ID<input value={adminUserId} onChange={(event) => setAdminUserId(event.target.value)} /></label><div className="form-actions"><button className="button button-primary" disabled={!adminUserId} onClick={() => void adminAction('admin_promote_user', { p_user_id: adminUserId, p_reason: 'Promoted from admin console' }, 'Administrator access granted.')}>Promote to administrator</button><button className="button button-secondary danger-text" disabled={!adminUserId} onClick={() => void adminAction('admin_remove_user_role', { p_user_id: adminUserId, p_reason: 'Removed from admin console' }, 'Administrator access removed.')}>Remove administrator</button></div></section> : null}
-
-      {editingClass ? <AdminClassEditDialog key={editingClass.id} course={editingClass} courseNames={courseNames} saving={classSaving} onClose={() => setEditingClass(null)} onSave={saveClass} /> : null}
+      {editingClass ? <AdminClassEditDialog key={editingClass.id} course={editingClass} courseNames={courseNames} saving={classSaving} error={classEditError} onClose={() => setEditingClass(null)} onSave={saveClass} /> : null}
+      {dialogs.dialog}
     </div>
   )
 }
 
-const defaultHomepageSettings: HomepageStatisticSettings = {
-  shown: false,
-  statistic_key: 'students_joined',
-  minimum_value: 25,
-  activity_scope: 'total',
-  updated_at: '',
-}
+/* ---------- Navigation ---------- */
 
-const homepageStatisticLabels: Record<HomepageStatisticKey, string> = {
-  students_joined: 'NA students joined',
-  schedules_uploaded: 'Schedules uploaded',
-  class_connections: 'Class connections found',
-}
+function AdminNav({ groups, active, counts }: { groups: SectionGroup[]; active: AdminSection; counts: Partial<Record<AdminSection, { value: number; label: string }>> }) {
+  const navId = useId()
 
-function ScheduleEngineAdminPanel({ jobs, onRefresh }: { jobs: AdminScheduleEngineJob[]; onRefresh: () => void }) {
-  const queued = jobs.filter((job) => job.status === 'queued')
-  const processing = jobs.filter((job) => job.status === 'processing')
-  return <section className="admin-section engine-admin-panel">
-    <header className="engine-admin-heading">
-      <div><h2>Schedule Engine queue</h2><p>Request details and worker diagnostics. Processing controls remain in the laptop worker console.</p></div>
-      <button className="button button-secondary" type="button" onClick={onRefresh}><RefreshCw size={17} /> Refresh</button>
-    </header>
-    <div className="engine-admin-stats">
-      <div><strong>{queued.length}</strong><span>Queued</span></div>
-      <div><strong>{processing.length}</strong><span>Processing</span></div>
-      <div><strong>{jobs.length}</strong><span>Recent requests</span></div>
-    </div>
-    {jobs.length === 0 ? <p className="notice-box">No Schedule Engine requests have been submitted.</p> : <div className="engine-admin-jobs">
-      {jobs.map((job) => <details key={job.id} open={job.status === 'queued' || job.status === 'processing'}>
-        <summary><span className={`engine-queue-dot status-${job.status}`} aria-hidden="true" /><strong>{job.userName}</strong><span>{job.status}</span><small>{new Date(job.createdAt).toLocaleString()}</small></summary>
-        <div className="engine-admin-job-body">
-          <div className="engine-admin-replacements"><p><span>{job.sourceCourses.map((course) => course.courseName).join(' + ')}</span> → <strong>{job.replacementCourses.map((course) => course.courseName).join(' + ')}</strong></p></div>
-          <dl>
-            <div><dt>Request ID</dt><dd>{job.id}</dd></div>
-            <div><dt>User ID</dt><dd>{job.userId}</dd></div>
-            <div><dt>Worker</dt><dd>{job.workerId ?? 'Unclaimed'}</dd></div>
-            <div><dt>Attempts</dt><dd>{job.attemptCount}</dd></div>
-            <div><dt>Heartbeat</dt><dd>{activityTimestamp(job.heartbeatAt)}</dd></div>
-            <div><dt>Email</dt><dd>{job.emailNotification ? job.notificationStatus : 'Not requested'}</dd></div>
-          </dl>
-          {job.errorMessage || job.notificationError ? <p className="form-error">{job.errorMessage ?? job.notificationError}</p> : null}
-          {job.noValidScheduleReason ? <p className="notice-box">No valid schedule: {job.noValidScheduleReason}</p> : null}
+  useEffect(() => {
+    // Keep the current section visible in the phone tab scroller.
+    const current = document.querySelector<HTMLElement>('.admin-nav [aria-current="page"]')
+    if (current && typeof current.scrollIntoView === 'function') current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [active])
+
+  return (
+    <nav className="admin-nav" aria-label="Administration sections">
+      {groups.map((group, groupIndex) => (
+        <div className="admin-nav-group" key={group.label}>
+          <p className="admin-nav-group-label" id={`${navId}-${groupIndex}`}>{group.label}</p>
+          <ul aria-labelledby={`${navId}-${groupIndex}`}>
+            {group.sections.map((item) => {
+              const Icon = item.icon
+              const count = counts[item.id]
+              const current = item.id === active
+              return (
+                <li key={item.id}>
+                  <Link className="admin-nav-item" to={`?section=${item.id}`} replace aria-current={current ? 'page' : undefined}>
+                    <Icon aria-hidden="true" />
+                    <span className="admin-nav-label">{item.label}</span>
+                    {count && count.value > 0 ? <span className="badge admin-nav-count"><span aria-hidden="true">{count.value}</span><span className="sr-only">, {count.value} {count.label}</span></span> : null}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-      </details>)}
-    </div>}
-  </section>
-}
-
-export function HomepageStatisticPanel({ isDemo }: { isDemo: boolean }) {
-  const [settings, setSettings] = useState<HomepageStatisticSettings>(defaultHomepageSettings)
-  const [realValue, setRealValue] = useState<{ value: number; label: string } | null>(null)
-  const [loading, setLoading] = useState(!isDemo)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    if (isDemo) return
-    setLoading(true)
-    setError(null)
-    try {
-      const [nextSettings, statistic] = await Promise.all([
-        adminGetHomepageStatisticSettings(),
-        getHomepageStatistic(),
-      ])
-      setSettings(nextSettings)
-      setRealValue(statistic ? { value: statistic.statistic_value, label: statistic.statistic_label } : null)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load homepage statistic settings.')
-    } finally {
-      setLoading(false)
-    }
-  }, [isDemo])
-
-  useEffect(() => { void load() }, [load])
-
-  async function save(event: FormEvent) {
-    event.preventDefault()
-    setSaving(true)
-    setError(null)
-    setMessage(null)
-    try {
-      if (!isDemo) await adminUpdateHomepageStatisticSettings({
-        shown: settings.shown,
-        statistic_key: settings.statistic_key,
-        minimum_value: settings.minimum_value,
-        activity_scope: settings.activity_scope,
-      })
-      setMessage('Homepage statistic settings saved. The displayed number remains database-calculated.')
-      await load()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save homepage statistic settings.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <section className="admin-section"><p className="muted">Loading homepage settings…</p></section>
-  return <section className="admin-section homepage-stat-settings">
-    <div><h2>Homepage social proof</h2><p>Choose which aggregate appears and when. The number is always calculated from real database activity and cannot be entered manually.</p></div>
-    {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {message ? <p className="form-success" role="status">{message}</p> : null}
-    <form onSubmit={(event) => void save(event)}>
-      <label className="checkbox-row"><input type="checkbox" checked={settings.shown} onChange={(event) => setSettings((current) => ({ ...current, shown: event.target.checked }))} /><span><strong>Show homepage statistic</strong><small>It still stays hidden while the real value is below the minimum.</small></span></label>
-      <label>Statistic<select value={settings.statistic_key} onChange={(event) => setSettings((current) => ({ ...current, statistic_key: event.target.value as HomepageStatisticKey }))}>{(Object.entries(homepageStatisticLabels) as Array<[HomepageStatisticKey, string]>).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-      <label>Minimum real value<input min={0} max={1000000000} step={1} type="number" value={settings.minimum_value} onChange={(event) => setSettings((current) => ({ ...current, minimum_value: Math.max(0, Number(event.target.value)) }))} /></label>
-      <label>Activity window<select value={settings.activity_scope} onChange={(event) => setSettings((current) => ({ ...current, activity_scope: event.target.value as HomepageActivityScope }))}><option value="total">Total activity</option><option value="recent">Recent activity (last 30 days)</option></select></label>
-      <div className="homepage-stat-preview"><span>Current public result</span>{realValue ? <strong>{new Intl.NumberFormat().format(realValue.value)} {realValue.label}</strong> : <strong>Hidden by the current setting or minimum</strong>}</div>
-      <button className="button button-primary" disabled={saving || isDemo}>{saving ? 'Saving…' : 'Save homepage settings'}</button>
-      {isDemo ? <small className="muted">Connect Supabase to save or preview real statistics.</small> : null}
-    </form>
-  </section>
-}
-
-const defaultClubPromptSettings: AdminClubPromptSettings = { enabled: true, delay_seconds: 180, why_scheduleshare_enabled: true, updated_at: '' }
-
-export function ClubPromptPanel({ isDemo }: { isDemo: boolean }) {
-  const { setWhyScheduleShareEnabled } = useClubPrompt()
-  const [settings, setSettings] = useState<AdminClubPromptSettings>(defaultClubPromptSettings)
-  const [loading, setLoading] = useState(!isDemo)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    if (isDemo) return
-    setLoading(true)
-    setError(null)
-    try {
-      setSettings(await adminGetClubPromptSettings())
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load club invitation settings.')
-    } finally {
-      setLoading(false)
-    }
-  }, [isDemo])
-
-  useEffect(() => { void load() }, [load])
-
-  async function save(event: FormEvent) {
-    event.preventDefault()
-    if (settings.delay_seconds < 30 || settings.delay_seconds > 3600) {
-      setError('The delay must be between 30 seconds and 60 minutes.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    setMessage(null)
-    try {
-      if (!isDemo) await adminUpdateClubPromptSettings({
-        enabled: settings.enabled,
-        delay_seconds: settings.delay_seconds,
-        why_scheduleshare_enabled: settings.why_scheduleshare_enabled,
-      })
-      setWhyScheduleShareEnabled(settings.why_scheduleshare_enabled)
-      setMessage('Club invitation and page visibility settings saved.')
-      await load()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save club invitation settings.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <section className="admin-section"><p className="muted">Loading club invitation settings…</p></section>
-  return <section className="admin-section homepage-stat-settings">
-    <div><h2>Club invitation popup</h2><p>The timed “built by the NA Computer and AI Club” card. It appears once per student, only after they sign in, upload a schedule, visit at least three pages, and stay on the site for the delay below. The footer link and homepage button are always available.</p></div>
-    {error ? <p className="form-error" role="alert">{error}</p> : null}
-    {message ? <p className="form-success" role="status">{message}</p> : null}
-    <form onSubmit={(event) => void save(event)}>
-      <label className="checkbox-row"><input type="checkbox" checked={settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))} /><span><strong>Show the timed invitation</strong><small>Turning this off hides the popup for everyone without touching the footer link.</small></span></label>
-      <label>Delay before it appears (seconds)<input min={30} max={3600} step={10} type="number" disabled={!settings.enabled} value={settings.delay_seconds} onChange={(event) => setSettings((current) => ({ ...current, delay_seconds: Math.round(Number(event.target.value)) }))} /></label>
-      <p className="muted club-prompt-delay-hint">{formatDelaySummary(settings.delay_seconds)} of active time on the site. Time paused in a background tab does not count.</p>
-      <label className="checkbox-row"><input type="checkbox" checked={settings.why_scheduleshare_enabled} onChange={(event) => setSettings((current) => ({ ...current, why_scheduleshare_enabled: event.target.checked }))} /><span><strong>Show the Why ScheduleShare page</strong><small>Turning this off removes every link to the page and blocks direct visits for all users.</small></span></label>
-      <button className="button button-primary" disabled={saving || isDemo}>{saving ? 'Saving…' : 'Save invitation settings'}</button>
-      {isDemo ? <small className="muted">Connect Supabase to save club invitation settings.</small> : null}
-    </form>
-  </section>
-}
-
-function formatDelaySummary(delaySeconds: number): string {
-  if (!Number.isFinite(delaySeconds) || delaySeconds <= 0) return 'No delay'
-  if (delaySeconds < 60) return `${Math.round(delaySeconds)} seconds`
-  const minutes = delaySeconds / 60
-  const rounded = Math.round(minutes * 10) / 10
-  return `${rounded} minute${rounded === 1 ? '' : 's'}`
-}
-
-const demoImportModels: ScheduleImportModelRecord[] = [
-  {
-    model_id: 'gemini-3.5-flash-lite',
-    display_name: 'Gemini 3.5 Flash-Lite',
-    enabled: true,
-    supports_image_input: true,
-    supports_structured_output: true,
-    supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
-    max_output_tokens: 65536,
-    is_active: true,
-    production_thinking_level: 'low',
-    production_output_token_limit: 4096,
-  },
-  {
-    model_id: 'gemini-3.5-flash',
-    display_name: 'Gemini 3.5 Flash',
-    enabled: true,
-    supports_image_input: true,
-    supports_structured_output: true,
-    supported_thinking_levels: ['minimal', 'low', 'medium', 'high'],
-    max_output_tokens: 65536,
-    is_active: false,
-    production_thinking_level: 'low',
-    production_output_token_limit: 4096,
-  },
-]
-
-function AiImporterManagementPanel({ isDemo }: { isDemo: boolean }) {
-  const [models, setModels] = useState<ScheduleImportModelRecord[]>(isDemo ? demoImportModels : [])
-  const [logs, setLogs] = useState<ScheduleImportDiagnosticLog[]>([])
-  const [modelId, setModelId] = useState(isDemo ? demoImportModels[0].model_id : '')
-  const [thinkingLevel, setThinkingLevel] = useState<GeminiThinkingLevel>('low')
-  const [outputTokenLimit, setOutputTokenLimit] = useState(4096)
-  const [progressDurationSeconds, setProgressDurationSeconds] = useState(6.5)
-  const [retryIncompleteResults, setRetryIncompleteResults] = useState(true)
-  const [loading, setLoading] = useState(!isDemo)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    if (isDemo) return
-    setLoading(true)
-    setError(null)
-    try {
-      const [nextModels, nextLogs, uiSettings] = await Promise.all([
-        adminListScheduleImportModels(),
-        adminListScheduleImportDiagnostics(),
-        getScheduleImportUiSettings(),
-      ])
-      setModels(nextModels)
-      setLogs(nextLogs)
-      const active = nextModels.find((model) => model.is_active) ?? nextModels[0]
-      setModelId(active?.model_id ?? '')
-      setThinkingLevel(active?.production_thinking_level ?? 'low')
-      setOutputTokenLimit(active?.production_output_token_limit ?? 4096)
-      setProgressDurationSeconds(uiSettings.progress_bar_duration_ms / 1000)
-      setRetryIncompleteResults(uiSettings.retry_incomplete_results)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load AI importer settings.')
-    } finally {
-      setLoading(false)
-    }
-  }, [isDemo])
-
-  useEffect(() => { void load() }, [load])
-
-  const selectedModel = models.find((model) => model.model_id === modelId) ?? null
-  const canSave = selectedModel !== null
-    && selectedModel.enabled
-    && selectedModel.supports_image_input
-    && selectedModel.supports_structured_output
-    && selectedModel.supported_thinking_levels.includes(thinkingLevel)
-    && Number.isInteger(outputTokenLimit)
-    && outputTokenLimit >= 256
-    && outputTokenLimit <= Math.min(8192, selectedModel.max_output_tokens)
-    && Number.isFinite(progressDurationSeconds)
-    && progressDurationSeconds >= 1
-    && progressDurationSeconds <= 30
-
-  async function saveSettings(event: FormEvent) {
-    event.preventDefault()
-    if (!canSave) return
-    setSaving(true)
-    setError(null)
-    try {
-      if (!isDemo) await Promise.all([
-        adminUpdateScheduleImportSettings({ modelId, thinkingLevel, outputTokenLimit }),
-        adminUpdateScheduleImportProgressDuration(Math.round(progressDurationSeconds * 1000)),
-        adminUpdateScheduleImportRetrySetting(retryIncompleteResults),
-      ])
-      setMessage('Production Gemini settings updated. New imports will use them immediately.')
-      await load()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not update the AI importer settings.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function deleteLog(log: ScheduleImportDiagnosticLog) {
-    if (!window.confirm('Delete this temporary diagnostic log now? The deletion is recorded in the immutable audit log.')) return
-    setError(null)
-    try {
-      if (!isDemo) await adminDeleteScheduleImportDiagnostic(log.diagnostic_id)
-      setLogs((current) => current.filter((candidate) => candidate.diagnostic_id !== log.diagnostic_id))
-      setMessage('Diagnostic log deleted and the access was audited.')
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not delete the diagnostic log.')
-    }
-  }
-
-  return <section className="admin-section ai-importer-admin">
-    <div className="section-heading"><div><h2>Gemini schedule importer</h2><p>Only allowlisted, image-capable structured-output models can be selected. Changes apply without a frontend or Edge Function deployment.</p></div><button className="button button-secondary" disabled={loading} type="button" onClick={() => void load()}><RefreshCw size={16} /> Refresh</button></div>
-    {message ? <div className="notice-box"><span>{message}</span></div> : null}
-    {error ? <p className="form-error" role="alert">{error}</p> : null}
-    <form className="ai-model-settings" onSubmit={saveSettings}>
-      <label>Production model<select value={modelId} disabled={loading || saving} onChange={(event) => {
-        const model = models.find((candidate) => candidate.model_id === event.target.value)
-        setModelId(event.target.value)
-        if (model && !model.supported_thinking_levels.includes(thinkingLevel)) {
-          setThinkingLevel(model.supported_thinking_levels.includes('low') ? 'low' : model.supported_thinking_levels[0] ?? 'low')
-        }
-      }}>{models.map((model) => <option key={model.model_id} value={model.model_id} disabled={!model.enabled || !model.supports_image_input || !model.supports_structured_output}>{model.display_name}{model.enabled ? '' : ' (disabled)'}</option>)}</select></label>
-      <label>Thinking level<select value={thinkingLevel} disabled={!selectedModel || saving} onChange={(event) => setThinkingLevel(event.target.value as GeminiThinkingLevel)}>{(selectedModel?.supported_thinking_levels ?? []).map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
-      <label>Output-token limit<input type="number" min={256} max={Math.min(8192, selectedModel?.max_output_tokens ?? 8192)} step={128} value={outputTokenLimit} disabled={saving} onChange={(event) => setOutputTokenLimit(Number(event.target.value))} /></label>
-      <label>Progress duration (seconds)<input type="number" min={1} max={30} step={0.5} value={progressDurationSeconds} disabled={saving} onChange={(event) => setProgressDurationSeconds(Number(event.target.value))} /></label>
-      <label className="checkbox-row ai-retry-setting"><input type="checkbox" checked={retryIncompleteResults} disabled={saving} onChange={(event) => setRetryIncompleteResults(event.target.checked)} /><span><strong>Run Gemini a second time when needed</strong><small>When the first pass has conflicts or incomplete details, Gemini rechecks the screenshots once before showing clarification items.</small></span></label>
-      <button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Update production configuration'}</button>
-    </form>
-    <div className="notice-box"><BrainCircuit aria-hidden="true" /><span><strong>Developer mode stays off by default.</strong> An administrator must enable it inside the screenshot importer for the current dialog session. It bypasses only ScheduleShare's database rate limit; authentication, file validation, model allowlisting, Gemini quotas, and all other checks remain enforced.</span></div>
-
-    <div className="section-heading diagnostic-heading"><div><h3>Temporary diagnostic logs</h3><p>Detailed logs exist only for explicit admin developer-mode requests and expire within 24 hours. Viewing and deletion are audited.</p></div><span className="section-count">{logs.length}</span></div>
-    {logs.length === 0 ? <p className="muted">No unexpired developer diagnostic logs.</p> : <div className="diagnostic-log-list">{logs.map((log) => <details key={log.diagnostic_id} className="diagnostic-log-card">
-      <summary><span><strong>{log.status.replace('_', ' ')}</strong><small>{log.model_id} · {log.thinking_level} · {log.timing_ms} ms</small></span><span><small>Expires {new Date(log.expires_at).toLocaleString()}</small></span></summary>
-      <div className="diagnostic-log-actions"><button className="button button-secondary danger-text" type="button" onClick={() => void deleteLog(log)}><Trash2 size={15} /> Delete log</button></div>
-      <dl><div><dt>Output-token limit</dt><dd>{log.output_token_limit}</dd></div><div><dt>Created</dt><dd>{new Date(log.created_at).toLocaleString()}</dd></div><div><dt>Log ID</dt><dd><code>{log.diagnostic_id}</code></dd></div></dl>
-      {[['Exact prompt', log.prompt], ['Raw Gemini output', log.raw_output], ['Parsed output', log.parsed_output], ['Validation errors', log.validation_errors], ['Image metadata', log.image_metadata], ['Provider error details', log.provider_error]].map(([label, value]) => <section key={String(label)}><h4>{String(label)}</h4><pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? 'null'}</pre></section>)}
-    </details>)}</div>}
-  </section>
-}
-
-function ClassManagementPanel({
-  classes,
-  courseNames,
-  courseFilter,
-  canonicalId,
-  duplicateId,
-  onCourseFilter,
-  onCanonicalId,
-  onDuplicateId,
-  onEdit,
-  onPermanentDelete,
-  onAdminAction,
-}: {
-  classes: AdminClassRecord[]
-  courseNames: AdminCourseNameRecord[]
-  courseFilter: string | null
-  canonicalId: string
-  duplicateId: string
-  onCourseFilter: (id: string | null) => void
-  onCanonicalId: (id: string) => void
-  onDuplicateId: (id: string) => void
-  onEdit: (course: AdminClassRecord) => void
-  onPermanentDelete: (course: AdminClassRecord) => void
-  onAdminAction: (name: string, args: Record<string, unknown>, success: string) => Promise<void>
-}) {
-  const [canonicalCourseNameId, setCanonicalCourseNameId] = useState('')
-  const [duplicateCourseNameId, setDuplicateCourseNameId] = useState('')
-  const [courseCatalogExpanded, setCourseCatalogExpanded] = useState(false)
-  const [aliasCourseId, setAliasCourseId] = useState<string | null>(null)
-  const visibleClasses = courseFilter ? classes.filter((course) => course.course_name_id === courseFilter) : classes
-  const selectedAliasCourse = courseNames.find((course) => course.id === aliasCourseId) ?? null
-  const unusedClassCount = visibleClasses.filter((course) => course.active_enrollment_count === 0).length
-
-  function addCourseName() {
-    const name = window.prompt('New course name')?.trim()
-    if (!name) return
-    void onAdminAction('admin_create_course_name', { p_name: name, p_reason: 'Added from admin course catalog' }, `${name} was added to the course catalog.`)
-  }
-
-  function renameCourseName(courseName: AdminCourseNameRecord) {
-    const name = window.prompt('Rename course', courseName.course_name)?.trim()
-    if (!name || name === courseName.course_name) return
-    void onAdminAction('admin_rename_course_name', { p_course_name_id: courseName.id, p_name: name, p_reason: 'Renamed from admin course catalog' }, `${courseName.course_name} was renamed to ${name}.`)
-  }
-
-  function addCourseAlias(courseName: AdminCourseNameRecord) {
-    const alias = window.prompt(`Add another possible name for ${courseName.course_name}`)?.trim()
-    if (!alias) return
-    void onAdminAction('admin_add_course_name_alias', {
-      p_course_name_id: courseName.id,
-      p_alias: alias,
-      p_reason: 'Added from admin course catalog',
-    }, `${alias} will now match ${courseName.course_name}.`)
-  }
-
-  function deleteCourseAlias(courseName: AdminCourseNameRecord, aliasId: string, alias: string) {
-    if (!window.confirm(`Remove “${alias}” as a possible name for ${courseName.course_name}?`)) return
-    void onAdminAction('admin_delete_course_name_alias', {
-      p_alias_id: aliasId,
-      p_reason: 'Removed from admin course catalog',
-    }, `${alias} was removed from ${courseName.course_name}.`)
-  }
-
-  return <section className="admin-section class-management-section">
-    <div className="section-heading course-catalog-heading"><div><h2>Course catalog <span className="section-count">({courseNames.length})</span></h2><p>Manage reusable course names separately from their teacher, period, day, and term sections.</p></div><div className="course-catalog-actions"><button className="button button-primary" type="button" onClick={addCourseName}><Plus size={17} /> Add course name</button><button className="button button-secondary catalog-toggle" type="button" aria-expanded={courseCatalogExpanded} aria-controls="admin-course-catalog-content" onClick={() => setCourseCatalogExpanded((expanded) => !expanded)}>{courseCatalogExpanded ? <ChevronDown size={17} aria-hidden="true" /> : <ChevronRight size={17} aria-hidden="true" />}{courseCatalogExpanded ? 'Hide catalog' : 'Show catalog'}</button></div></div>
-    {courseCatalogExpanded ? <div id="admin-course-catalog-content">
-    <div className="admin-table admin-course-table"><div className="admin-table-head"><span>Course name</span><span>Source</span><span>Sections</span><span>Status</span><span>Actions</span></div>{courseNames.map((courseName) => <div className="admin-table-row" key={courseName.id}><span><strong>{courseName.course_name}</strong><small>{courseName.alias_count > 0 ? `${courseName.alias_count} possible name${courseName.alias_count === 1 ? '' : 's'}` : 'No alternate names'}</small><small>{courseName.id}</small></span><span>{courseName.source}</span><span><strong>{courseName.active_section_count} active</strong><small>{courseName.section_count} total</small></span><span>{courseName.status}</span><span className="row-actions"><button type="button" onClick={() => onCourseFilter(courseName.id)}>View sections</button>{courseName.status !== 'merged' ? <button type="button" onClick={() => setAliasCourseId(courseName.id)}>Possible names</button> : null}{courseName.status !== 'merged' ? <button type="button" onClick={() => renameCourseName(courseName)}>Rename</button> : null}{courseName.status !== 'merged' ? <button className={courseName.status === 'active' ? 'danger-text' : ''} type="button" onClick={() => { const enabling = courseName.status !== 'active'; if (window.confirm(`${enabling ? 'Enable' : 'Disable'} ${courseName.course_name}? Existing schedules keep their linked name.`)) void onAdminAction('admin_set_course_name_enabled', { p_course_name_id: courseName.id, p_enabled: enabling, p_reason: `${enabling ? 'Enabled' : 'Disabled'} from admin course catalog` }, `${courseName.course_name} was ${enabling ? 'enabled' : 'disabled'}.`) }}>{courseName.status === 'active' ? 'Disable' : 'Enable'}</button> : null}</span></div>)}</div>
-    {selectedAliasCourse ? <div className="course-alias-manager"><div className="section-heading"><div><h3>Possible names for {selectedAliasCourse.course_name}</h3><p>The importer and catalogue search accept every name below but continue displaying the canonical course name.</p></div><div className="course-catalog-actions"><button className="button button-primary" type="button" onClick={() => addCourseAlias(selectedAliasCourse)}><Plus size={16} /> Add possible name</button><button className="button button-secondary" type="button" onClick={() => setAliasCourseId(null)}>Close</button></div></div>{selectedAliasCourse.aliases.length === 0 ? <p className="notice-box">No alternate names have been added or learned yet.</p> : <div className="admin-table admin-course-table"><div className="admin-table-head"><span>Possible name</span><span>Source</span><span>Learned</span><span>Last seen</span><span>Actions</span></div>{selectedAliasCourse.aliases.map((alias) => <div className="admin-table-row" key={alias.id}><span><strong>{alias.alias}</strong><small>{alias.id}</small></span><span>{alias.source.replaceAll('_', ' ')}</span><span>{alias.learned_count.toLocaleString()} time{alias.learned_count === 1 ? '' : 's'}</span><span>{alias.last_seen_at ? new Date(alias.last_seen_at).toLocaleString() : '—'}</span><span className="row-actions"><button className="danger-text" type="button" onClick={() => deleteCourseAlias(selectedAliasCourse, alias.id, alias.alias)}>Remove</button></span></div>)}</div>}</div> : null}
-
-    <div className="merge-tool"><Merge /><label>Canonical course-name ID<input value={canonicalCourseNameId} onChange={(event) => setCanonicalCourseNameId(event.target.value)} /></label><label>Duplicate course-name ID<input value={duplicateCourseNameId} onChange={(event) => setDuplicateCourseNameId(event.target.value)} /></label><button className="button button-primary" disabled={!canonicalCourseNameId || !duplicateCourseNameId} onClick={() => { if (window.confirm('Relink every section to the canonical course name and mark the duplicate name as merged? Sections will remain separate.')) void onAdminAction('admin_merge_course_names', { p_canonical_course_name_id: canonicalCourseNameId, p_duplicate_course_name_id: duplicateCourseNameId, p_reason: 'Duplicate course-name merge' }, 'Course names merged without merging sections.') }}>Merge course names</button></div>
-
-    </div> : null}
-    <div className="section-heading class-sections-heading"><div><h2>Class sections</h2><p>Archive sections to deactivate schedules, or permanently delete a section with an impact-aware confirmation. <strong>{unusedClassCount}</strong> {unusedClassCount === 1 ? 'section is' : 'sections are'} not on anyone's schedule.</p></div>{courseFilter ? <button className="button button-secondary" type="button" onClick={() => onCourseFilter(null)}>Show all sections</button> : null}</div>
-    <div className="merge-tool"><Merge /><label>Canonical section ID<input value={canonicalId} onChange={(event) => onCanonicalId(event.target.value)} /></label><label>Duplicate section ID<input value={duplicateId} onChange={(event) => onDuplicateId(event.target.value)} /></label><button className="button button-primary" disabled={!canonicalId || !duplicateId} onClick={() => { if (window.confirm('Move all enrollments and archive the duplicate section?')) void onAdminAction('admin_merge_classes', { p_canonical_class_id: canonicalId, p_duplicate_class_id: duplicateId, p_reason: 'Duplicate class-section merge' }, 'Class sections merged transactionally.') }}>Merge sections</button></div>
-    <div className="admin-table admin-class-table"><div className="admin-table-head"><span>Course / section</span><span>Teacher / slots</span><span>Term</span><span>Status</span><span>Actions</span></div>{visibleClasses.map((course) => <div className={course.active_enrollment_count === 0 ? 'admin-table-row is-unused' : 'admin-table-row'} key={course.id}><span><strong>{course.course_name}</strong><small>{course.id}</small></span><span><strong>{course.teacher_last_name}</strong><small>{formatMeetingSlotSummary(course.meeting_slots)}</small></span><span>{course.default_academic_term.replace('_', ' ')}</span><span><strong>{course.status}</strong><small>{course.active_enrollment_count === 0 ? 'Not on any schedule' : `${course.active_enrollment_count} active / ${course.total_enrollment_count} total`}</small></span><span className="row-actions">{course.status === 'active' ? <button onClick={() => onEdit(course)}>Edit</button> : null}{course.status === 'active' ? <button className="danger-text" onClick={() => { if (window.confirm(`Archive ${course.course_name} with ${course.teacher_last_name}? Active enrollments will be deactivated.`)) void onAdminAction('admin_archive_class', { p_class_id: course.id, p_reason: 'Archived from admin console' }, 'Class section archived.') }}>Archive</button> : null}<button className="danger-text" onClick={() => onPermanentDelete(course)}>Delete permanently</button></span></div>)}</div>
-  </section>
-}
-
-function ReportDetails({ report, onClose }: { report: AdminReportRecord; onClose: () => void }) {
-  return <article className="report-detail-panel" aria-label="Report details"><header><div><span>Report details</span><h3>{reportReasonLabels[report.reason_category]}</h3></div><button className="icon-button" type="button" aria-label="Close report details" onClick={onClose}><X size={18} /></button></header><dl><div><dt>Reported</dt><dd>{report.reported_user_name ?? report.reported_course_name ?? 'General issue'}</dd></div><div><dt>Submitted by</dt><dd>{report.reporter_name ?? 'Deleted user'}</dd></div><div><dt>Submitted</dt><dd>{new Date(report.created_at).toLocaleString()}</dd></div><div><dt>Status</dt><dd>{report.status.replace('_', ' ')}</dd></div>{report.assigned_admin_name ? <div><dt>Assigned admin</dt><dd>{report.assigned_admin_name}</dd></div> : null}{report.resolved_at ? <div><dt>Resolved</dt><dd>{new Date(report.resolved_at).toLocaleString()}</dd></div> : null}</dl><section><h4>Submitted description</h4><p>{report.explanation ?? 'No additional description was submitted.'}</p></section>{report.resolution_notes ? <section><h4>Resolution notes</h4><p>{report.resolution_notes}</p></section> : null}</article>
-}
-
-function AdminClassEditDialog({
-  course,
-  courseNames,
-  saving,
-  onClose,
-  onSave,
-}: {
-  course: AdminClassRecord
-  courseNames: AdminCourseNameRecord[]
-  saving: boolean
-  onClose: () => void
-  onSave: (input: { courseNameId: string; teacherLastName: string; term: AcademicTerm; isDoublePeriod: boolean; meetingSlots: MeetingSlot[]; reason: string }) => Promise<void>
-}) {
-  const [courseNameId, setCourseNameId] = useState(course.course_name_id)
-  const [teacherLastName, setTeacherLastName] = useState(course.teacher_last_name)
-  const term = course.default_academic_term
-  const [isDoublePeriod, setIsDoublePeriod] = useState(course.is_double_period || hasMultiplePeriodsOnAnyDay(course.meeting_slots))
-  const [meetingSlots, setMeetingSlots] = useState<MeetingSlot[]>(course.meeting_slots)
-  const [reason, setReason] = useState('Corrected from admin class management')
-  const slotError = validateMeetingSlots(meetingSlots, isDoublePeriod)
-  const teacherError = teacherLastNameError(teacherLastName)
-  const canSave = Boolean(courseNameId) && !teacherError && reason.trim().length >= 3 && !slotError
-
-  function changeDoublePeriod(nextIsDoublePeriod: boolean) {
-    setIsDoublePeriod(nextIsDoublePeriod)
-    if (!nextIsDoublePeriod) {
-      const normalSlots = (['A', 'B'] as const).flatMap((day) => meetingSlotsForDay(meetingSlots, day).slice(0, 1))
-      setMeetingSlots(sortMeetingSlots(normalSlots))
-      return
-    }
-    if (hasMultiplePeriodsOnAnyDay(meetingSlots)) return
-    setMeetingSlots(defaultDoubleMeetingSlots(preferredMeetingDay(meetingSlots), meetingSlots[0]?.period_number ?? 1))
-  }
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!canSave) return
-    void onSave({ courseNameId, teacherLastName, term, isDoublePeriod, meetingSlots, reason })
-  }
-
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="class-dialog admin-class-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-class-title"><div className="sheet-handle" aria-hidden="true" /><header><div><h2 id="edit-class-title">Edit class section</h2><p>{course.active_enrollment_count} active enrollment{course.active_enrollment_count === 1 ? '' : 's'} will receive this update.</p></div><button className="icon-button" type="button" aria-label="Close" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button></header><form className="create-class-form" onSubmit={submit}><div className="two-field-row"><label>Course name<select required value={courseNameId} onChange={(event) => setCourseNameId(event.target.value)}>{courseNames.filter((item) => item.status === 'active' || item.id === course.course_name_id).map((item) => <option value={item.id} key={item.id}>{item.course_name}</option>)}</select></label><label>Teacher Last Name<input required maxLength={120} value={teacherLastName} onChange={(event) => setTeacherLastName(event.target.value)} /><small className="field-help">Enter only the last name; compound last names are allowed.</small></label></div>{teacherError ? <p className="form-error" role="alert">{teacherError}</p> : null}<div className="field-readonly"><span>Academic term</span><strong>{termLabels[term]}</strong><small>Class terms are fixed after creation. Create a new section to use a different term.</small></div><MeetingSlotEditor isDoublePeriod={isDoublePeriod} meetingSlots={meetingSlots} onDoublePeriodChange={changeDoublePeriod} onMeetingSlotsChange={setMeetingSlots} />{slotError ? <p className="form-error" role="alert">{slotError}</p> : null}<label>Audit reason<input required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><div className="form-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save class changes'}</button></div></form></section></div>
-}
-
-const emptyActivitySummary: ActivitySummary = {
-  total_users: 0,
-  daily_active_users: 0,
-  weekly_active_users: 0,
-  schedule_imports: 0,
-  schedules_shared: 0,
-  access_requests: 0,
-}
-
-const eventLogPageSizes = [25, 50, 100, 150, 250] as const
-
-export function eventLogPageNumbers(currentPage: number, totalPages: number): number[] {
-  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
-  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])
-  if (currentPage <= 4) [2, 3, 4, 5].forEach((page) => pages.add(page))
-  if (currentPage >= totalPages - 3) [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1].forEach((page) => pages.add(page))
-  return [...pages].filter((page) => page >= 1 && page <= totalPages).sort((left, right) => left - right)
-}
-
-export function EventLogsPanel() {
-  const [logs, setLogs] = useState<EventLogRecord[]>([])
-  const [totalLogs, setTotalLogs] = useState(0)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState<(typeof eventLogPageSizes)[number]>(50)
-  const [summary, setSummary] = useState<ActivitySummary>(emptyActivitySummary)
-  const [category, setCategory] = useState<EventLogCategory | ''>('')
-  const [eventFilter, setEventFilter] = useState('')
-  const [userFilter, setUserFilter] = useState('')
-  const [targetFilter, setTargetFilter] = useState('')
-  const [resultFilter, setResultFilter] = useState('')
-  const [createdFrom, setCreatedFrom] = useState('')
-  const [createdTo, setCreatedTo] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [nextPage, nextSummary] = await Promise.all([
-        superAdminListLogsPage({
-          category,
-          event: eventFilter,
-          user: userFilter,
-          target: targetFilter,
-          result: resultFilter,
-          createdFrom: createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined,
-          createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
-          limit: pageSize,
-          offset: (page - 1) * pageSize,
-        }),
-        superAdminGetActivitySummary(),
-      ])
-      const lastPage = Math.max(1, Math.ceil(nextPage.total / pageSize))
-      if (page > lastPage) {
-        setPage(lastPage)
-        return
-      }
-      setLogs(nextPage.logs)
-      setTotalLogs(nextPage.total)
-      setSummary(nextSummary)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The logs could not be loaded.')
-    } finally {
-      setLoading(false)
-    }
-  }, [category, createdFrom, createdTo, eventFilter, page, pageSize, resultFilter, targetFilter, userFilter])
-
-  useEffect(() => { void load() }, [load])
-
-  async function deleteLog(log: EventLogRecord) {
-    const phrase = `DELETE LOG ${log.id.replaceAll('-', '').slice(0, 8).toUpperCase()}`
-    if (window.prompt(`This permanently deletes one log. Type ${phrase} to continue.`) !== phrase) return
-    setError(null)
-    try {
-      await superAdminDeleteLog(log.id)
-      setMessage('The selected log was permanently deleted.')
-      await load()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The log could not be deleted.')
-    }
-  }
-
-  async function deleteFilteredLogs() {
-    if (!window.confirm('This permanently deletes every record matching the current filters, including records beyond the current page. This cannot be undone.')) return
-    if (window.prompt('Type DELETE FILTERED LOGS PERMANENTLY to continue.') !== 'DELETE FILTERED LOGS PERMANENTLY') return
-    setError(null)
-    try {
-      const removed = await superAdminDeleteLogs({
-        category,
-        event: eventFilter,
-        user: userFilter,
-        target: targetFilter,
-        result: resultFilter,
-        createdFrom: createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined,
-        createdTo: createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined,
-      })
-      setMessage(`${removed} log${removed === 1 ? '' : 's'} permanently deleted.`)
-      if (page === 1) await load()
-      else setPage(1)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The filtered logs could not be deleted.')
-    }
-  }
-
-  const totalPages = Math.max(1, Math.ceil(totalLogs / pageSize))
-  const firstVisibleLog = totalLogs === 0 ? 0 : (page - 1) * pageSize + 1
-  const lastVisibleLog = totalLogs === 0 ? 0 : Math.min((page - 1) * pageSize + logs.length, totalLogs)
-  const numberedPages = eventLogPageNumbers(page, totalPages)
-
-  return <section className="admin-section event-logs-panel">
-    <div className="section-heading"><div><h2>Security and audit logs</h2><p>Permanent records contain identifiers and useful change details, never image contents, share tokens, signed URLs, full prompts, or full extracted schedules.</p></div><button className="button button-secondary" type="button" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</button></div>
-    <div className="activity-summary-grid">
-      {[['Users', summary.total_users], ['Active today', summary.daily_active_users], ['Active this week', summary.weekly_active_users], ['Imports', summary.schedule_imports], ['Shares pressed', summary.schedules_shared], ['Access requests', summary.access_requests]].map(([label, value]) => <article key={String(label)}><span>{String(label)}</span><strong>{Number(value).toLocaleString()}</strong></article>)}
-    </div>
-    <form className="event-log-filters" onSubmit={(event) => { event.preventDefault(); if (page === 1) void load(); else setPage(1) }}>
-      <label>Log<select value={category} onChange={(event) => { setCategory(event.target.value as EventLogCategory | ''); setPage(1) }}><option value="">All logs</option><option value="security">Security</option><option value="audit">Audit</option><option value="import">Import/debug</option><option value="admin">Administrative</option></select></label>
-      <label>Event<input placeholder="e.g. login_failed" value={eventFilter} onChange={(event) => { setEventFilter(event.target.value); setPage(1) }} /></label>
-      <label>User name or ID<input placeholder="Name or exact UUID" value={userFilter} onChange={(event) => { setUserFilter(event.target.value); setPage(1) }} /></label>
-      <label>Target<input placeholder="Type or ID" value={targetFilter} onChange={(event) => { setTargetFilter(event.target.value); setPage(1) }} /></label>
-      <label>Result<input placeholder="succeeded, failed…" value={resultFilter} onChange={(event) => { setResultFilter(event.target.value); setPage(1) }} /></label>
-      <label>From<input type="date" value={createdFrom} onChange={(event) => { setCreatedFrom(event.target.value); setPage(1) }} /></label>
-      <label>Through<input type="date" value={createdTo} onChange={(event) => { setCreatedTo(event.target.value); setPage(1) }} /></label>
-      <button className="button button-primary" disabled={loading}>{loading ? 'Loading…' : 'Apply filters'}</button>
-    </form>
-    {message ? <p className="form-success" role="status">{message}</p> : null}
-    {error ? <p className="form-error" role="alert">{error}</p> : null}
-    <div className="event-log-actions"><span>Showing {firstVisibleLog.toLocaleString()}–{lastVisibleLog.toLocaleString()} of {totalLogs.toLocaleString()} matching logs</span><button className="button button-secondary danger-text" type="button" disabled={loading || logs.length === 0} onClick={() => void deleteFilteredLogs()}><Trash2 size={16} /> Permanently delete filtered logs</button></div>
-    <div className="admin-table event-log-table"><div className="admin-table-head"><span>Event</span><span>User</span><span>Subject / target</span><span>Timestamp</span><span>Details</span></div>{logs.map((log) => <div className="admin-table-row" key={log.id}><span><strong>{log.event_type}</strong><small>{log.log_category} · {log.result ?? 'no result'}</small></span><span><strong>{log.actor_name ?? 'System / signed-out'}</strong><small>{log.actor_user_id ?? '—'}</small></span><span><strong>{log.subject_name ?? log.target_type ?? '—'}</strong><small>{log.subject_user_id ?? log.target_id ?? '—'}</small></span><span>{new Date(log.created_at).toLocaleString()}</span><span className="event-log-details"><details><summary>Metadata</summary><pre>{JSON.stringify(log.metadata, null, 2)}</pre></details><button className="danger-text" type="button" onClick={() => void deleteLog(log)}>Delete</button></span></div>)}</div>
-    <nav className="event-log-pagination" aria-label="Event log pages">
-      <label>Logs per page<select value={pageSize} disabled={loading} onChange={(event) => { setPageSize(Number(event.target.value) as (typeof eventLogPageSizes)[number]); setPage(1) }}>{eventLogPageSizes.map((size) => <option value={size} key={size}>{size}</option>)}</select></label>
-      <div>
-        <button className="icon-button" type="button" aria-label="Previous page" disabled={loading || page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft aria-hidden="true" /></button>
-        {numberedPages.map((pageNumber, index) => <Fragment key={pageNumber}>{index > 0 && pageNumber - numberedPages[index - 1] > 1 ? <span className="event-log-page-gap" aria-hidden="true">…</span> : null}<button className={pageNumber === page ? 'is-current' : ''} type="button" aria-label={`Page ${pageNumber}`} aria-current={pageNumber === page ? 'page' : undefined} disabled={loading} onClick={() => setPage(pageNumber)}>{pageNumber}</button></Fragment>)}
-        <button className="icon-button" type="button" aria-label="Next page" disabled={loading || page === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}><ChevronRight aria-hidden="true" /></button>
-      </div>
+      ))}
     </nav>
-  </section>
-}
-
-const resetPhrase = 'RESET SCHEDULESHARE KEEP MY ADMIN ACCOUNT AND COURSE NAMES'
-
-function ProtectedToolsPanel() {
-  const [preview, setPreview] = useState<SiteResetPreview | null>(null)
-  const [email, setEmail] = useState('')
-  const [confirmation, setConfirmation] = useState('')
-  const [acknowledged, setAcknowledged] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const loadPreview = useCallback(async () => {
-    try { setPreview(await superAdminGetSiteResetPreview()) }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'The reset preview could not be loaded.') }
-  }, [])
-
-  useEffect(() => { void loadPreview() }, [loadPreview])
-
-  async function addAccess(event: FormEvent) {
-    event.preventDefault()
-    setBusy(true)
-    setError(null)
-    setMessage(null)
-    try {
-      await superAdminAdd(email)
-      setEmail('')
-      setMessage('Protected access was granted to the existing account with that exact email.')
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Protected access could not be granted.')
-    } finally { setBusy(false) }
-  }
-
-  async function resetSite() {
-    if (!acknowledged || confirmation !== resetPhrase) return
-    if (!window.confirm('Final warning: every other account and all profile pictures, profile data, schedules, classes, access requests, reports, school-day assignments, and bell-sync history will be permanently removed. Your account will return to onboarding, while your admin permissions, the course-name catalog, bell definitions, and bell-sync configuration remain. Continue?')) return
-    setBusy(true)
-    setError(null)
-    try {
-      await superAdminResetSite(confirmation)
-      window.location.assign(import.meta.env.BASE_URL)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The website reset did not complete.')
-      setBusy(false)
-    }
-  }
-
-  return <section className="admin-section protected-tools-panel">
-    <div><h2>Protected access</h2><p>Grant access only to a trusted existing administrator. This page does not display or expose who already has access.</p></div>
-    <form className="protected-access-form" onSubmit={(event) => void addAccess(event)}><label>Exact account email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><button className="button button-primary" disabled={busy || !email}>Grant protected access</button></form>
-    {message ? <p className="form-success" role="status">{message}</p> : null}
-    {error ? <p className="form-error" role="alert">{error}</p> : null}
-    <section className="site-reset-card">
-      <div><h3>Reset for a new school year</h3><p>This deletes every other account and all profile pictures, profile data, schedules, classes, access requests, reports, school-day assignments, bell-sync history, and temporary importer data. Your account returns to onboarding, while its admin permissions, the course-name catalog, bell definitions, bell/sync configuration, and the protected audit record remain.</p></div>
-      {preview ? <dl>{Object.entries(preview).map(([label, value]) => <div key={label}><dt>{label.replaceAll('_', ' ')}</dt><dd>{value.toLocaleString()}</dd></div>)}</dl> : <p className="muted">Loading exact deletion counts…</p>}
-      <label className="checkbox-row"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span><strong>I understand that this removes every other account and resets my profile.</strong><small>Your sign-in and existing admin permissions remain; everyone else must create a new account.</small></span></label>
-      <label className="reset-confirmation-field"><span>Type <strong>{resetPhrase}</strong></span><input autoComplete="off" spellCheck={false} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
-      <button className="button button-danger" type="button" disabled={busy || !acknowledged || confirmation !== resetPhrase} onClick={() => void resetSite()}>{busy ? 'Resetting…' : 'Permanently reset ScheduleShare'}</button>
-    </section>
-  </section>
+  )
 }

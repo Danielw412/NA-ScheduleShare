@@ -1,13 +1,20 @@
-import { useState, type FormEvent } from 'react'
+import { AlertCircle } from 'lucide-react'
+import { useId, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { BrandLogo } from '../components/ui/BrandLogo'
+import { PrivacyOptions } from '../components/account/PrivacyOptions'
+import { StandaloneLayout } from '../components/account/StandaloneLayout'
+import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useAuth } from '../features/auth/AuthProvider'
 import { clearAuthDestination, pendingAuthDestination } from '../lib/authDestination'
 import type { Grade, PrivacySetting } from '../lib/domain'
 
+const gradeOptions = [9, 10, 11, 12].map((value) => ({ value: String(value), label: String(value) }))
+
 export function OnboardingPage() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const nameId = useId()
+  const nameHelpId = useId()
   const [fullName, setFullName] = useState(auth.profile?.full_name === 'New Student' ? '' : auth.profile?.full_name ?? '')
   const [grade, setGrade] = useState<Grade | ''>(auth.profile?.grade ?? '')
   const [privacy, setPrivacy] = useState<PrivacySetting>('classmates')
@@ -34,30 +41,32 @@ export function OnboardingPage() {
   }
 
   return (
-    <main className="onboarding-page">
-      <BrandLogo />
-      <form className="onboarding-form" onSubmit={(event) => void submit(event)}>
-        <span className="step-label">Step 1 of 1</span>
-        <h1>Set up your student profile</h1>
-        <p>This information helps classmates find the right person. You can change privacy later.</p>
-        <label>Full name<input required minLength={2} maxLength={100} autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></label>
-        <fieldset>
-          <legend>Grade</legend>
-          <div className="grade-options">
-            {[9, 10, 11, 12].map((value) => <label key={value}><input type="radio" name="grade" value={value} checked={grade === value} onChange={() => setGrade(value as Grade)} />{value}</label>)}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Who can find you and view your schedule?</legend>
-          <div className="privacy-options">
-            <label><input type="radio" name="privacy" checked={privacy === 'private'} onChange={() => setPrivacy('private')} /><span><strong>Private</strong><small>Only approved people can see your full schedule. People can see that they share a class with you</small></span></label>
-            <label><input type="radio" name="privacy" checked={privacy === 'classmates'} onChange={() => setPrivacy('classmates')} /><span><strong>Classmates</strong><small>Anyone sharing a class with you can view your schedule.</small></span></label>
-            <label><input type="radio" name="privacy" checked={privacy === 'school'} onChange={() => setPrivacy('school')} /><span><strong>Anyone</strong><small>Anyone can view your schedule.</small></span></label>
-          </div>
-        </fieldset>
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <button className="button button-primary button-block" disabled={busy || !grade}>{busy ? 'Saving…' : 'Continue to NA ScheduleShare'}</button>
+    <StandaloneLayout labelledBy="onboarding-title">
+      <form className="panel account-standalone-panel onboarding-form" onSubmit={(event) => void submit(event)}>
+        <header className="account-standalone-header">
+          <h1 id="onboarding-title">Set up your profile</h1>
+          <p>Classmates find you by your name and grade. You can change your name and privacy later in Profile.</p>
+        </header>
+
+        <div className="field">
+          <label htmlFor={nameId}>Full name</label>
+          <input id={nameId} aria-describedby={nameHelpId} required minLength={2} maxLength={100} autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+          <p className="field-help" id={nameHelpId}>Use the name your classmates know you by.</p>
+        </div>
+
+        <div className="field">
+          <span className="field-label" aria-hidden="true">Grade</span>
+          <SegmentedControl label="Grade" block value={grade === '' ? '' : String(grade)} options={gradeOptions} onChange={(value) => setGrade(Number(value) as Grade)} />
+        </div>
+
+        <PrivacyOptions legend="Who can see your schedule?" value={privacy} onChange={setPrivacy} />
+
+        {error ? <p className="form-error" role="alert"><AlertCircle aria-hidden="true" />{error}</p> : null}
+        <div className="onboarding-submit">
+          <button className="button button-primary button-block" disabled={busy || !grade}>{busy ? 'Saving…' : 'Save and continue'}</button>
+          {!grade ? <p className="field-help">Choose your grade to continue.</p> : null}
+        </div>
       </form>
-    </main>
+    </StandaloneLayout>
   )
 }

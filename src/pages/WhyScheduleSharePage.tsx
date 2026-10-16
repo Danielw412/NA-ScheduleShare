@@ -1,66 +1,45 @@
-import {
-  ArrowRight,
-  ArrowLeft,
-  BellOff,
-  CalendarCheck2,
-  Globe2,
-  ImagePlus,
-  MapPin,
-  MousePointerClick,
-  ShieldCheck,
-  Sparkles
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { ChevronLeft, ImageUp } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthProvider'
 
 interface ScheduleShareReason {
   title: string
   description: string
-  Icon: LucideIcon
 }
 
 const reasons: ScheduleShareReason[] = [
   {
     title: 'Just need a screenshot',
-    description: 'Upload PowerSchool screenshots and we will turn them into a schedule. No more typing every class, teacher, period by hand. AI is really replacing everything...',
-    Icon: ImagePlus,
-  }, 
+    description: 'Upload PowerSchool screenshots and we turn them into your schedule. No more typing every class, teacher, and period by hand. AI really is replacing everything.',
+  },
   {
     title: 'Trick your counselor',
-    description: 'Want classes with your friends? See how your schedule will look when you drop a class',
-    Icon: Sparkles,
+    description: 'Want classes with your friends? See how your schedule would look if you dropped a class.',
   },
   {
     title: 'Your actual schedule',
-    description: 'We account for semesters, A/B days, and course name variations so you wont be surprised when your ex is in your class.',
-    Icon: CalendarCheck2,
+    description: 'We account for semesters, A/B days, and course name variations, so you won’t be surprised when your ex is in your class.',
   },
   {
     title: 'No notifications!',
-    description: 'We dont come up with reasons to buzz your phone all day. Check your schedule when you need it and keep your lockscreen clean',
-    Icon: BellOff,
+    description: 'We don’t invent reasons to buzz your phone all day. Check your schedule when you need it and keep your lock screen clean.',
   },
   {
-    title: 'We\'re not annoying',
-    description: 'No random popups and no asking you to share the app with everyone you have ever met.',
-    Icon: MousePointerClick,
+    title: 'We’re not annoying',
+    description: 'No random popups, and no asking you to share the app with everyone you’ve ever met.',
   },
   {
     title: 'NAI and NASH are not the same building',
-    description: 'Now you wont find 9th graders and 12th graders in the same lunch.',
-    Icon: MapPin,
+    description: 'You won’t find 9th graders and 12th graders in the same lunch.',
   },
   {
     title: 'Just a website',
-    description: 'You do not need to install an entire app just to answer “who is in my third period?”',
-    Icon: Globe2,
+    description: 'You don’t need to install an entire app to answer “who’s in my third period?”',
   },
   {
     title: 'Anti-stalking',
-    description: 'Choose who can see your schedule. Your third period is not public information.',
-    Icon: ShieldCheck,
-  }
+    description: 'Choose who can see your schedule. Your third period isn’t public information.',
+  },
 ]
 
 export function WhyScheduleSharePage() {
@@ -76,19 +55,20 @@ export function WhyScheduleSharePage() {
   }
 
   return (
-    <div className="why-page">
-      <section className="why-hero">
-        <div className="why-hero-copy">
+    <div className="page why-page">
+      {/* PageHeader's markup, with a history-aware back button instead of a fixed link. */}
+      <header className="page-header why-header">
+        <div className="page-header-text">
+          <button className="back-link why-back" type="button" onClick={goBack}><ChevronLeft aria-hidden="true" />Back</button>
           <h1>Why ScheduleShare over Saturn</h1>
-          <button className="button button-primary" type="button" onClick={goBack}>Back <ArrowLeft size={18} aria-hidden="true" /></button>
+          <p>Eight reasons, from the students who built it.</p>
         </div>
-      </section>
+      </header>
 
       <ol className="why-reasons">
-        {reasons.map(({ title, description, Icon }, index) => (
+        {reasons.map(({ title, description }, index) => (
           <li key={title}>
-            <span className="why-reason-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-            <span className="why-reason-icon"><Icon aria-hidden="true" /></span>
+            <span className="why-reason-number numeric" aria-hidden="true">{index + 1}</span>
             <div>
               <h2>{title}</h2>
               <p>{description}</p>
@@ -97,14 +77,12 @@ export function WhyScheduleSharePage() {
         ))}
       </ol>
 
-      <section className="why-final">
-        <div>
-          <h2>Ditch Saturn!</h2>
-          <p>Upload a screenshot and see your classes!</p>
-        </div>
-        <div className="why-final-actions">
-          {!user ? <Link className="button button-primary" to="/schedule?import=1">Upload My Schedule <ArrowRight size={18} aria-hidden="true" /></Link> : null}
-          <button className="button button-secondary why-back-button" type="button" onClick={goBack}>Back <ArrowLeft size={18} aria-hidden="true" /></button>
+      <section className="why-final" aria-labelledby="why-final-title">
+        <h2 id="why-final-title">Ditch Saturn</h2>
+        <p>Upload a screenshot of your schedule and see who’s in your classes.</p>
+        <div className="form-actions">
+          {!user ? <Link className="button button-primary" to="/schedule?import=1"><ImageUp aria-hidden="true" />Upload my schedule</Link> : null}
+          <button className="button button-secondary" type="button" onClick={goBack}><ChevronLeft aria-hidden="true" />Back</button>
         </div>
       </section>
     </div>

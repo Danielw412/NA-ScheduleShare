@@ -328,3 +328,153 @@ export function demoBellScheduleWindow(startDate: string, days = 21, campus: Bel
     }
   })
 }
+
+export type BellNowState = 'in_block' | 'passing' | 'before_school' | 'after_school' | 'no_school' | 'none'
+
+export interface BellNow {
+  /** Today while school is in session, otherwise the next school day. */
+  day: SchoolDayContext | null
+  isToday: boolean
+  state: BellNowState
+  current: BellScheduleBlock | null
+  next: BellScheduleBlock | null
+  /** End of the current block, or start of the next one. */
+  targetAt: Date | null
+  intervalStart: Date | null
+  remainingMs: number | null
+  progressPercent: number | null
+}
+
+export function orderedBlocks(day: SchoolDayContext | null): BellScheduleBlock[] {
+  return day?.schedule ? [...day.schedule.blocks].sort((left, right) => left.position - right.position) : []
+}
+
+export function blockTimes(day: SchoolDayContext, block: BellScheduleBlock): { start: Date; end: Date } {
+  return { start: easternLocalTime(day.date, block.start_time), end: easternLocalTime(day.date, block.end_time) }
+}
+
+/**
+ * What the bell is doing right now, independent of any student's classes.
+ * Powers the shell's live indicator and the bell timeline.
+ */
+export function resolveBellNow(now: Date, days: SchoolDayContext[]): BellNow {
+  const nowTime = now.getTime()
+  const today = easternDateKey(now)
+  const schoolDays = [...days]
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .filter((day) => day.date >= today && !day.no_school && day.schedule && day.schedule.blocks.length > 0)
+  const empty: BellNow = { day: null, isToday: false, state: 'none', current: null, next: null, targetAt: null, intervalStart: null, remainingMs: null, progressPercent: null }
+
+  const todayDay = schoolDays.find((day) => day.date === today) ?? null
+  if (todayDay) {
+    const blocks = orderedBlocks(todayDay)
+    const lastEnd = easternLocalTime(todayDay.date, blocks[blocks.length - 1].end_time)
+    if (nowTime < lastEnd.getTime()) {
+      const current = blocks.find((block) => {
+        const { start, end } = blockTimes(todayDay, block)
+        return nowTime >= start.getTime() && nowTime < end.getTime()
+      }) ?? null
+      const next = blocks.find((block) => blockTimes(todayDay, block).start.getTime() > nowTime) ?? null
+      if (current) {
+        const { start, end } = blockTimes(todayDay, current)
+        return {
+          day: todayDay,
+          isToday: true,
+          state: 'in_block',
+          current,
+          next,
+          targetAt: end,
+          intervalStart: start,
+          remainingMs: end.getTime() - nowTime,
+          progressPercent: progressFor(now, start, end),
+        }
+      }
+      if (next) {
+        const target = blockTimes(todayDay, next).start
+        const previous = [...blocks].reverse().find((block) => blockTimes(todayDay, block).end.getTime() <= nowTime) ?? null
+        const intervalStart = previous
+          ? blockTimes(todayDay, previous).end
+          : easternLocalTime(todayDay.date, todayDay.schedule?.warning_time ?? next.start_time)
+        const beforeSchool = previous === null
+        return {
+          day: todayDay,
+          isToday: true,
+          state: beforeSchool ? 'before_school' : 'passing',
+          current: null,
+          next,
+          targetAt: target,
+          intervalStart,
+          remainingMs: target.getTime() - nowTime,
+          progressPercent: beforeSchool ? null : progressFor(now, intervalStart, target),
+        }
+      }
+    }
+  }
+
+  const upcoming = schoolDays.find((day) => day.date > today) ?? null
+  if (!upcoming) return todayDay ? { ...empty, day: todayDay, isToday: true, state: 'after_school' } : empty
+  const first = orderedBlocks(upcoming)[0]
+  const target = blockTimes(upcoming, first).start
+  return {
+    day: upcoming,
+    isToday: false,
+    state: todayDay ? 'after_school' : 'no_school',
+    current: null,
+    next: first,
+    targetAt: target,
+    intervalStart: null,
+    remainingMs: target.getTime() - nowTime,
+    progressPercent: null,
+  }
+}
+
+/** "Period 3" for class blocks, the block label otherwise. */
+export function blockTitle(block: BellScheduleBlock): string {
+  if (block.kind === 'class' && block.period_number !== null) return `Period ${block.period_number}`
+  return block.label.trim() || 'School block'
+}
+
+/** Compact mark for a block: its period number, or the label's initial. */
+export function blockMark(block: BellScheduleBlock): string {
+  if (block.kind === 'class' && block.period_number !== null) return String(block.period_number)
+  return (block.label.trim()[0] ?? '·').toLocaleUpperCase()
+}
+
+export function formatEasternWeekday(date: Date, style: 'long' | 'short' = 'long'): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: SCHOOL_TIME_ZONE, weekday: style }).format(date)
+}
+
+/** Whole calendar days from today (Eastern) to a school date. */
+export function daysFromToday(dateKey: string, now: Date): number {
+  const today = easternDateKey(now)
+  return Math.round((Date.parse(`${dateKey}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000)
+}
+
+/** "Today", "Tomorrow", "Thursday" within the week, otherwise "Monday, January 4". */
+export function formatEasternDayLabel(dateKey: string, now: Date): string {
+  const offset = daysFromToday(dateKey, now)
+  if (offset === 0) return 'Today'
+  if (offset === 1) return 'Tomorrow'
+  const date = easternLocalTime(dateKey, '12:00')
+  if (offset > 1 && offset < 7) return formatEasternWeekday(date)
+  return new Intl.DateTimeFormat('en-US', { timeZone: SCHOOL_TIME_ZONE, weekday: 'long', month: 'long', day: 'numeric' }).format(date)
+}
+
+/** Courses a student attends during a class block on a given day. */
+export function coursesAtBlock(day: SchoolDayContext, block: BellScheduleBlock, enrollments: ScheduleEnrollment[]): ScheduleEnrollment[] {
+  if (block.kind !== 'class' || block.period_number === null || day.day_type === null) return []
+  return enrollmentsAtPeriod(enrollments, day.day_type, block.period_number, day.semester)
+}
+
+const easternTimeRangeFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: SCHOOL_TIME_ZONE,
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
+/** "9:09 – 9:49 AM", or "11:21 AM – 12:01 PM" across noon. */
+export function formatEasternTimeRange(start: Date, end: Date): string {
+  const formatter = easternTimeRangeFormatter as Intl.DateTimeFormat & { formatRange?: (start: Date, end: Date) => string }
+  if (typeof formatter.formatRange === 'function') return formatter.formatRange(start, end)
+  return `${formatEasternTime(start)} – ${formatEasternTime(end)}`
+}

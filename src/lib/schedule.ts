@@ -192,11 +192,16 @@ export function validateMeetingSlots(meetingSlots: MeetingSlot[], isDoublePeriod
   return null
 }
 
-export function scheduleCompletion(enrollments: ScheduleEnrollment[]): number {
+/** A/B periods ("A-3") that have at least one active class, across terms. */
+export function filledScheduleSlots(enrollments: ScheduleEnrollment[]): Set<string> {
   const slots = new Set<string>()
   for (const enrollment of enrollments) {
     if (!enrollment.active) continue
     for (const slot of enrollmentMeetingSlots(enrollment)) slots.add(`${slot.day_type}-${slot.period_number}`)
   }
-  return Math.min(100, Math.round((slots.size / (PERIOD_NUMBERS.length * 2)) * 100))
+  return slots
+}
+
+export function scheduleCompletion(enrollments: ScheduleEnrollment[]): number {
+  return Math.min(100, Math.round((filledScheduleSlots(enrollments).size / (PERIOD_NUMBERS.length * 2)) * 100))
 }

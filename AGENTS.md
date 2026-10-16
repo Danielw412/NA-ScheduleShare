@@ -26,19 +26,25 @@ Start here instead of scanning the whole repo. For normal changes, find the exac
 - Supabase client setup: `src/lib/supabase/client.ts`
 - Generated DB types: `src/lib/supabase/database.types.ts` — regenerate with `pnpm types:generate`; do not hand-edit
 - Brand/site URLs/logo config: `src/config/brand.ts`
-- Main CSS: `src/styles.css`
-- Targeted mobile/safe-area fixes: `src/mobile-layout-fixes.css`
-- Demo-mode fixtures: `src/lib/demo-data.ts`
+- Design system (read before UI work): `docs/design/system.md`
+- CSS entry: `src/styles/index.css` → `tokens.css` (light/dark tokens), `base.css`, `components.css` (shared primitives), `shell.css` (sidebar, top bar, tab bar, live bell), `features/<area>.css` (one file per feature area)
+- Shared UI primitives: `src/components/ui/` (`PageHeader`, `Dialog`, `SegmentedControl`, `EmptyState`, `Toast`/`useToast`, `BrandMark`)
+- Live bell data for the whole app: `src/features/bell/BellScheduleProvider.tsx` (`useBellSchedule`), `src/hooks/useNow.ts`; bell UI in `src/components/bell/`
+- Homepage layout setting (admin-selected `balanced` / `bell_schedule`): `src/features/home/useHomepageLayout.ts`, admin control `src/components/admin/HomepageLayoutPanel.tsx`
+- Logging, error capture, and issue tracking: `src/lib/observability/` (use `createLogger(scope)`; never log names, emails, schedules, or tokens), error boundaries in `src/components/errors/`, admin triage in `src/components/admin/IssuesPanel.tsx`. Full guide: `docs/observability.md`
+- Demo-mode fixtures: `src/lib/demo-data.ts` (local dev runs in demo mode without Supabase env; add `?demo=guest` before the `#` to preview the signed-out experience)
 
 ### Main pages
 
+- Today (homepage, two admin-selectable layouts): `src/pages/HomePage.tsx`
+- Bell schedule (school days ahead, with the student's classes): `src/pages/BellPage.tsx`
 - Schedule: `src/pages/SchedulePage.tsx`
 - Students/directory: `src/pages/StudentsPage.tsx`
 - Student schedule/access: `src/pages/StudentDetailPage.tsx`
 - Classes/rosters: `src/pages/ClassesPage.tsx`
 - Schedule Engine: `src/pages/ScheduleEnginePage.tsx`
 - Profile/privacy: `src/pages/ProfilePage.tsx`
-- Admin: `src/pages/AdminPage.tsx`
+- Admin: `src/pages/AdminPage.tsx` (section navigation, users, reports, classes, catalog, settings) with panels in `src/components/admin/` (bell schedules, homepage layout, issues)
 - Reports: `src/pages/ReportPage.tsx`
 - Public React share view: `src/pages/SharedSchedulePage.tsx`
 
@@ -161,6 +167,8 @@ Frontend share-link management is in `src/lib/scheduleShare.ts`. Anonymous share
 - The Schedule Engine service-role key belongs only in the local worker environment.
 - Do not weaken schedule privacy, roster visibility, access-request enforcement, suspension checks, share-link privacy, or audit logging.
 - Preserve unrelated work.
+
+When adding a failure path that a developer should fix, report it through the observability layer (`createLogger(...).error(message, error)` in the browser, `observeHandler`/`rpcIssueReporter` in Edge Functions, `onFailure` in the Schedule Engine worker). Expected business errors stay inline in the UI.
 
 ## Validation
 

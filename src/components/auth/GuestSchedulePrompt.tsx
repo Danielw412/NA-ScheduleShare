@@ -1,23 +1,24 @@
-import { LockKeyhole, X } from 'lucide-react'
-import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
+import { LockKeyhole } from 'lucide-react'
+import { Dialog } from '../ui/Dialog'
 import { useGuestAccountPrompt } from './GuestAccountPrompt'
 
 export function GuestSchedulePrompt({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { openAccountPrompt } = useGuestAccountPrompt()
-  const dialogRef = useDialogAccessibility(open, onClose)
   if (!open) return null
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className="guest-lock-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="guest-schedule-prompt-title" tabIndex={-1}>
-        <button className="icon-button" type="button" aria-label="Close schedule prompt" onClick={onClose}><X aria-hidden="true" /></button>
-        <LockKeyhole size={36} aria-hidden="true" />
-        <h2 id="guest-schedule-prompt-title">Create an account to continue</h2>
-        <p>Create an account and upload your schedule to view schedules from students who have chosen to share with you.</p>
-        <div className="form-actions">
-          <button className="button button-primary" type="button" onClick={() => { onClose(); openAccountPrompt('/schedule') }}>Create Account</button>
-          <button className="button button-secondary" type="button" onClick={onClose}>Not now</button>
-        </div>
-      </section>
-    </div>
+    <Dialog
+      title="Create an account to continue"
+      description="Create an account and upload your schedule to view schedules from students who have chosen to share with you."
+      onClose={onClose}
+      size="small"
+      className="students-guest-dialog"
+      closeLabel="Close schedule prompt"
+      footer={<>
+        <button className="button button-secondary" type="button" onClick={onClose}>Not now</button>
+        <button className="button button-primary" type="button" onClick={() => { onClose(); openAccountPrompt('/schedule') }}>Create account</button>
+      </>}
+    >
+      <p className="students-guest-dialog-note"><LockKeyhole aria-hidden="true" />Schedules are only shown to signed-in students, or to people a student sends a share link to.</p>
+    </Dialog>
   )
 }

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../components/ui/Toast'
 import { HomepageStatisticPanel } from './AdminPage'
 
 const mocks = vi.hoisted(() => ({
@@ -45,9 +46,10 @@ afterEach(() => {
 describe('admin homepage statistic settings', () => {
   it('configures visibility, real statistic, threshold, and activity window without a number override', async () => {
     const user = userEvent.setup()
-    render(<HomepageStatisticPanel isDemo={false} />)
+    render(<ToastProvider><HomepageStatisticPanel isDemo={false} /></ToastProvider>)
     expect(await screen.findByText('137 NA students joined')).toBeInTheDocument()
     expect(screen.queryByLabelText(/displayed number/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: /statistic value/i })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('checkbox', { name: /Show homepage statistic/ }))
     await user.selectOptions(screen.getByLabelText('Statistic'), 'class_connections')
@@ -63,6 +65,6 @@ describe('admin homepage statistic settings', () => {
       minimum_value: 1000,
       activity_scope: 'recent',
     }))
-    expect(await screen.findByRole('status')).toHaveTextContent('database-calculated')
+    expect(await screen.findByText(/database-calculated/)).toBeInTheDocument()
   })
 })

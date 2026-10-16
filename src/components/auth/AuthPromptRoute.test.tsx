@@ -42,7 +42,19 @@ describe('sign-in popup routing', () => {
   it('opens sign in as a popup for the legacy auth URL', async () => {
     renderRoutes('/auth')
     expect(await screen.findByRole('dialog', { name: 'Sign in' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument()
+    expect(screen.getByText('Home')).toBeInTheDocument()
+  })
+
+  it('opens account creation from the legacy sign-up URL and closes without leaving the page', async () => {
+    const user = userEvent.setup()
+    renderRoutes('/auth?mode=sign-up')
+    expect(await screen.findByRole('dialog', { name: 'Create your account' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close account dialog' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
 
@@ -66,6 +78,7 @@ describe('sign-in popup routing', () => {
     renderRoutes('/students', true)
     expect(screen.queryByText('Students')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'We couldn’t load your account' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Check your connection and try again.')
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(refreshProfile).toHaveBeenCalledOnce()
   })

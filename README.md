@@ -6,6 +6,14 @@ NA ScheduleShare is a student-built website for creating semester-aware A/B-day 
 
 ## Main features
 
+### Today and the bell
+
+- A live bell that is always one glance away: the current period, a countdown to the next bell, and progress, in the desktop sidebar and the mobile top bar
+- A homepage whose focus administrators choose: a **balanced** layout led by ScheduleShare's features, or a **bell schedule first** layout with the current period, countdown, and the whole day's bells
+- A Bell schedule page covering the school days ahead, with each period labeled with the student's own class
+- Guests can view either campus's bell schedule (NASH or NAI); signed-in students get the campus that matches their grade
+- Light and dark themes that follow the device, with an override in Profile
+
 ### Schedule building
 
 - Separate Semester 1 and Semester 2 views, each with A-day and B-day columns
@@ -72,13 +80,22 @@ The protected admin dashboard supports:
 - Report review, assignment, resolution, and dismissal
 - Shared class-section editing, archiving, merging, and deletion with conflict protection
 - Course catalogue management
-- Homepage statistic controls
+- Homepage layout (balanced, or the bell schedule first) and homepage statistic controls
 - Gemini importer model, thinking-level, output-limit, progress-duration, and diagnostic controls
 - Bell-schedule definitions, custom blocks, date/campus assignments, A/B and no-school overrides, daily Google Docs detection, and extraction history
 - Administrator role management
 - Super-admin-only event logs, activity summaries, diagnostic cleanup, and protected site-reset tools
 
 Security, audit, import, and admin events are stored through protected database functions. Browser-supplied user IDs or roles are never treated as authority.
+
+### Logging and issue tracking
+
+- Errors from the website, Edge Functions, and the Schedule Engine worker are grouped into issues in a first-party, rate-limited store, with regression detection and 30/90-day retention
+- Administrators triage issues (resolve, ignore, reopen, delete), look one up from the error reference a student saw, and can pause new reports
+- Pages that crash show a recovery screen with an error reference instead of a blank page; stale tabs after a deploy get a one-tap reload
+- Reports never include names, emails, schedules, or tokens; the Sentry-compatible event shape makes enabling Sentry a small change
+
+See [`docs/observability.md`](docs/observability.md).
 
 ## Technology
 
@@ -103,8 +120,10 @@ src/features/auth/                 Authentication, recovery, profile, and accoun
 src/hooks/                         Shared React hooks
 src/lib/                           Domain logic and Supabase calls
 src/config/brand.ts                Site name, links, production URL, and logo settings
-src/styles.css                     Global and responsive styling
-src/mobile-layout-fixes.css        Targeted mobile viewport and safe-area fixes
+src/styles/                        Design tokens (light and dark), primitives, shell, and per-feature CSS
+docs/design/system.md              Design system: principles, tokens, components, layout
+docs/observability.md              Logging, error capture, issue tracking, and enabling Sentry
+src/lib/observability/             Browser error capture, breadcrumbs, scrubbing, and transports
 supabase/migrations/               Database schema, RLS, indexes, RPCs, and policy changes
 supabase/functions/schedule-import Active Gemini screenshot importer
 supabase/functions/delete-account  Auth and account deletion function
@@ -172,7 +191,7 @@ The Edge Function validates requests, rate-limits guest use, sends images to Gem
 
 ## Bell-schedule sync deployment
 
-The signed-in homepage countdown uses browser-side timing with server-resolved bell and school-day data. Administrators manage authoritative bell times, calendar overrides, and newsletter detection in the **Bell schedules** tab.
+The live bell (homepage, Bell schedule page, and the shell's always-visible indicator) uses browser-side timing with server-resolved bell and school-day data. Administrators manage authoritative bell times, calendar overrides, and newsletter detection in the **Bell schedules** tab.
 
 Follow [`docs/bell-schedule-sync-setup.md`](docs/bell-schedule-sync-setup.md) to make the newsletter anonymously viewable, configure its public Google Docs URL, store `BELL_SCHEDULE_SYNC_TOKEN` as an Edge Function secret, add the matching project URL/token to Supabase Vault, deploy the function, and verify a preview before enabling the daily run. No Google API key or OAuth credential is used.
 
@@ -236,4 +255,5 @@ GitHub Pages must use **GitHub Actions** as its deployment source. The Cloudflar
 
 - Edit `src/config/brand.ts` for names, links, attribution, production URL, or the configured logo path.
 - Replace `public/na-club-logo.png` to update the main logo and icons.
-- Edit the design tokens near the top of `src/styles.css` for colors and shared layout values.
+- Edit the design tokens in `src/styles/tokens.css` for colors, type, spacing, and layout values in both light and dark themes. See `docs/design/system.md` for how they are used.
+- The in-app logo is drawn as SVG in `src/components/ui/BrandMark.tsx`; update it alongside the PNG.

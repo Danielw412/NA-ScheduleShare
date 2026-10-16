@@ -1,4 +1,5 @@
 import type { PredictionReadyNotifier } from './notifier.js'
+import type { WorkerFailureReporter } from './observability.js'
 import type { PredictionFunction, PredictionOutcome, ScheduleEngineInput, ScheduleEngineStore } from './types.js'
 
 export type ProcessOutcome = 'empty' | 'completed' | 'failed'
@@ -8,11 +9,22 @@ function safeWorkerError(caught: unknown): string {
   return 'Schedule Engine processing failed. The request can be tried again after the worker is checked.'
 }
 
+async function reportFailure(report: WorkerFailureReporter | undefined, error: unknown, jobId: string, stage: 'prediction' | 'notification') {
+  if (!report) return
+  try {
+    await report(error, { jobId, stage })
+  } catch {
+    // Reporting is best effort; it must never change a job's outcome.
+  }
+}
+
 export async function processNextJob(options: {
   store: ScheduleEngineStore
   workerId: string
   predict: PredictionFunction
   notify: PredictionReadyNotifier
+  /** Optional: log and report failures (see src/observability.ts). */
+  onFailure?: WorkerFailureReporter
 }): Promise<ProcessOutcome> {
   const claimed = await options.store.claimNext(options.workerId)
   if (!claimed) return 'empty'
@@ -26,6 +38,7 @@ export async function processNextJob(options: {
     if (outcome.results.length > 0 && outcome.no_valid_schedule_reason !== null) throw new Error('Prediction engine returned both results and a no-solution reason.')
     await options.store.complete(claimed.jobId, options.workerId, outcome)
   } catch (caught) {
+    await reportFailure(options.onFailure, caught, claimed.jobId, 'prediction')
     await options.store.fail(claimed.jobId, options.workerId, safeWorkerError(caught))
     return 'failed'
   }
@@ -34,7 +47,8 @@ export async function processNextJob(options: {
     try {
       const delivery = await options.notify(input, outcome)
       if (delivery.status !== 'not_configured') await options.store.recordNotification(claimed.jobId, options.workerId, delivery)
-    } catch {
+    } catch (caught) {
+      await reportFailure(options.onFailure, caught, claimed.jobId, 'notification')
       try {
         await options.store.recordNotification(claimed.jobId, options.workerId, {
           status: 'failed',
@@ -54,6 +68,7 @@ export async function processFullQueue(options: {
   workerId: string
   predict: PredictionFunction
   notify: PredictionReadyNotifier
+  onFailure?: WorkerFailureReporter
 }): Promise<{ completed: number; failed: number }> {
   let completed = 0
   let failed = 0

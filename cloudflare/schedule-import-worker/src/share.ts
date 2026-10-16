@@ -216,48 +216,67 @@ export function previewPeriodLabel(rows: PublicScheduleRow[], day: 'A' | 'B', pe
   return truncateToWidth(names.join(' / '), COURSE_TEXT_WIDTH, COURSE_FONT_SIZE)
 }
 
+// Colors mirror the web app's design tokens (src/styles/tokens.css).
+const PAPER = '#ffffff'
+const CHALK = '#f4f4f1'
+const INK = '#17191c'
+const SLATE = '#5d6066'
+const LINE = '#e4e4e0'
+const GOLD = '#faaa13'
+const ROW_TOP = 170
+const ROW_STEP = 44
+const COLUMN_WIDTH = 528
+
+// The NA Computer and AI Club mark on its native 1200-unit grid.
+const MARK_TOP = 'M0 0H200L400 200V0H600V200L800 0H1200V600H1000V400H800V600H400L200 400V600H0Z M900 150H1000V250H800Z'
+const MARK_BOTTOM = 'M200 600H600V800H300L200 900L300 1000H600V1200H200L0 1000V800Z M800 600H1200V800H900L800 900L900 1000H1200V1200H800L600 1000V800Z'
+
 function previewSvg(share: PublicScheduleShare): string {
   const columns = share.available
     ? (['A', 'B'] as const).map((day, column) => {
       const x = column === 0 ? 48 : 624
       const rows = Array.from({ length: 9 }, (_, index) => {
         const period = index + 1
-        const y = 154 + index * 46
-        const label = escapeHtml(previewPeriodLabel(share.schedule, day, period))
+        const y = ROW_TOP + index * ROW_STEP
+        const rawLabel = previewPeriodLabel(share.schedule, day, period)
+        const label = escapeHtml(rawLabel)
+        const open = rawLabel === 'Open'
         return `
-          <rect x="${x}" y="${y}" width="528" height="40" rx="4" fill="#fff"/>
-          <path d="M${x + 4} ${y}h50v40h-50a4 4 0 0 1-4-4v-32a4 4 0 0 1 4-4z" fill="#000"/>
-          <text x="${x + 27}" y="${y + 27}" text-anchor="middle" font-size="20" font-weight="700" fill="#fff">${period}</text>
-          <text x="${x + 72}" y="${y + 27}" clip-path="url(#course-${day}-${period})" font-size="${COURSE_FONT_SIZE}" font-weight="600" fill="#000">${label}</text>`
+          <rect x="${x}" y="${y}" width="40" height="38" rx="6" fill="${CHALK}"/>
+          <text x="${x + 20}" y="${y + 26}" text-anchor="middle" font-size="20" font-weight="700" fill="${INK}">${period}</text>
+          <text x="${x + 56}" y="${y + 26}" clip-path="url(#course-${day}-${period})" font-size="${COURSE_FONT_SIZE}" font-weight="600" fill="${open ? SLATE : INK}">${label}</text>
+          ${index < 8 ? `<rect x="${x + 56}" y="${y + 41}" width="${COLUMN_WIDTH - 56}" height="1" fill="${LINE}"/>` : ''}`
       }).join('')
       return `
-        <rect x="${x}" y="106" width="528" height="40" rx="4" fill="#f2b928"/>
-        <text x="${x + 18}" y="134" font-size="22" font-weight="700" fill="#000">${day} Day</text>${rows}`
+        <text x="${x}" y="152" font-size="22" font-weight="700" fill="${INK}">${day} day</text>${rows}`
     }).join('')
     : `
-      <rect x="130" y="190" width="940" height="250" rx="8" fill="#fff"/>
-      <path d="M138 190h4v250h-4a8 8 0 0 1-8-8v-234a8 8 0 0 1 8-8z" fill="#f2b928"/>
-      <text x="190" y="278" font-size="42" font-weight="700" fill="#000">This link is invalid, disabled,</text>
-      <text x="190" y="330" font-size="42" font-weight="700" fill="#000">or unavailable.</text>
-      <text x="190" y="392" font-size="25" font-weight="600" fill="#5d6573">No schedule data is shown.</text>`
+      <rect x="130" y="200" width="6" height="200" rx="3" fill="${GOLD}"/>
+      <text x="166" y="268" font-size="42" font-weight="700" fill="${INK}">This link is invalid, disabled,</text>
+      <text x="166" y="320" font-size="42" font-weight="700" fill="${INK}">or unavailable.</text>
+      <text x="166" y="378" font-size="25" font-weight="600" fill="${SLATE}">No schedule data is shown.</text>`
 
   const clipPaths = Array.from({ length: 18 }, (_, index) => {
     const day = index < 9 ? 'A' : 'B'
     const period = (index % 9) + 1
-    const x = day === 'A' ? 120 : 696
-    const y = 154 + (period - 1) * 46
-    return `<clipPath id="course-${day}-${period}"><rect x="${x}" y="${y}" width="${COURSE_TEXT_WIDTH}" height="40"/></clipPath>`
+    const x = (day === 'A' ? 48 : 624) + 56
+    const y = ROW_TOP + (period - 1) * ROW_STEP
+    return `<clipPath id="course-${day}-${period}"><rect x="${x}" y="${y}" width="${COURSE_TEXT_WIDTH}" height="38"/></clipPath>`
   }).join('')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
     <defs>${clipPaths}</defs>
-    <rect width="${WIDTH}" height="${HEIGHT}" fill="#f7f0dd"/>
-    <rect width="${WIDTH}" height="92" fill="#000"/>
-    <rect y="84" width="${WIDTH}" height="8" fill="#f2b928"/>
+    <rect width="${WIDTH}" height="${HEIGHT}" fill="${PAPER}"/>
+    <g transform="translate(48 36) scale(0.04)">
+      <path d="${MARK_TOP}" fill="${GOLD}" fill-rule="evenodd"/>
+      <path d="${MARK_BOTTOM}" fill="#000000"/>
+    </g>
+    <rect x="48" y="104" width="${WIDTH - 96}" height="1" fill="${LINE}"/>
     <g font-family="Inter, sans-serif">
-      <text x="48" y="62" font-size="46" font-weight="700" fill="#fff">NA ScheduleShare</text>
+      <text x="110" y="74" font-size="32" font-weight="700" fill="${INK}" letter-spacing="-0.6">NA ScheduleShare</text>
+      <text x="${WIDTH - 48}" y="74" text-anchor="end" font-size="22" font-weight="600" fill="${SLATE}">${share.available ? 'Shared schedule' : ''}</text>
       ${columns}
-      <text x="48" y="612" font-size="26" font-weight="600" fill="#5d6573">Built by the NA Computer and AI Club</text>
+      <text x="48" y="604" font-size="20" font-weight="600" fill="${SLATE}">Built by the NA Computer and AI Club</text>
     </g>
   </svg>`
 }
