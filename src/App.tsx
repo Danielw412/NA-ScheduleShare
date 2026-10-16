@@ -6,6 +6,7 @@ import { WhyScheduleShareRoute } from './components/auth/WhyScheduleShareRoute'
 import { AppShell } from './components/layout/AppShell'
 import { useAuth } from './features/auth/AuthProvider'
 
+const BellPage = lazy(() => import('./pages/BellPage').then((module) => ({ default: module.BellPage })))
 const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })))
 const ClassesPage = lazy(() => import('./pages/ClassesPage').then((module) => ({ default: module.ClassesPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then((module) => ({ default: module.HomePage })))
@@ -21,7 +22,7 @@ const StudentsPage = lazy(() => import('./pages/StudentsPage').then((module) => 
 const WhyScheduleSharePage = lazy(() => import('./pages/WhyScheduleSharePage').then((module) => ({ default: module.WhyScheduleSharePage })))
 
 function deferredPage(page: ReactNode) {
-  return <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="loader" aria-hidden="true" /><p>Loading page…</p></div>}>{page}</Suspense>
+  return <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="spinner" aria-hidden="true" /><p>Loading page…</p></div>}>{page}</Suspense>
 }
 
 export function App() {
@@ -40,6 +41,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={deferredPage(<HomePage />)} />
           <Route path="schedule" element={deferredPage(<SchedulePage />)} />
+          <Route path="bell" element={deferredPage(<BellPage />)} />
           <Route path="classes" element={deferredPage(<ClassesPage />)} />
           <Route path="classes/:classId" element={deferredPage(<ClassesPage />)} />
           <Route path="why-scheduleshare" element={<WhyScheduleShareRoute>{deferredPage(<WhyScheduleSharePage />)}</WhyScheduleShareRoute>} />

@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { fetchSchedule, getClubPromptSettings } from '../../lib/supabase/data'
+import { BrandMark } from '../ui/BrandMark'
 
 const NUDGE_KEY_PREFIX = 'scheduleshare:club-nudge:v1:'
 const TICK_SECONDS = 10
@@ -117,16 +118,16 @@ export function ClubVisitNudge() {
   if (!open) return null
   return (
     <aside className="club-nudge" aria-label="Club invitation">
-      <img className="club-nudge-logo" src={`${import.meta.env.BASE_URL}${brand.logoPath}`} alt="" width={34} height={34} />
+      <BrandMark className="brand-mark club-nudge-mark" />
       <div className="club-nudge-copy">
-        <p><strong>This site was built by the NA Computer and AI Club.</strong></p>
-        <p>Join if you interested!</p>
+        <p className="club-nudge-title">ScheduleShare is built by students in the NA Computer and AI Club.</p>
+        <p>Want to build things like this? No experience needed.</p>
         <div className="club-nudge-actions">
-          <a href={brand.clubSignUpFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Sign-up form</a>
-          <a href={brand.clubInterestFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Interest form</a>
+          <a className="inline-link" href={brand.clubSignUpFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Sign-up form<span className="sr-only"> (opens in a new tab)</span></a>
+          <a className="inline-link" href={brand.clubInterestFormUrl} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>Interest form<span className="sr-only"> (opens in a new tab)</span></a>
         </div>
       </div>
-      <button className="club-nudge-close" type="button" aria-label="Dismiss club invitation" onClick={() => setOpen(false)}><X size={16} aria-hidden="true" /></button>
+      <button className="icon-button club-nudge-close" type="button" aria-label="Dismiss club invitation" onClick={() => setOpen(false)}><X aria-hidden="true" /></button>
     </aside>
   )
 }

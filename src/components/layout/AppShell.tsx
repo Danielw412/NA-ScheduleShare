@@ -1,110 +1,140 @@
-import { BookOpen, CalendarDays, Home, LogOut, Menu, UserRound, Users, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { BookOpen, CalendarDays, Clock3, House, Shuffle, Users, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { brand } from '../../config/brand'
 import { useAuth } from '../../features/auth/AuthProvider'
+import { BellScheduleProvider } from '../../features/bell/BellScheduleProvider'
+import { DESKTOP_QUERY, useMediaQuery } from '../../hooks/useMediaQuery'
 import { useGuestAccountPrompt } from '../auth/GuestAccountPrompt'
+import { BellNowIndicator } from '../bell/BellNowIndicator'
 import { useClubPrompt } from '../club/ClubPromptProvider'
+import { ErrorBoundary } from '../errors/ErrorBoundary'
+import { ErrorFallback } from '../errors/ErrorFallback'
+import { addBreadcrumb, routeTemplate } from '../../lib/observability'
 import { BrandLogo } from '../ui/BrandLogo'
-import { ProfileAvatar } from '../ui/ProfileAvatar'
+import { AccountMenu } from './AccountMenu'
 import { ScheduleAccessNotifications } from './ScheduleAccessNotifications'
 
-const authenticatedNavigation = [
-  { to: '/', label: 'Home', mobileBottomDuplicate: true },
-  { to: '/schedule', label: 'My Schedule', mobileBottomDuplicate: true },
-  { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
-  { to: '/students', label: 'Students', mobileBottomDuplicate: true },
-  { to: '/profile', label: 'Profile', mobileBottomDuplicate: false },
-]
+interface NavItem {
+  to: string
+  label: string
+  shortLabel: string
+  Icon: LucideIcon
+  requiresAccount?: boolean
+  /** Shown in the desktop sidebar only; mobile reaches it from the live bell pill. */
+  sidebarOnly?: boolean
+}
 
-const guestNavigation = [
-  { to: '/', label: 'Home', mobileBottomDuplicate: false },
-  { to: '/schedule', label: 'Schedule', mobileBottomDuplicate: true },
-  { to: '/classes', label: 'View Classes', mobileBottomDuplicate: true },
-]
-
-const mobileBottomNavigation = [
-  { to: '/', label: 'Home', Icon: Home },
-  { to: '/schedule', label: 'Schedule', Icon: CalendarDays },
-  { to: '/classes', label: 'Classes', Icon: BookOpen },
-  { to: '/students', label: 'Students', Icon: Users },
+export const navigation: NavItem[] = [
+  { to: '/', label: 'Today', shortLabel: 'Today', Icon: House },
+  { to: '/schedule', label: 'My schedule', shortLabel: 'Schedule', Icon: CalendarDays },
+  { to: '/bell', label: 'Bell schedule', shortLabel: 'Bells', Icon: Clock3, sidebarOnly: true },
+  { to: '/classes', label: 'Classes', shortLabel: 'Classes', Icon: BookOpen },
+  { to: '/students', label: 'Students', shortLabel: 'Students', Icon: Users, requiresAccount: true },
+  { to: '/schedule-engine', label: 'Schedule Engine', shortLabel: 'Engine', Icon: Shuffle, requiresAccount: true },
 ]
 
 export function pageTransitionKey(pathname: string): string {
   return pathname === '/classes' || pathname.startsWith('/classes/') ? '/classes' : pathname
 }
 
+/** Screens that already show the live bell prominently hide the shell's copy. */
+function showsOwnBell(pathname: string): boolean {
+  return pathname === '/' || pathname === '/bell'
+}
+
+/** The app frame. The bell calendar loads here, only for screens that show it. */
 export function AppShell() {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
-  const { user, profile, avatarRevision, signOut } = useAuth()
+  return <BellScheduleProvider><AppFrame /></BellScheduleProvider>
+}
+
+function AppFrame() {
+  const { user } = useAuth()
   const { openAccountPrompt, openSignInPrompt } = useGuestAccountPrompt()
   const { openClubDialog, whyScheduleShareEnabled } = useClubPrompt()
   const location = useLocation()
-  const primaryNavigation = user ? authenticatedNavigation : guestNavigation
+  const isDesktop = useMediaQuery(DESKTOP_QUERY)
+  const mainRef = useRef<HTMLElement>(null)
+  const previousPath = useRef(location.pathname)
+  const hideShellBell = showsOwnBell(location.pathname)
 
+  // Route changes start at the top and move focus to the new content so
+  // keyboard and screen-reader users are not left on the old link.
   useEffect(() => {
-    setMenuOpen(false)
+    if (previousPath.current === location.pathname) return
+    const sameSection = pageTransitionKey(previousPath.current) === pageTransitionKey(location.pathname)
+    addBreadcrumb({ category: 'navigation', message: `${routeTemplate(previousPath.current)} → ${routeTemplate(location.pathname)}` })
+    previousPath.current = location.pathname
+    if (sameSection) return
+    window.scrollTo({ top: 0 })
+    mainRef.current?.focus({ preventScroll: true })
   }, [location.pathname])
 
-  useEffect(() => {
-    if (!menuOpen) return
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setMenuOpen(false)
-      menuButtonRef.current?.focus()
+  function navLink(item: NavItem, variant: 'sidebar' | 'tabbar') {
+    const label = variant === 'sidebar' ? item.label : item.shortLabel
+    const content = <><item.Icon aria-hidden="true" /><span>{label}</span></>
+    if (!user && item.requiresAccount) {
+      return <button className="nav-item" type="button" onClick={() => openAccountPrompt(item.to)}>{content}</button>
     }
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [menuOpen])
+    return <NavLink className="nav-item" to={item.to} end={item.to === '/'} viewTransition>{content}</NavLink>
+  }
+
+  const notifications = user ? <ScheduleAccessNotifications key={user.id} userId={user.id} variant={isDesktop ? 'row' : 'icon'} /> : null
 
   return (
-    <div className="app-shell has-mobile-bottom-nav">
-      <header className="site-header">
-        <NavLink viewTransition to="/" className="brand-link" onClick={() => setMenuOpen(false)}><BrandLogo /></NavLink>
-        <nav className={menuOpen ? 'primary-nav is-open' : 'primary-nav'} aria-label="Primary navigation" id="primary-navigation">
-          {primaryNavigation.map((item) => (
-            <NavLink viewTransition className={'mobileBottomDuplicate' in item && item.mobileBottomDuplicate ? 'mobile-bottom-duplicate' : undefined} key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMenuOpen(false)}>{item.label}</NavLink>
-          ))}
-          {!user ? <><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openSignInPrompt('/schedule') }}>Sign in</button><button className="guest-nav-auth guest-account-trigger" type="button" onClick={() => { setMenuOpen(false); openAccountPrompt('/schedule') }}>Create account</button></> : null}
-          {user ? <button className="mobile-menu-only mobile-menu-sign-out" type="button" onClick={() => { setMenuOpen(false); void signOut() }}><LogOut size={17} aria-hidden="true" /> Sign out</button> : null}
+    <div className="app-frame">
+      <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); mainRef.current?.focus() }}>Skip to content</a>
+
+      <aside className="sidebar" aria-label="Site">
+        <NavLink className="sidebar-brand" to="/" viewTransition><BrandLogo /></NavLink>
+        <nav className="sidebar-nav" aria-label="Primary">
+          <ul>
+            {navigation.map((item) => <li key={item.to}>{navLink(item, 'sidebar')}</li>)}
+          </ul>
         </nav>
-        <div className="site-header-actions">
-          {user ? <ScheduleAccessNotifications key={user.id} userId={user.id} /> : null}
-          <button ref={menuButtonRef} className="tablet-menu-button" type="button" aria-controls="primary-navigation" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
-            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-          </button>
-          {user ? <NavLink viewTransition className="mobile-profile-button" to="/profile" aria-label="Open my profile" onClick={() => setMenuOpen(false)}>
-            {profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={avatarRevision ?? profile.updated_at} /> : <UserRound aria-hidden="true" />}
-          </NavLink> : <button className="mobile-create-account-button button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>}
-          {user ? <div className="profile-menu">
-            <NavLink viewTransition to="/profile" aria-label="View profile">{profile ? <ProfileAvatar userId={profile.id} fullName={profile.full_name} revision={avatarRevision ?? profile.updated_at} /> : <span className="avatar" aria-hidden="true">NA</span>}</NavLink>
-            <div>
-              <NavLink viewTransition to="/profile"><strong>{profile?.full_name || 'Student'}</strong></NavLink>
-            </div>
-          </div> : <div className="guest-account-actions"><button className="text-button" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button><button className="button button-primary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button></div>}
+        <div className="sidebar-now">{isDesktop && !hideShellBell ? <BellNowIndicator variant="sidebar" /> : null}</div>
+        <div className="sidebar-account">
+          {user
+            ? <>{isDesktop ? notifications : null}{isDesktop ? <AccountMenu variant="sidebar" /> : null}</>
+            : <div className="sidebar-guest">
+              <p>Make an account to see who’s in your classes.</p>
+              <button className="button button-primary button-block" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>
+              <button className="button button-ghost button-block" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button>
+            </div>}
+        </div>
+      </aside>
+
+      <header className="topbar">
+        <NavLink className="topbar-brand" to="/" aria-label={`${brand.siteName} home`} viewTransition><BrandLogo compact /></NavLink>
+        <div className="topbar-now">{!isDesktop && !hideShellBell ? <BellNowIndicator variant="pill" /> : null}</div>
+        <div className="topbar-actions">
+          {user
+            ? <>{!isDesktop ? notifications : null}{!isDesktop ? <AccountMenu variant="topbar" /> : null}</>
+            : <button className="button button-secondary button-sm" type="button" onClick={() => openSignInPrompt('/schedule')}>Sign in</button>}
         </div>
       </header>
-      <main className="page-container"><div className="page-transition" key={pageTransitionKey(location.pathname)}><Outlet /></div></main>
-      <footer className="site-footer">
-        <p>{brand.attribution}</p>
-        <nav aria-label="Footer navigation">
-          {user ? <NavLink to="/profile">Profile & privacy</NavLink> : null}
-          {user && whyScheduleShareEnabled ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
-          <button className="footer-link-button" type="button" onClick={openClubDialog}>Join Computer and AI club</button>
-          <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-      </footer>
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        {mobileBottomNavigation.map(({ to, label, Icon }) => !user && to === '/students'
-          ? <button key={to} type="button" onClick={() => openAccountPrompt(to)}>
-            <Icon size={22} strokeWidth={2} aria-hidden="true" />
-            <span>{label}</span>
-          </button>
-          : <NavLink viewTransition key={to} to={to} end={to === '/'}>
-            <Icon size={22} strokeWidth={2} aria-hidden="true" />
-            <span>{label}</span>
-          </NavLink>)}
+
+      <main className="main" id="main-content" ref={mainRef} tabIndex={-1}>
+        <div className="main-inner page-transition" key={pageTransitionKey(location.pathname)}>
+          {/* A crash inside one page keeps the shell and navigation usable. */}
+          <ErrorBoundary scope="route" resetKeys={[location.pathname]} fallback={(props) => <ErrorFallback {...props} />}>
+            <Outlet />
+          </ErrorBoundary>
+        </div>
+        <footer className="site-footer">
+          <p>{brand.attribution}</p>
+          <nav aria-label="Footer">
+            {whyScheduleShareEnabled ? <NavLink to="/why-scheduleshare">Why ScheduleShare?</NavLink> : null}
+            <button type="button" onClick={openClubDialog}>Join the Computer and AI Club</button>
+            <a href={brand.repositoryUrl} target="_blank" rel="noreferrer">Source on GitHub</a>
+          </nav>
+        </footer>
+      </main>
+
+      <nav className="tabbar" aria-label="Primary">
+        <ul>
+          {navigation.filter((item) => !item.sidebarOnly).map((item) => <li key={item.to}>{navLink(item, 'tabbar')}</li>)}
+        </ul>
       </nav>
     </div>
   )

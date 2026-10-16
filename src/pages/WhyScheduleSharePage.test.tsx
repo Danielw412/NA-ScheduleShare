@@ -41,14 +41,15 @@ describe('WhyScheduleSharePage', () => {
     expect(screen.queryByText('PowerSchool already did the typing. We let it keep the job.')).not.toBeInTheDocument()
     expect(screen.queryByText('Your schedule is social only when you say so.')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
-    expect(screen.getByRole('link', { name: /Upload My Schedule/ })).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getByRole('link', { name: 'Upload my schedule' })).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getByRole('heading', { name: 'Ditch Saturn' })).toBeInTheDocument()
   })
 
   it('removes upload calls to action for signed-in students', () => {
     mocks.useAuth.mockReturnValue({ user: { id: 'student-1' } })
     renderPage()
 
-    expect(screen.queryByRole('link', { name: /Upload My Schedule/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Upload my schedule/i })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Anti-stalking' })).toBeInTheDocument()
   })
@@ -59,6 +60,19 @@ describe('WhyScheduleSharePage', () => {
     screen.getAllByRole('button', { name: 'Back' })[0].click()
 
     expect(screen.getByTestId('location')).toHaveTextContent('/')
+  })
+
+  it('goes home when there is no earlier page to return to', () => {
+    const originalLength = Object.getOwnPropertyDescriptor(window.history, 'length')
+    Object.defineProperty(window.history, 'length', { configurable: true, value: 1 })
+    try {
+      renderPage(['/why-scheduleshare'])
+      screen.getAllByRole('button', { name: 'Back' })[0].click()
+      expect(screen.getByTestId('location')).toHaveTextContent('/')
+    } finally {
+      if (originalLength) Object.defineProperty(window.history, 'length', originalLength)
+      else delete (window.history as { length?: number }).length
+    }
   })
 
   it('returns to the previous page from the bottom back button', () => {

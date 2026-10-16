@@ -1,13 +1,16 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../components/ui/Toast'
 import type { EventLogRecord } from '../lib/domain'
 import { EventLogsPanel, eventLogPageNumbers } from './AdminPage'
 
 const mocks = vi.hoisted(() => ({
   listLogsPage: vi.fn(),
   getActivitySummary: vi.fn(),
+  deleteLog: vi.fn(),
+  deleteLogs: vi.fn(),
 }))
 
 vi.mock('../lib/supabase/data', async (importOriginal) => {
@@ -16,6 +19,8 @@ vi.mock('../lib/supabase/data', async (importOriginal) => {
     ...(original as Record<string, unknown>),
     superAdminListLogsPage: mocks.listLogsPage,
     superAdminGetActivitySummary: mocks.getActivitySummary,
+    superAdminDeleteLog: mocks.deleteLog,
+    superAdminDeleteLogs: mocks.deleteLogs,
   }
 })
 
@@ -84,5 +89,40 @@ describe('super-admin event log pagination', () => {
     await user.selectOptions(screen.getByLabelText('Logs per page'), '25')
     await waitFor(() => expect(mocks.listLogsPage).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 25, offset: 0 })))
     expect(await screen.findByText('Showing 1–25 of 120 matching logs')).toBeInTheDocument()
+  })
+
+  it('deletes one log only after its typed confirmation phrase', async () => {
+    const user = userEvent.setup()
+    mocks.deleteLog.mockResolvedValue(undefined)
+    render(<ToastProvider><EventLogsPanel /></ToastProvider>)
+    await user.click(await screen.findByRole('button', { name: 'Delete test_event_1 log' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete this log record?' })
+    const field = within(dialog).getByLabelText('Type DELETE LOG 00000000 to confirm')
+    await user.type(field, 'delete log 00000000')
+    expect(within(dialog).getByRole('button', { name: 'Delete log' })).toBeDisabled()
+    await user.clear(field)
+    await user.type(field, 'DELETE LOG 00000000')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete log' }))
+    await waitFor(() => expect(mocks.deleteLog).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001'))
+    expect(await screen.findByText('The selected log was permanently deleted.')).toBeInTheDocument()
+  })
+
+  it('deletes every matching log with the current filters after the typed phrase', async () => {
+    const user = userEvent.setup()
+    mocks.deleteLogs.mockResolvedValue(120)
+    render(<ToastProvider><EventLogsPanel /></ToastProvider>)
+    await screen.findByText('Showing 1–50 of 120 matching logs')
+    await user.selectOptions(screen.getByLabelText('Log'), 'audit')
+    await user.click(screen.getByRole('button', { name: 'Delete matching logs' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete all 120 matching logs?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(mocks.deleteLogs).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Delete matching logs' }))
+    const confirm = screen.getByRole('alertdialog', { name: 'Delete all 120 matching logs?' })
+    await user.type(within(confirm).getByLabelText('Type DELETE FILTERED LOGS PERMANENTLY to confirm'), 'DELETE FILTERED LOGS PERMANENTLY')
+    await user.click(within(confirm).getByRole('button', { name: 'Delete matching logs' }))
+    await waitFor(() => expect(mocks.deleteLogs).toHaveBeenCalledWith(expect.objectContaining({ category: 'audit', event: '', user: '' })))
+    expect(await screen.findByText('120 logs permanently deleted.')).toBeInTheDocument()
   })
 })

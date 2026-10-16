@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent } from '@supabase/supabase-js'
 import { demoProfile } from '../../lib/demo-data'
+import { setUser as setObservabilityUser } from '../../lib/observability'
 import type { AccountState, Grade, PrivacySetting, Profile } from '../../lib/domain'
 import { authRedirectUrl } from '../../lib/authRedirect'
 import { demoModeEnabled, isSupabaseConfigured, supabase } from '../../lib/supabase/client'
@@ -144,6 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isDemo) {
+      // Local demo only: `?demo=guest` previews the signed-out experience.
+      if (new URLSearchParams(window.location.search).get('demo') === 'guest') {
+        setLoading(false)
+        return
+      }
       setUser({ id: demoProfile.id, email: 'jordan@example.com' })
       setProfile(demoProfile)
       setAccountState(activeAccount)
@@ -321,6 +327,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
     setProfile((current) => current ? { ...current, students_visited_at: current.students_visited_at ?? visitedAt } : current)
   }, [isDemo, profile?.students_visited_at, user])
+
+  // Error reports carry only the opaque account id — never a name or email.
+  useEffect(() => {
+    setObservabilityUser(user ? { id: user.id } : null)
+  }, [user?.id])
 
   const value = useMemo<AuthContextValue>(() => ({
     user,

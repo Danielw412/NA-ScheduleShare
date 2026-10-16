@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/AuthProvider'
 import { getWhyScheduleShareEnabled } from '../../lib/supabase/data'
+import { LoadingScreen } from '../ui/LoadingScreen'
 
 export function WhyScheduleShareRoute({ children }: { children: ReactNode }) {
   const { isDemo } = useAuth()
@@ -21,7 +22,7 @@ export function WhyScheduleShareRoute({ children }: { children: ReactNode }) {
   }, [isDemo])
 
   if (enabled === null) {
-    return <div className="route-loading" role="status" aria-live="polite"><span className="loader" aria-hidden="true" /><p>Checking page availability…</p></div>
+    return <LoadingScreen label="Checking page availability…" />
   }
 
   return enabled ? children : <Navigate to="/" replace />

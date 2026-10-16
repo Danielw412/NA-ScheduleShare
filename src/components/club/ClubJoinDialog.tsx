@@ -1,23 +1,29 @@
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { brand } from '../../config/brand'
-import { useDialogAccessibility } from '../../hooks/useDialogAccessibility'
+import { BrandMark } from '../ui/BrandMark'
+import { Dialog } from '../ui/Dialog'
 
 export function ClubJoinDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const dialogRef = useDialogAccessibility(open, onClose)
   if (!open) return null
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className="club-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="club-dialog-title" tabIndex={-1}>
-        <button className="icon-button" type="button" aria-label="Close club dialog" onClick={onClose}><X aria-hidden="true" /></button>
-        <img className="club-dialog-logo" src={`${import.meta.env.BASE_URL}${brand.logoPath}`} alt="" width={46} height={46} />
-        <h2 id="club-dialog-title">Join the NA Computer and AI Club!</h2>
-        <p>We do exactly like what our name sounds like. No experience necessary! Visit one of the forms for more info.</p>
-        <div className="club-dialog-actions">
-          <a className="button button-primary" href={brand.clubSignUpFormUrl} target="_blank" rel="noreferrer" onClick={onClose}>Sign-up form <ExternalLink size={16} aria-hidden="true" /></a>
-          <a className="button button-secondary" href={brand.clubInterestFormUrl} target="_blank" rel="noreferrer" onClick={onClose}>Interest form <ExternalLink size={16} aria-hidden="true" /></a>
+    <Dialog
+      title="Join the NA Computer and AI Club"
+      onClose={onClose}
+      closeLabel="Close club dialog"
+      size="small"
+      className="club-dialog"
+      footer={<>
+        <a className="button button-secondary" href={brand.clubInterestFormUrl} target="_blank" rel="noreferrer" onClick={onClose}>Interest form<ExternalLink aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
+        <a className="button button-primary" href={brand.clubSignUpFormUrl} target="_blank" rel="noreferrer" onClick={onClose}>Sign-up form<ExternalLink aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
+      </>}
+    >
+      <div className="club-dialog-intro">
+        <BrandMark className="brand-mark club-dialog-mark" />
+        <div>
+          <p>We’re the students who build ScheduleShare. We work on software and AI projects together, and you don’t need any experience to join.</p>
+          <p className="muted">Not sure yet? Start with the interest form.</p>
         </div>
-        <p className="club-dialog-note">Fill out the interest form if you aren't sure yet</p>
-      </section>
-    </div>
+      </div>
+    </Dialog>
   )
 }

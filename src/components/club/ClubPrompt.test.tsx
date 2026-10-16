@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
 vi.mock('../../lib/supabase/data', () => ({ fetchSchedule: mocks.fetchSchedule, getClubPromptSettings: mocks.getClubPromptSettings }))
 
-const nudgeMessage = /This site was built by the NA Computer and AI Club\./
+const nudgeMessage = /ScheduleShare is built by students in the NA Computer and AI Club\./
 let goTo: (path: string) => void = () => undefined
 
 function NavigationProbe() {
@@ -57,12 +57,28 @@ describe('ClubJoinDialog', () => {
     const onClose = vi.fn()
     render(<ClubJoinDialog open onClose={onClose} />)
 
-    expect(screen.getByRole('heading', { name: 'Join the NA Computer and AI Club!' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Join the NA Computer and AI Club' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Sign-up form/ })).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
     expect(screen.getByRole('link', { name: /Interest form/ })).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
+    expect(screen.getByRole('link', { name: /Sign-up form/ })).toHaveAttribute('target', '_blank')
 
     await user.click(screen.getByRole('button', { name: 'Close club dialog' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes when a form is opened and on Escape', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<ClubJoinDialog open onClose={onClose} />)
+
+    const interest = screen.getByRole('link', { name: /Interest form/ })
+    interest.addEventListener('click', (event) => event.preventDefault())
+    await user.click(interest)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 
   it('renders nothing while closed', () => {
@@ -84,8 +100,9 @@ describe('ClubVisitNudge', () => {
     await act(async () => { vi.advanceTimersByTime(10_000) })
 
     expect(screen.getByText(nudgeMessage)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Sign-up form' })).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
-    expect(screen.getByRole('link', { name: 'Interest form' })).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
+    expect(screen.getByRole('complementary', { name: 'Club invitation' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Sign-up form/ })).toHaveAttribute('href', 'https://forms.gle/mHSP39B3FnKvCfsv6')
+    expect(screen.getByRole('link', { name: /Interest form/ })).toHaveAttribute('href', 'https://forms.gle/p7xYrVRbx2AhWy2U7')
     expect(localStorage.getItem('scheduleshare:club-nudge:v1:student-1')).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss club invitation' }))

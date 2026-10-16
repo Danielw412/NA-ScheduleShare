@@ -1,0 +1,923 @@
+/*
+ * My schedule: the page, the A/B grid (also used by student, shared, and
+ * Schedule Engine views), the class menu, and the meeting-slot pickers.
+ * Tokens only, so both themes work.
+ */
+
+/* ---------- Page ---------- */
+.schedule-page {
+  gap: var(--space-8);
+}
+
+/* Callouts reuse the notice surface with a heading, a line of text, and actions. */
+.schedule-callout {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  grid-template-areas: "icon text actions dismiss";
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+}
+
+.schedule-callout > svg {
+  grid-area: icon;
+  align-self: start;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+
+.schedule-callout-text {
+  display: grid;
+  grid-area: text;
+  gap: 2px;
+  min-width: 0;
+}
+
+.schedule-callout-text h2 {
+  font-size: var(--text-md);
+  font-weight: 650;
+  letter-spacing: -0.006em;
+}
+
+.schedule-callout-text p {
+  max-width: var(--reading-width);
+  color: var(--ink-soft);
+}
+
+.schedule-callout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-area: actions;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.schedule-callout-dismiss {
+  grid-area: dismiss;
+  margin: -8px -8px -8px 0;
+}
+
+.schedule-callout.is-account .schedule-callout-text h2 {
+  font-size: var(--text-lg);
+}
+
+.schedule-error {
+  align-items: center;
+}
+
+.schedule-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-error .icon-button {
+  margin: -8px -8px -8px 0;
+}
+
+.schedule-conflict-notice p {
+  max-width: var(--reading-width);
+}
+
+.schedule-conflict-text {
+  display: grid;
+  flex: 1;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Classes the grid cannot draw because another class sits in every period. */
+.schedule-conflict-hidden {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.schedule-conflict-hidden li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.schedule-conflict-hidden li > span:first-child {
+  flex: 1 1 24ch;
+  max-width: var(--reading-width);
+}
+
+.schedule-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---------- Intro (no schedule yet) ---------- */
+.schedule-intro {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+  max-width: 680px;
+}
+
+.schedule-intro-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  background: var(--chalk);
+  color: var(--ink-soft);
+}
+
+.schedule-intro-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.schedule-intro-text {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.schedule-intro-text h2 {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.schedule-intro-text p {
+  max-width: var(--reading-width);
+  color: var(--slate);
+}
+
+.schedule-intro-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  list-style: none;
+}
+
+.schedule-intro-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.schedule-intro-steps .period-numeral {
+  width: 28px;
+  height: 28px;
+  font-size: var(--text-sm);
+}
+
+.schedule-intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* ---------- Board: toolbar, grid, footer ---------- */
+.schedule-board {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Focus lands here only programmatically, after a class it held is removed. */
+.schedule-board:focus {
+  outline: none;
+}
+
+.schedule-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+
+.schedule-open-slots-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.schedule-open-slots-note strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.schedule-open-slots-note svg {
+  width: 16px;
+  height: 16px;
+  color: var(--success);
+}
+
+.schedule-board-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.schedule-clear-button {
+  margin-inline: calc(-1 * var(--space-4));
+  color: var(--danger);
+}
+
+.schedule-clear-button:hover:not(:disabled) {
+  background: var(--danger-wash);
+}
+
+.schedule-loading {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.schedule-loading-toolbar {
+  width: min(240px, 100%);
+  height: 44px;
+}
+
+.schedule-loading-grid {
+  height: 620px;
+  border-radius: var(--radius-panel);
+}
+
+/* ---------- Schedule grid ---------- */
+/* The bordered box is the grid itself; it is also the container whose width
+   decides between two day columns and one day at a time. */
+.schedule-grid-wrap {
+  container: schedule-grid / inline-size;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 72px repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto;
+  grid-auto-rows: minmax(68px, auto);
+  row-gap: 0;
+}
+
+.schedule-grid-head,
+.schedule-row {
+  display: contents;
+}
+
+.schedule-grid-corner,
+.schedule-day-head {
+  grid-row: 1;
+  min-height: 44px;
+  background: var(--chalk);
+}
+
+.schedule-grid-corner {
+  grid-column: 1;
+}
+
+.schedule-day-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--line);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.schedule-day-head[data-day="A"],
+.schedule-cell[data-day="A"] {
+  grid-column: 2;
+}
+
+.schedule-day-head[data-day="B"],
+.schedule-cell[data-day="B"] {
+  grid-column: 3;
+}
+
+.schedule-today-tag,
+.schedule-day-switch .schedule-today-tag {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--gold);
+  box-shadow: none;
+  color: var(--on-gold);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.schedule-period {
+  display: flex;
+  grid-column: 1;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--line);
+}
+
+/* A tint of ink rather than --chalk keeps the numerals visible on both themes. */
+.schedule-period .period-numeral,
+.schedule-slot-grid .period-numeral {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.schedule-period .period-numeral.is-now {
+  background: var(--gold);
+}
+
+.schedule-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+/* Later periods of a merged double period are covered by the block above. */
+.schedule-cell[hidden] {
+  display: none;
+}
+
+.schedule-cell-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.schedule-cell.is-actionable .schedule-cell-copy {
+  padding-right: var(--space-8);
+}
+
+.schedule-cell-course {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.schedule-cell-teacher {
+  overflow: hidden;
+  color: var(--slate);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.schedule-cell-periods {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.schedule-cell-conflict {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+.schedule-cell-conflict svg {
+  width: 14px;
+  height: 14px;
+}
+
+.schedule-cell-now {
+  color: var(--gold-ink);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* A merged double period: one block across both rows. */
+.schedule-cell.is-block {
+  box-shadow: inset 3px 0 0 var(--line-strong);
+}
+
+.schedule-cell.is-now {
+  background: var(--gold-wash);
+}
+
+.schedule-cell.is-now.is-block {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.schedule-cell.is-predicted-change {
+  background: var(--gold-wash);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.schedule-cell.is-conflict {
+  background: var(--danger-wash);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+/* The whole class cell opens its menu; the dots are the visible affordance. */
+.schedule-cell-action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--slate);
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.schedule-cell-action svg {
+  width: 20px;
+  height: 20px;
+}
+
+.schedule-cell-action:hover,
+.schedule-cell-action[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  color: var(--ink);
+}
+
+.schedule-cell-action:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.schedule-cell.is-empty {
+  padding: 0;
+}
+
+.schedule-cell-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--slate);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-align: left;
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.schedule-cell-add svg {
+  width: 16px;
+  height: 16px;
+}
+
+.schedule-cell-add:hover {
+  background: var(--chalk);
+  color: var(--ink);
+}
+
+.schedule-cell-add:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.schedule-cell-free {
+  padding: var(--space-3) var(--space-4);
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+/* Built-in A/B switch, shown only when the grid is one day at a time. */
+.schedule-day-switch.segmented {
+  display: none;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: var(--chalk);
+}
+
+.schedule-day-switch .segmented-option {
+  flex: 1 1 0;
+}
+
+.schedule-day-switch .segmented-option input + span {
+  min-height: 48px;
+  border-radius: 0;
+}
+
+.schedule-day-switch .segmented-option input:checked + span {
+  background: var(--paper);
+  box-shadow: inset 0 -3px 0 var(--gold);
+}
+
+.schedule-day-switch .segmented-option input:focus-visible + span {
+  outline-offset: -3px;
+}
+
+/* One day at a time: periods run down the side as a vertical list. */
+@container schedule-grid (max-width: 559px) {
+  .schedule-day-switch.segmented {
+    display: flex;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 60px minmax(0, 1fr);
+    grid-auto-rows: minmax(64px, auto);
+  }
+
+  .schedule-grid-corner,
+  .schedule-day-head {
+    display: none;
+  }
+
+  .schedule-grid .schedule-cell[data-day] {
+    grid-column: 2;
+    border-left: 0;
+  }
+
+  .schedule-grid.is-showing-a .schedule-cell[data-day="B"],
+  .schedule-grid.is-showing-b .schedule-cell[data-day="A"] {
+    display: none;
+  }
+
+  .schedule-grid:not(.is-showing-today) .schedule-period .period-numeral.is-now {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: var(--ink);
+    clip-path: none;
+  }
+
+  .schedule-cell,
+  .schedule-cell-add {
+    padding-left: 0;
+  }
+
+  .schedule-cell.is-filled.is-block,
+  .schedule-cell.is-filled.is-now,
+  .schedule-cell.is-filled.is-conflict,
+  .schedule-cell.is-filled.is-predicted-change,
+  .schedule-cell.is-empty.is-now .schedule-cell-add,
+  .schedule-cell.is-empty.is-now .schedule-cell-free {
+    padding-left: var(--space-3);
+  }
+
+  .schedule-cell-free {
+    padding-left: 0;
+  }
+
+  .schedule-cell-course {
+    font-size: var(--text-md);
+  }
+}
+
+/* ---------- Class menu ---------- */
+.schedule-menu {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  gap: 2px;
+  width: 240px;
+  max-height: min(320px, calc(100dvh - 16px));
+  padding: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-control) + 2px);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-float);
+  animation: schedule-menu-in var(--duration-base) var(--ease-out) both;
+}
+
+.schedule-menu-header {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.schedule-menu-header strong {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.schedule-menu-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schedule-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  text-align: left;
+}
+
+.schedule-menu [role="menuitem"] svg {
+  width: 18px;
+  height: 18px;
+  color: var(--slate);
+}
+
+.schedule-menu [role="menuitem"]:hover,
+.schedule-menu [role="menuitem"]:focus-visible {
+  background: var(--chalk);
+}
+
+.schedule-menu [role="menuitem"]:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.schedule-menu [role="menuitem"].is-danger,
+.schedule-menu [role="menuitem"].is-danger svg {
+  color: var(--danger);
+}
+
+.schedule-menu [role="menuitem"].is-danger:hover {
+  background: var(--danger-wash);
+}
+
+@keyframes schedule-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- Dialogs owned by the page ---------- */
+.schedule-issue-body {
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.schedule-issue-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  background: var(--warning-wash);
+  color: var(--warning-ink);
+}
+
+.schedule-issue-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.schedule-issue-body h2 {
+  font-size: var(--text-lg);
+}
+
+.schedule-issue-body p {
+  color: var(--slate);
+}
+
+.schedule-dialog-note {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Meeting-slot pickers (add class, admin, import review) ---------- */
+.schedule-slot-editor {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.schedule-slot-picker {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.schedule-slot-picker legend {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.schedule-slot-help {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.schedule-slot-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.schedule-slot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+
+.schedule-slot-summary-label {
+  margin-right: 2px;
+  color: var(--slate);
+}
+
+.schedule-slot-summary-empty {
+  color: var(--slate);
+}
+
+/* Periods down the side, A and B days across, like the schedule itself. */
+.schedule-slot-grid {
+  width: calc(100% + 12px);
+  max-width: 372px;
+  margin: -4px -6px;
+  border-collapse: separate;
+  border-spacing: 6px 4px;
+}
+
+.schedule-slot-grid th {
+  padding: 0;
+  color: var(--slate);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+}
+
+.schedule-slot-grid thead th {
+  padding-bottom: 2px;
+}
+
+.schedule-slot-grid th:first-child {
+  width: 40px;
+}
+
+.schedule-slot-grid td {
+  padding: 0;
+}
+
+.schedule-slot-grid .period-numeral {
+  width: 34px;
+  height: 34px;
+  font-size: var(--text-sm);
+}
+
+.schedule-slot-toggle {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--paper);
+  transition: background-color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.schedule-slot-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.schedule-slot-toggle:hover {
+  border-color: var(--ink);
+  background: var(--chalk);
+}
+
+.schedule-slot-toggle[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.schedule-slot-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Compact buttons in callouts and notices still need 44px touch targets. */
+@media (max-width: 639px), (pointer: coarse) {
+  .schedule-callout-actions .button,
+  .schedule-error .button,
+  .schedule-conflict-actions .button {
+    min-height: 44px;
+  }
+}
+
+/* ---------- Phones ---------- */
+@media (max-width: 639px) {
+  .schedule-page {
+    gap: var(--space-6);
+  }
+
+  .schedule-page .page-header-actions {
+    width: 100%;
+  }
+
+  .schedule-page .page-header-actions .button {
+    flex: 1 1 0;
+    padding: 0 var(--space-3);
+  }
+
+  .schedule-callout {
+    position: relative;
+    grid-template-columns: 20px minmax(0, 1fr);
+    grid-template-areas:
+      "icon text"
+      ". actions";
+    column-gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .schedule-callout-dismiss {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    margin: 0;
+  }
+
+  .schedule-callout:has(.schedule-callout-dismiss) .schedule-callout-text {
+    padding-right: var(--space-8);
+  }
+
+  .schedule-callout-actions {
+    margin-top: var(--space-1);
+  }
+
+  .schedule-toolbar .schedule-term-selector {
+    display: flex;
+    width: 100%;
+  }
+
+  .schedule-toolbar .schedule-term-selector .segmented-option {
+    flex: 1 1 0;
+  }
+
+  .schedule-intro-steps {
+    flex-direction: column;
+  }
+
+  .schedule-intro-actions {
+    width: 100%;
+  }
+
+  .schedule-intro-actions .button {
+    flex: 1 1 auto;
+  }
+
+  .schedule-board-footer {
+    justify-content: flex-start;
+  }
+
+  .schedule-loading-grid {
+    height: 520px;
+  }
+}

@@ -59,13 +59,13 @@ describe('ClassesPage organization', () => {
   it('lists active classes first and removes them from Other Classes', () => {
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
     expect(mocks.useClassSearch).toHaveBeenCalledWith(expect.objectContaining({ limit: 1000 }), expect.any(Object))
-    expect(screen.getByRole('heading', { name: 'Your Classes' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Other Classes' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your classes' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Other classes' })).toBeInTheDocument()
     expect(screen.getAllByText('My Biology')).toHaveLength(1)
     expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
   })
 
-  it('orders Your Classes by period and then A/B day to match the schedule grid', () => {
+  it('orders your classes by period and then A/B day to match the schedule grid', () => {
     mocks.useSchedule.mockReturnValue({
       loading: false,
       enrollments: [
@@ -77,8 +77,9 @@ describe('ClassesPage organization', () => {
 
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
 
-    const section = screen.getByRole('heading', { name: 'Your Classes' }).closest('section')
+    const section = screen.getByRole('heading', { name: 'Your classes' }).closest('section')
     expect(section).not.toBeNull()
+    expect([...section!.querySelectorAll('.period-numeral')].map((numeral) => numeral.textContent)).toEqual(['Period 1', 'Period 4'])
     expect(within(section!).getAllByRole('link').map((link) => link.textContent)).toEqual([
       expect.stringContaining('A Day Class'),
       expect.stringContaining('B Day Class'),
@@ -90,7 +91,7 @@ describe('ClassesPage organization', () => {
     mocks.useSchedule.mockReturnValue({ loading: false, enrollments: [] })
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
     expect(screen.getByText('You have not joined any classes yet. Upload your schedule to find and join your classes.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Upload Schedule' })).toHaveAttribute('href', '/schedule?import=1')
+    expect(screen.getByRole('link', { name: 'Upload schedule' })).toHaveAttribute('href', '/schedule?import=1')
   })
 
   it('groups same-name sections across teachers and reveals their periods on demand', async () => {
@@ -114,7 +115,10 @@ describe('ClassesPage organization', () => {
     expect(group).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Spak')).toBeInTheDocument()
     expect(screen.getByText('Allen')).toBeInTheDocument()
-    expect(screen.getByText('B P8 · B P9')).toBeInTheDocument()
+    const allenRow = screen.getByText('Allen').closest('a') as HTMLElement
+    expect(allenRow).toHaveAttribute('href', '/classes/biology-allen')
+    expect(within(allenRow).getByText('B day')).toBeInTheDocument()
+    expect(within(allenRow).getByText('Periods 8–9')).toBeInTheDocument()
   })
 
   it('allows the active class group to collapse after a period is selected', async () => {
@@ -131,7 +135,7 @@ describe('ClassesPage organization', () => {
     render(<MemoryRouter initialEntries={['/classes/biology-spak']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
 
     const group = await screen.findByRole('button', { name: /AP Biology\s*2 periods/ })
-    const groupSection = group.closest('.course-class-group') as HTMLElement
+    const groupSection = group.closest('.classes-course') as HTMLElement
     expect(group).toHaveAttribute('aria-expanded', 'true')
     expect(within(groupSection).getByText('Spak')).toBeInTheDocument()
 
@@ -143,28 +147,30 @@ describe('ClassesPage organization', () => {
   it('shows real class search results but keeps rosters locked for logged-out visitors', () => {
     mocks.useAuth.mockReturnValue({ user: null, isDemo: false })
     render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
-    expect(screen.queryByRole('heading', { name: 'Your Classes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Your classes' })).not.toBeInTheDocument()
     expect(screen.getAllByText('Other Chemistry')).not.toHaveLength(0)
     expect(screen.getByText(/Create an account and add your schedule to see who is in this class/)).toBeInTheDocument()
     expect(mocks.getClassMembers).not.toHaveBeenCalled()
   })
 
-  it('opens the compact filters, shows removable chips, and clears them', async () => {
+  it('filters by day and period and clears both at once', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter initialEntries={['/classes']}><ClassesPage /></MemoryRouter>)
 
-    const filterToggle = screen.getByRole('button', { name: 'Filters' })
-    await user.click(filterToggle)
-    expect(filterToggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('searchbox', { name: 'Search classes' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
 
     await user.selectOptions(screen.getByLabelText('Day'), 'A')
     await user.selectOptions(screen.getByLabelText('Period'), '2')
-    expect(screen.getByRole('button', { name: /A Day/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Period 2/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('Day')).toHaveValue('A')
+    expect(screen.getByLabelText('Period')).toHaveValue('2')
     expect(mocks.useClassSearch).toHaveBeenLastCalledWith(expect.objectContaining({ dayType: 'A', period: 2 }), expect.any(Object))
+    expect(screen.getByText('None of your classes match these filters.')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Clear filters' }))
-    expect(screen.queryByLabelText('Active class filters')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Day')).toHaveValue('')
+    expect(screen.getByLabelText('Period')).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
     expect(mocks.useClassSearch).toHaveBeenLastCalledWith(expect.objectContaining({ dayType: undefined, period: undefined }), expect.any(Object))
   })
 
@@ -225,7 +231,7 @@ describe('ClassesPage organization', () => {
 
     render(<MemoryRouter initialEntries={['/classes/class-gym?day=A&period=2']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
 
-    const ownSection = screen.getByRole('heading', { name: 'Your Classes' }).closest('section') as HTMLElement
+    const ownSection = screen.getByRole('heading', { name: 'Your classes' }).closest('section') as HTMLElement
     expect(within(ownSection).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
       '/classes/class-gym?day=A&period=2',
       '/classes/class-gym?day=B&period=2',
@@ -233,7 +239,8 @@ describe('ClassesPage organization', () => {
     expect(mocks.getClassMembers).toHaveBeenCalledWith('class-gym', { day_type: 'A', period_number: 2 })
     expect(screen.getByRole('navigation', { name: 'Class meeting' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('link', { name: 'B Day' }))
+    expect(screen.getByRole('link', { name: 'A day' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('link', { name: 'B day' }))
     expect(mocks.getClassMembers).toHaveBeenLastCalledWith('class-gym', { day_type: 'B', period_number: 2 })
 
     await act(async () => {
@@ -267,12 +274,119 @@ describe('ClassesPage organization', () => {
 
     render(<MemoryRouter initialEntries={['/classes/class-gym-a-only?day=A&period=2']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
 
-    const ownSection = screen.getByRole('heading', { name: 'Your Classes' }).closest('section') as HTMLElement
+    const ownSection = screen.getByRole('heading', { name: 'Your classes' }).closest('section') as HTMLElement
     expect(within(ownSection).getAllByRole('link')).toHaveLength(1)
     expect(screen.queryByRole('navigation', { name: 'Class meeting' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Gym\s*1 period/ }))
-    const otherSection = screen.getByRole('heading', { name: 'Other Classes' }).closest('section') as HTMLElement
+    const otherSection = screen.getByRole('heading', { name: 'Other classes' }).closest('section') as HTMLElement
     expect(within(otherSection).getByRole('link')).toHaveAttribute('href', '/classes/class-gym-a-only?day=B&period=2')
+  })
+
+  it('marks an owned class, links to the schedule editor, and reports the selected class', async () => {
+    mocks.getClassMembers.mockResolvedValue([
+      { student_id: 'student-open', full_name: 'Open Student', grade: 10, privacy_setting: 'school', can_view_schedule: true },
+      { student_id: 'student-hidden', full_name: 'Hidden Student', grade: 12, privacy_setting: 'classmates', can_view_schedule: false },
+    ])
+    render(<MemoryRouter initialEntries={['/classes/class-own']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    expect(screen.getByRole('heading', { name: 'My Biology', level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('On your schedule')).toBeInTheDocument()
+    expect(screen.getByText('A day, period 1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Manage this class on your schedule' })).toHaveAttribute('href', '/schedule')
+    const reportLinks = screen.getAllByRole('link', { name: 'Report this class' })
+    expect(reportLinks.length).toBeGreaterThan(0)
+    reportLinks.forEach((link) => expect(link).toHaveAttribute('href', '/report'))
+    expect(mocks.getClassMembers).toHaveBeenCalledWith('class-own', undefined)
+
+    const openRow = (await screen.findByText('Open Student')).closest('a') as HTMLElement
+    expect(openRow).toHaveAttribute('href', '/students/student-open')
+    expect(within(openRow).getByText('View schedule')).toBeInTheDocument()
+    const hiddenRow = screen.getByText('Hidden Student').closest('li') as HTMLElement
+    expect(within(hiddenRow).queryByRole('link')).not.toBeInTheDocument()
+    expect(within(hiddenRow).getByText('Schedule hidden')).toBeInTheDocument()
+  })
+
+  it('does not mark a class you are not in as yours', async () => {
+    render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: 'Other Chemistry', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByText('On your schedule')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Manage this class on your schedule' })).not.toBeInTheDocument()
+    expect(await screen.findByText('No other students are listed for this class yet.')).toBeInTheDocument()
+  })
+
+  it('shows a roster error next to the roster and retries it', async () => {
+    const user = userEvent.setup()
+    mocks.getClassMembers.mockRejectedValueOnce(new Error('Roster service is down.'))
+    render(<MemoryRouter initialEntries={['/classes/class-own']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Roster service is down.')
+    mocks.getClassMembers.mockResolvedValueOnce([{ student_id: 'student-back', full_name: 'Back Student', grade: 9, privacy_setting: 'school', can_view_schedule: true }])
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Back Student')).toBeInTheDocument()
+    expect(mocks.getClassMembers).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the roster locked until the student adds a schedule', () => {
+    mocks.useSchedule.mockReturnValue({ loading: false, enrollments: [] })
+    render(<MemoryRouter initialEntries={['/classes/class-other']}><Routes><Route path="/classes/:classId" element={<ClassesPage />} /></Routes></MemoryRouter>)
+    expect(screen.getByText('Upload your schedule to see which classmates share your courses.')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Upload schedule' }).every((link) => link.getAttribute('href') === '/schedule?import=1')).toBe(true)
+    expect(mocks.getClassMembers).not.toHaveBeenCalled()
+  })
+})
+
+describe('ClassesPage narrow-screen navigation', () => {
+  function renderClassRoutes(path: string) {
+    return render(<MemoryRouter initialEntries={[path]}><Routes>
+      <Route path="/classes" element={<ClassesPage />} />
+      <Route path="/classes/:classId" element={<ClassesPage />} />
+    </Routes></MemoryRouter>)
+  }
+
+  // jsdom has no layout: stand in for the container query that hides the
+  // list while a class is open below 680px.
+  function hideListWhileAClassIsOpen() {
+    const realGetComputedStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = realGetComputedStyle(element, pseudo)
+      if (element instanceof HTMLElement && element.classList.contains('classes-master') && element.closest('.has-selection')) {
+        return { ...style, display: 'none' } as CSSStyleDeclaration
+      }
+      return style
+    })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    Reflect.deleteProperty(window, 'scrollY')
+  })
+
+  it('returns to the same spot and the same row after going back to the list', async () => {
+    const user = userEvent.setup()
+    hideListWhileAClassIsOpen()
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 400 })
+    renderClassRoutes('/classes')
+
+    await user.click(screen.getByRole('link', { name: /My Biology/ }))
+    expect(screen.getByRole('heading', { name: 'My Biology', level: 2 })).toHaveFocus()
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0 })
+
+    await user.click(screen.getByRole('link', { name: 'All classes' }))
+    expect(screen.queryByRole('heading', { name: 'My Biology', level: 2 })).not.toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 400 })
+    expect(screen.getByRole('link', { name: /My Biology/ })).toHaveFocus()
+  })
+
+  it('puts focus on the class row when a directly opened class is closed', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
+    renderClassRoutes('/classes/class-own')
+
+    await user.click(screen.getByRole('link', { name: 'All classes' }))
+    expect(screen.queryByRole('heading', { name: 'My Biology', level: 2 })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /My Biology/ })).toHaveFocus()
+    expect(document.body).not.toHaveFocus()
   })
 })

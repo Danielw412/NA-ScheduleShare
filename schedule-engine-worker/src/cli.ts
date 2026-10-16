@@ -1,6 +1,7 @@
 import { createPredictionReadyNotifier, smtpNotifierConfigFromEnvironment } from './notifier.js'
 import { maxCollateralChangesFromEnvironment } from './prediction-engine.js'
 import { createSchedulePolicyPredictionFunction } from './schedule-policy.js'
+import { createWorkerLogger, errorSummary, workerIssueEvent, type WorkerFailureReporter } from './observability.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import { processFullQueue, processNextJob } from './worker.js'
 
@@ -21,7 +22,12 @@ async function main() {
   const predict = createSchedulePolicyPredictionFunction({
     maxCollateralChanges,
   })
-  const options = { store, workerId, predict, notify: createPredictionReadyNotifier(smtpNotifierConfigFromEnvironment()) }
+  const logger = createWorkerLogger({ format: process.env.SCHEDULE_ENGINE_LOG_FORMAT, workerId })
+  const onFailure: WorkerFailureReporter = async (error, context) => {
+    logger.error('job_failed', { job_id: context.jobId, stage: context.stage, ...errorSummary(error) })
+    await store.reportIssue(workerIssueEvent(error, { ...context, workerId, release: process.env.APP_RELEASE?.trim() }))
+  }
+  const options = { store, workerId, predict, notify: createPredictionReadyNotifier(smtpNotifierConfigFromEnvironment()), onFailure }
 
   if (mode === '--once') {
     const outcome = await processNextJob(options)

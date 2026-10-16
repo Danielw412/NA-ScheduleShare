@@ -1,0 +1,885 @@
+/* App frame: desktop sidebar, mobile top bar and tab bar, footer, live bell. */
+
+.app-frame {
+  min-height: 100dvh;
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom));
+}
+
+.main {
+  min-width: 0;
+  padding: var(--space-6) var(--page-gutter) 0;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.main-inner {
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+
+/* ---------- Brand ---------- */
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  color: var(--brand-black);
+}
+
+.brand-wordmark {
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* ---------- Navigation items (shared by sidebar and tab bar) ---------- */
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--slate);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.nav-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- Sidebar (desktop) ---------- */
+.sidebar {
+  display: none;
+}
+
+.sidebar-brand {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+
+.sidebar-nav ul {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+}
+
+.sidebar .nav-item {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: 0.9375rem;
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.sidebar .nav-item:hover {
+  background: var(--chalk-strong);
+  color: var(--ink);
+}
+
+.sidebar .nav-item.active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(17 19 22 / 4%);
+}
+
+.sidebar .nav-item.active::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: -10px;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gold);
+  content: "";
+}
+
+.sidebar-now:empty {
+  display: none;
+}
+
+.sidebar-account {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.sidebar-guest {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.sidebar-guest p {
+  margin-bottom: var(--space-1);
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Top bar (mobile and tablet) ---------- */
+.topbar {
+  position: sticky;
+  /* Above the tab bar, so the notifications sheet and account menu that
+     open from here cover it. */
+  z-index: 40;
+  top: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: calc(var(--topbar-height) + var(--safe-top));
+  padding: var(--safe-top) var(--page-gutter) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The frosted background lives on a pseudo-element: a backdrop-filter on the
+   bar itself would make it the containing block for fixed-position children
+   such as the notifications sheet, pinning them inside the 60px bar. */
+.topbar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  content: "";
+}
+
+.topbar-brand {
+  display: inline-flex;
+  padding: var(--space-1);
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--radius-control);
+}
+
+.topbar-brand .brand-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.topbar-now {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* ---------- Tab bar (mobile and tablet) ---------- */
+.tabbar {
+  position: fixed;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding-bottom: var(--safe-bottom);
+  background: var(--paper);
+  box-shadow: var(--shadow-bar);
+}
+
+.tabbar ul {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  max-width: 640px;
+  height: var(--tabbar-height);
+  margin: 0 auto;
+  list-style: none;
+}
+
+.tabbar .nav-item {
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 2px;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+
+.tabbar .nav-item svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tabbar .nav-item.active {
+  color: var(--ink);
+}
+
+.tabbar .nav-item.active::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--gold);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.tabbar .nav-item:active {
+  background: var(--chalk);
+}
+
+/* ---------- Footer ---------- */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  max-width: var(--content-width);
+  margin: var(--space-20) auto 0;
+  padding: var(--space-6) 0 var(--space-8);
+  border-top: 1px solid var(--line);
+  color: var(--slate);
+  font-size: var(--text-xs);
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+}
+
+.site-footer a,
+.site-footer button {
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--slate);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.site-footer a:hover,
+.site-footer button:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* ---------- Live bell: sidebar widget ---------- */
+.now-widget {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color var(--duration-fast) ease;
+}
+
+a.now-widget:hover {
+  border-color: var(--line-strong);
+}
+
+.now-widget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--slate);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.now-widget-day {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--chalk-strong);
+  color: var(--ink);
+}
+
+.now-widget-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.now-widget-title > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.now-widget-title strong {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.now-widget-title small {
+  color: var(--slate);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+.now-widget-count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 2.125rem;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.now-widget-count small {
+  color: var(--slate);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.now-widget-progress,
+.timeline-progress,
+.now-board-progress {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--chalk-strong);
+}
+
+.now-widget-progress > span,
+.timeline-progress > span,
+.now-board-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gold);
+  transition: inline-size 1s linear;
+}
+
+.now-widget.is-loading {
+  gap: var(--space-2);
+}
+
+.now-widget.is-loading .skeleton {
+  height: 14px;
+}
+
+.now-widget.is-loading .skeleton:last-child {
+  width: 60%;
+  height: 28px;
+}
+
+.now-widget.is-error {
+  gap: var(--space-1);
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Live bell: mobile pill ---------- */
+.now-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  height: 38px;
+  padding: 0 var(--space-3) 0 5px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--chalk);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.now-pill:not(:has(.now-pill-mark)) {
+  padding-left: var(--space-3);
+}
+
+.now-pill-mark {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.now-pill.is-live .now-pill-mark {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+
+.now-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-pill-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--gold);
+}
+
+.now-pill.is-loading {
+  width: 104px;
+  padding: 0 var(--space-3);
+}
+
+.now-pill.is-loading .skeleton {
+  width: 100%;
+  height: 14px;
+}
+
+.now-pill.is-error {
+  width: 38px;
+  justify-content: center;
+  padding: 0;
+  color: var(--slate);
+}
+
+.now-pill.is-error svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Account menu ---------- */
+.account-menu {
+  position: relative;
+  min-width: 0;
+}
+
+.account-menu.is-sidebar {
+  flex: 1;
+}
+
+.account-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  text-align: left;
+}
+
+.account-menu-trigger:hover {
+  background: var(--chalk-strong);
+}
+
+.account-menu.is-topbar .account-menu-trigger {
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-pill);
+}
+
+.account-menu-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.account-menu-name strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-name small {
+  color: var(--slate);
+  font-size: var(--text-xs);
+}
+
+.account-menu-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--slate);
+}
+
+.account-menu-panel {
+  position: absolute;
+  z-index: 45;
+  display: grid;
+  gap: 2px;
+  width: max(100%, 260px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-float);
+  animation: dialog-in var(--duration-base) var(--ease-out) both;
+}
+
+/* Fixed so the sidebar's scroll container cannot clip it. */
+.account-menu.is-sidebar .account-menu-panel {
+  position: fixed;
+  bottom: calc(var(--space-4) + 56px);
+  left: var(--space-4);
+  width: 280px;
+}
+
+.account-menu.is-topbar .account-menu-panel {
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: min(300px, calc(100vw - 2 * var(--page-gutter)));
+}
+
+.account-menu-identity {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.account-menu-identity strong {
+  font-size: var(--text-sm);
+}
+
+.account-menu-identity small {
+  overflow: hidden;
+  color: var(--slate);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-panel nav {
+  display: grid;
+  gap: 2px;
+}
+
+.account-menu-panel a,
+.account-menu-panel button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 42px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+}
+
+.account-menu-panel a:hover,
+.account-menu-panel button:hover {
+  background: var(--chalk);
+}
+
+.account-menu-panel svg {
+  width: 18px;
+  height: 18px;
+  color: var(--slate);
+}
+
+.account-menu-signout {
+  margin-top: 4px;
+  border-top: 1px solid var(--line) !important;
+  border-radius: 0 0 6px 6px !important;
+}
+
+/* ---------- Notifications ---------- */
+.schedule-notifications {
+  position: relative;
+}
+
+.notification-bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+}
+
+.notification-bell:hover {
+  background: var(--chalk-strong);
+}
+
+.notification-bell svg {
+  width: 20px;
+  height: 20px;
+}
+
+.schedule-notifications.is-row .notification-bell {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+  padding: 0 var(--space-3);
+  color: var(--slate);
+  font-size: 0.9375rem;
+  font-weight: 550;
+}
+
+.schedule-notifications.is-row .notification-bell:hover {
+  color: var(--ink);
+}
+
+.schedule-notifications.is-row .notification-badge {
+  position: static;
+  margin-left: auto;
+  border: 0;
+}
+
+.notification-badge {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid var(--paper);
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.notification-sheet-backdrop {
+  display: none;
+}
+
+.notification-panel {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: grid;
+  gap: var(--space-2);
+  width: min(400px, calc(100vw - 2 * var(--page-gutter)));
+  max-height: min(70dvh, 560px);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-float);
+  animation: dialog-in var(--duration-base) var(--ease-out) both;
+}
+
+.notification-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+}
+
+.notification-panel > header h2 {
+  font-size: var(--text-md);
+}
+
+.notification-panel > header p {
+  color: var(--slate);
+  font-size: var(--text-xs);
+}
+
+.notification-feedback,
+.notification-error,
+.notification-loading,
+.notification-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.notification-feedback {
+  color: var(--success);
+}
+
+.notification-error {
+  color: var(--danger);
+}
+
+.notification-loading,
+.notification-empty {
+  padding: var(--space-4) 0;
+  color: var(--slate);
+}
+
+.notification-loading svg {
+  width: 16px;
+  height: 16px;
+  animation: spin .8s linear infinite;
+}
+
+.notification-list {
+  display: grid;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+}
+
+.notification-item + .notification-item {
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.notification-item .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: var(--text-xs);
+}
+
+.notification-item p {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.notification-item small {
+  color: var(--slate);
+  font-size: var(--text-xs);
+}
+
+.notification-item.is-unread {
+  background: var(--gold-wash);
+}
+
+.notification-actions {
+  display: flex;
+  gap: var(--space-2);
+  grid-column: 2;
+  margin-top: var(--space-1);
+}
+
+.notification-actions .button {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+
+/* ---------- Breakpoints ---------- */
+@media (max-width: 1023px) {
+  .main {
+    padding-top: var(--space-6);
+  }
+
+  .notification-sheet-backdrop {
+    position: fixed;
+    z-index: 44;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: var(--scrim);
+    animation: backdrop-in var(--duration-base) ease both;
+  }
+
+  .notification-panel {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 80dvh;
+    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+    border-radius: 16px 16px 0 0;
+    animation-name: sheet-in;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-frame {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    padding-bottom: 0;
+    background: linear-gradient(90deg, var(--chalk) 0 calc(var(--sidebar-width) - 1px), var(--line) calc(var(--sidebar-width) - 1px) var(--sidebar-width), transparent var(--sidebar-width));
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    height: 100dvh;
+    padding: var(--space-5) var(--space-4) var(--space-4);
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+  }
+
+  .topbar,
+  .tabbar {
+    display: none;
+  }
+
+  .main {
+    padding: var(--space-12) var(--page-gutter) 0;
+  }
+
+  .notification-panel {
+    position: fixed;
+    top: auto;
+    right: auto;
+    bottom: var(--space-4);
+    left: calc(var(--sidebar-width) + var(--space-3));
+  }
+}
+
+@media (max-width: 380px) {
+  .tabbar .nav-item {
+    font-size: 0.6875rem;
+  }
+}

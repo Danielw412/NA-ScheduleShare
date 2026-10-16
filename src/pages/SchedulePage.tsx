@@ -1,16 +1,25 @@
-import { AlertTriangle, CheckCircle2, ImagePlus, Plus, Share2, Trash2, Users, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, AlertTriangle, CheckCircle2, ImagePlus, Pencil, RefreshCw, Share2, Trash2, Users, X } from 'lucide-react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useGuestAccountPrompt } from '../components/auth/GuestAccountPrompt'
 import { AddClassDialog } from '../components/schedule/AddClassDialog'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
 import { ScheduleImportDialog, type ScheduleImportClarification } from '../components/schedule/ScheduleImportDialog'
+import { classCoveringHiddenEnrollment, conflictsInTerm } from '../components/schedule/termConflicts'
 import { TermSelector } from '../components/schedule/TermSelector'
-import { LoadingScreen } from '../components/ui/LoadingScreen'
+import { Dialog } from '../components/ui/Dialog'
+import { PageHeader } from '../components/ui/PageHeader'
+import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../features/auth/AuthProvider'
+import { useBellSchedule } from '../features/bell/BellScheduleProvider'
+import { shareScheduleLink } from '../features/share/shareSchedule'
 import { useDialogAccessibility } from '../hooks/useDialogAccessibility'
+import { useNow } from '../hooks/useNow'
 import { useSchedule } from '../hooks/useSchedule'
+import { resolveBellNow } from '../lib/bellSchedule'
 import type { ClassDefinition, DayType, ScheduleEnrollment, SemesterTerm } from '../lib/domain'
+import { courseTermPolicy, enrollmentMeetingSlots, isLunchCourse, sortMeetingSlots } from '../lib/schedule'
 import {
   clearGuestScheduleImportDraft,
   confirmScheduleImport,
@@ -22,36 +31,63 @@ import {
   scheduleImportPreviewEnrollments,
   type ScheduleImportResult,
 } from '../lib/scheduleImport'
-import { createScheduleShareUrl, scheduleShareTitle } from '../lib/scheduleShare'
 import { clearSchedule, removeEnrollment, searchGuestCourseNames } from '../lib/supabase/data'
 import { scheduleCoverageIssues } from '../lib/scheduleEngineRules'
 
-interface ActiveCell { dayType: DayType; period: number; replacing?: ScheduleEnrollment | null }
+/** The period being edited. The semester is captured when the dialog opens so it cannot shift underneath it. */
+interface ActiveCell { dayType: DayType; period: number; semester: SemesterTerm; replacing?: ScheduleEnrollment | null }
 
-function ClarificationCallout({ count, onReview, onDismiss }: { count: number; onReview: () => void; onDismiss: () => void }) {
-  return <section className="schedule-clarification-callout" role="status">
-    <AlertTriangle aria-hidden="true" />
-    <div><h2>{count} {count === 1 ? 'class needs' : 'classes need'} clarification</h2><p>Valid classes were imported. Review the specific issue for each remaining class.</p></div>
-    <div className="schedule-clarification-actions"><button className="button button-primary" type="button" onClick={onReview}>Review classes</button><button className="icon-button" type="button" aria-label="Dismiss clarification reminder" onClick={onDismiss}><X aria-hidden="true" /></button></div>
-  </section>
+const semesterNames: Record<SemesterTerm, string> = { semester_1: 'Semester 1', semester_2: 'Semester 2' }
+
+function classCount(count: number): string {
+  return `${count} ${count === 1 ? 'class' : 'classes'}`
 }
 
+function ClarificationCallout({ count, onReview, onDismiss }: { count: number; onReview: () => void; onDismiss: () => void }) {
+  const titleId = useId()
+  return (
+    <section className="notice notice-warning schedule-callout" aria-labelledby={titleId}>
+      <AlertTriangle aria-hidden="true" />
+      <div className="schedule-callout-text">
+        <h2 id={titleId}>{count} imported {count === 1 ? 'class needs' : 'classes need'} your review</h2>
+        <p>The importer wasn’t sure about {count === 1 ? 'it' : 'them'}. Everything else made it onto your schedule.</p>
+      </div>
+      <div className="schedule-callout-actions">
+        <button className="button button-secondary button-sm" type="button" onClick={onReview}>Review classes</button>
+      </div>
+      <button className="icon-button schedule-callout-dismiss" type="button" aria-label="Dismiss clarification reminder" onClick={onDismiss}><X aria-hidden="true" /></button>
+    </section>
+  )
+}
+
+/**
+ * Asked once, right after an import that left classes unresolved. It is an
+ * alert dialog because the student has to pick a path before continuing.
+ */
 function ImportIssueChoiceDialog({ count, onFix, onManual }: { count: number; onFix: () => void; onManual: () => void }) {
   const dialogRef = useDialogAccessibility(true, onManual)
-  const classLabel = count === 1 ? 'class' : 'classes'
-  return <div className="dialog-backdrop" role="presentation">
-    <section className="class-dialog import-issue-choice-dialog" ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="import-issue-choice-title" aria-describedby="import-issue-choice-description" tabIndex={-1}>
-      <div className="import-issue-choice-icon"><AlertTriangle aria-hidden="true" /></div>
-      <div className="import-issue-choice-copy">
-        <h2 id="import-issue-choice-title">ScheduleShare Importer could not successfully import {count} {classLabel}</h2>
-        <p id="import-issue-choice-description">Choose how you want to add the remaining {classLabel}.</p>
-      </div>
-      <div className="import-issue-choice-actions">
-        <button className="button button-primary" type="button" onClick={onFix}>Fix the importer</button>
-        <button className="button button-secondary" type="button" onClick={onManual}>Enter remaining {classLabel} manually</button>
-      </div>
-    </section>
-  </div>
+  const fixButtonRef = useRef<HTMLButtonElement | null>(null)
+  // "Add it myself" discards the saved clarification, so a reflexive Enter
+  // must open the fixer instead. Runs after the dialog hook's own focus.
+  useEffect(() => { fixButtonRef.current?.focus() }, [])
+  const pronoun = count === 1 ? 'it' : 'them'
+  return createPortal(
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog is-small schedule-issue-dialog" ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="import-issue-choice-title" aria-describedby="import-issue-choice-description" tabIndex={-1}>
+        <span className="sheet-handle" aria-hidden="true" />
+        <div className="dialog-body schedule-issue-body">
+          <span className="schedule-issue-icon"><AlertTriangle aria-hidden="true" /></span>
+          <h2 id="import-issue-choice-title">{classCount(count)} couldn’t be imported</h2>
+          <p id="import-issue-choice-description">The rest of your schedule was imported. Fix what the importer missed now, or add the remaining {count === 1 ? 'class' : 'classes'} yourself.</p>
+        </div>
+        <footer className="dialog-footer">
+          <button className="button button-secondary" type="button" onClick={onManual}>Add {pronoun} myself</button>
+          <button className="button button-primary" type="button" ref={fixButtonRef} onClick={onFix}>Fix {pronoun} now</button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  )
 }
 
 function OpenScheduleSlotsNote({ enrollments }: { enrollments: ScheduleEnrollment[] }) {
@@ -66,12 +102,73 @@ function OpenScheduleSlotsNote({ enrollments }: { enrollments: ScheduleEnrollmen
     term,
     count: coverageIssues.filter((issue) => issue.term === term && issue.count === 0).length,
   })).filter((summary) => summary.count > 0)
-  if (openSlotCounts.length === 0) return null
+  if (openSlotCounts.length === 0) {
+    return <p className="schedule-open-slots-note is-complete"><CheckCircle2 aria-hidden="true" />Every period is filled in for both semesters.</p>
+  }
   const openSlotCount = openSlotCounts.reduce((total, summary) => total + summary.count, 0)
-  const semesterLabel = openSlotCounts.length === 1
-    ? (openSlotCounts[0].term === 'semester_1' ? 'Semester 1' : 'Semester 2')
-    : null
-  return <p className="schedule-open-slots-note"><strong>{openSlotCount}</strong> schedule {openSlotCount === 1 ? 'slot is' : 'slots are'} not filled{semesterLabel ? ` for ${semesterLabel}` : ''} yet.</p>
+  const where = openSlotCounts.length === 1 ? `in ${semesterNames[openSlotCounts[0].term]}` : 'across both semesters'
+  return <p className="schedule-open-slots-note"><strong className="numeric">{openSlotCount}</strong> open {openSlotCount === 1 ? 'period' : 'periods'} {where}</p>
+}
+
+interface ConflictNoticeProps {
+  enrollments: ScheduleEnrollment[]
+  term: SemesterTerm
+  onReplace: (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => void
+  onRemove: (enrollment: ScheduleEnrollment) => void
+}
+
+function ConflictNotice({ enrollments, term, onReplace, onRemove }: ConflictNoticeProps) {
+  const pairs = conflictsInTerm(enrollments, term)
+  if (pairs.length === 0) return null
+  // A class that shares every period with another has no cell in the grid,
+  // so its actions live here instead.
+  const hidden = [...new Map(pairs.flat().map((enrollment) => [enrollment.id, enrollment])).values()].flatMap((enrollment) => {
+    const coveredBy = classCoveringHiddenEnrollment(enrollments, enrollment, term)
+    return coveredBy ? [{ enrollment, coveredBy }] : []
+  })
+  const [[first, second]] = pairs
+  const isLunch = (enrollment: ScheduleEnrollment) => courseTermPolicy(enrollment.class) === 'lunch' || isLunchCourse(enrollment.class.course_name)
+  const summary = pairs.length > 1
+    ? `${pairs.length} pairs of classes conflict.`
+    : isLunch(first) && isLunch(second)
+      ? `${first.class.course_name} and ${second.class.course_name} are both lunches.`
+      : `${first.class.course_name} and ${second.class.course_name} are scheduled at the same time.`
+  return (
+    <div className="notice notice-warning schedule-conflict-notice">
+      <AlertTriangle aria-hidden="true" />
+      <div className="schedule-conflict-text">
+        <p><strong>{summary}</strong> Open a class marked “Conflict” to change or remove it.</p>
+        {hidden.length > 0 ? (
+          <ul className="schedule-conflict-hidden">
+            {hidden.map(({ enrollment, coveredBy }) => {
+              const name = enrollment.class.course_name
+              const [firstSlot] = sortMeetingSlots(enrollmentMeetingSlots(enrollment))
+              return (
+                <li key={enrollment.id}>
+                  <span>{name} isn’t shown in the grid because it shares a period with {coveredBy.class.course_name}.</span>
+                  <span className="schedule-conflict-actions">
+                    <button className="button button-secondary button-sm" type="button" aria-label={`Edit or replace ${name}`} onClick={() => onReplace(enrollment, firstSlot.day_type, firstSlot.period_number)}><Pencil aria-hidden="true" />Edit</button>
+                    <button className="button button-danger-outline button-sm" type="button" aria-label={`Remove ${name}`} onClick={() => onRemove(enrollment)}><Trash2 aria-hidden="true" />Remove</button>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ErrorNotice({ children, onDismiss, action }: { children: ReactNode; onDismiss?: () => void; action?: ReactNode }) {
+  return (
+    <div className="notice notice-danger schedule-error" role="alert">
+      <AlertCircle aria-hidden="true" />
+      <div className="schedule-error-text">{children}</div>
+      {action}
+      {onDismiss ? <button className="icon-button" type="button" aria-label="Dismiss message" onClick={onDismiss}><X aria-hidden="true" /></button> : null}
+    </div>
+  )
 }
 
 function onboardingKey(userId: string): string {
@@ -167,20 +264,73 @@ function rememberShareCtaDismissal(userId: string): void {
   }
 }
 
-function isMobileShareDevice(): boolean {
-  const navigatorWithUserAgentData = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
-  if (typeof navigatorWithUserAgentData.userAgentData?.mobile === 'boolean') return navigatorWithUserAgentData.userAgentData.mobile
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+function importSavedMessage(added: number, removed: number): string {
+  return removed > 0
+    ? `Schedule saved: ${classCount(added)} added, ${classCount(removed)} from before removed.`
+    : `Schedule saved: ${classCount(added)} added.`
+}
+
+/** Where today falls in the bell calendar, for the grid's "Today" and "Now" marks. */
+function useScheduleToday() {
+  const { days } = useBellSchedule()
+  const now = useNow(30_000)
+  const bell = resolveBellNow(now, days)
+  return {
+    /** Today's day, or the next school day when there is no school today. */
+    upcomingDayType: bell.day?.day_type ?? null,
+    upcomingSemester: bell.day?.semester ?? null,
+    todayDayType: bell.isToday ? bell.day?.day_type ?? null : null,
+    todaySemester: bell.isToday ? bell.day?.semester ?? null : null,
+    currentPeriod: bell.isToday && bell.state === 'in_block' && bell.current?.kind === 'class' ? bell.current.period_number : null,
+  }
+}
+
+/**
+ * Whether the loading skeleton should replace the page. Only a student's first
+ * load does; later reloads (after an add, edit, removal, clear or import) keep
+ * the page mounted so open dialogs, the scroll position, and the day picked on
+ * a phone survive them.
+ */
+function useFirstScheduleLoad(loading: boolean, ownerId: string | null): boolean {
+  // The student whose settled state counts as loaded. At mount that is the
+  // current student. After signing in on this page it is only set once their
+  // load is seen starting, because the first render after sign-in still
+  // carries the signed-out, settled state.
+  const [trackedFor, setTrackedFor] = useState<string | null>(ownerId)
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  if (!ownerId) {
+    if (trackedFor !== null) setTrackedFor(null)
+    if (loadedFor !== null) setLoadedFor(null)
+    return loading
+  }
+  if (loading && trackedFor !== ownerId) setTrackedFor(ownerId)
+  if (!loading && trackedFor === ownerId && loadedFor !== ownerId) setLoadedFor(ownerId)
+  return loading && loadedFor !== ownerId
+}
+
+function ScheduleSkeleton() {
+  return (
+    <div className="page schedule-page" aria-busy="true">
+      <PageHeader title="My schedule" />
+      <div className="schedule-loading" role="status" aria-label="Loading your schedule…">
+        <span className="skeleton schedule-loading-toolbar" />
+        <span className="skeleton schedule-loading-grid" />
+      </div>
+    </div>
+  )
 }
 
 export function SchedulePage() {
   const { user, profile, isAdmin, isDemo } = useAuth()
   const { openAccountPrompt } = useGuestAccountPrompt()
+  const { showToast } = useToast()
   const schedule = useSchedule()
   const reloadSchedule = schedule.reload
+  const showScheduleSkeleton = useFirstScheduleLoad(schedule.loading, user?.id ?? null)
+  const today = useScheduleToday()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selectedTerm, setSelectedTerm] = useState<SemesterTerm>('semester_1')
+  const [pickedTerm, setPickedTerm] = useState<SemesterTerm | null>(null)
+  const selectedTerm: SemesterTerm = pickedTerm ?? today.upcomingSemester ?? 'semester_1'
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importOnboarding, setImportOnboarding] = useState(false)
@@ -191,17 +341,25 @@ export function SchedulePage() {
   const [clarificationOpen, setClarificationOpen] = useState(false)
   const [clearScheduleOpen, setClearScheduleOpen] = useState(false)
   const [clearingSchedule, setClearingSchedule] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [showSavedCheck, setShowSavedCheck] = useState(false)
+  const [clearError, setClearError] = useState<string | null>(null)
+  const [pageError, setPageError] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
   const [shareCtaDismissed, setShareCtaDismissed] = useState(() => user ? hasDismissedShareCta(user.id) : true)
-  const clearScheduleDialogRef = useDialogAccessibility(clearScheduleOpen, closeClearScheduleDialog, !clearingSchedule)
+  const introHeadingRef = useRef<HTMLHeadingElement | null>(null)
+  const scheduleBoardRef = useRef<HTMLElement | null>(null)
+  const focusIntroAfterClear = useRef(false)
   const onboardingCheckedFor = useRef<string | null>(null)
   const guestTransferStartedFor = useRef<string | null>(null)
   const guestPreviewEnrollments = useMemo(
     () => guestImportResult ? scheduleImportPreviewEnrollments(guestImportResult) : [],
     [guestImportResult],
   )
+  const termIsToday = today.todaySemester === selectedTerm
+  const gridTodayProps = {
+    todayDayType: termIsToday ? today.todayDayType : null,
+    currentPeriod: termIsToday ? today.currentPeriod : null,
+    defaultMobileDay: today.upcomingDayType,
+  }
 
   useEffect(() => {
     setClarification(loadClarification(clarificationOwnerId))
@@ -244,6 +402,14 @@ export function SchedulePage() {
   useEffect(() => {
     setShareCtaDismissed(user ? hasDismissedShareCta(user.id) : true)
   }, [user])
+
+  // The clear button disappears with the last class, so focus moves to the
+  // intro that replaces the grid's contents instead of falling to the page.
+  useEffect(() => {
+    if (!focusIntroAfterClear.current || clearScheduleOpen || schedule.enrollments.length > 0) return
+    focusIntroAfterClear.current = false
+    introHeadingRef.current?.focus()
+  }, [clearScheduleOpen, schedule.enrollments.length])
 
   useEffect(() => {
     if (!user || schedule.loading) return
@@ -312,14 +478,15 @@ export function SchedulePage() {
       clearGuestScheduleImportDraft()
       setGuestImportResult(null)
       rememberOnboarding(user.id, 'completed')
-      setShowSavedCheck(true)
-      setMessage(`Imported schedule saved automatically: ${saved.added} ${saved.added === 1 ? 'class' : 'classes'} added.`)
+      showToast(`Your imported schedule was saved: ${classCount(saved.added)} added.`)
       removeLegacyResumeMarker()
     })().catch((caught: unknown) => {
-      setMessage(caught instanceof Error ? `Your imported schedule is still available, but could not be saved automatically: ${caught.message}` : 'Your imported schedule is still available, but could not be saved automatically.')
+      setPageError(caught instanceof Error
+        ? `Your imported schedule is still here, but it couldn’t be saved automatically: ${caught.message}`
+        : 'Your imported schedule is still here, but it couldn’t be saved automatically.')
       removeLegacyResumeMarker()
     })
-  }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, user])
+  }, [profile?.grade, profile?.onboarding_completed, reloadSchedule, schedule.enrollments.length, schedule.loading, searchParams, setSearchParams, showToast, user])
 
   async function remove(enrollment: ScheduleEnrollment) {
     try {
@@ -328,17 +495,17 @@ export function SchedulePage() {
         await removeEnrollment(enrollment.id)
         await schedule.reload()
       }
-      setMessage(`${enrollment.class.course_name} was removed from your schedule.`)
-      setShowSavedCheck(false)
+      setPageError(null)
+      showToast(`${enrollment.class.course_name} was removed from your schedule.`)
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : 'The class could not be removed from your schedule.')
-      setShowSavedCheck(false)
+      setPageError(caught instanceof Error ? caught.message : 'The class couldn’t be removed from your schedule. Try again.')
     }
   }
 
   async function clearAllClasses() {
     if (clearingSchedule) return
     setClearingSchedule(true)
+    setClearError(null)
     try {
       const removed = isDemo
         ? schedule.enrollments.reduce((count, enrollment) => {
@@ -347,11 +514,11 @@ export function SchedulePage() {
         }, 0)
         : await clearSchedule()
       if (!isDemo) await schedule.reload()
+      focusIntroAfterClear.current = true
       setClearScheduleOpen(false)
-      setShowSavedCheck(false)
-      setMessage(`Schedule cleared: ${removed} ${removed === 1 ? 'class was' : 'classes were'} removed.`)
+      showToast(`Schedule cleared: ${classCount(removed)} removed.`)
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : 'Your schedule could not be cleared.')
+      setClearError(caught instanceof Error ? caught.message : 'Your schedule couldn’t be cleared. Try again.')
     } finally {
       setClearingSchedule(false)
     }
@@ -360,32 +527,17 @@ export function SchedulePage() {
   async function shareSchedule(): Promise<boolean> {
     setSharing(true)
     try {
-      const url = await createScheduleShareUrl()
-      if (isMobileShareDevice() && typeof navigator.share === 'function') {
-        try {
-          await navigator.share({
-            title: scheduleShareTitle,
-            url,
-          })
-          setMessage('Schedule shared.')
-        } catch (caught) {
-          if (caught instanceof DOMException && caught.name === 'AbortError') return false
-          if (caught instanceof Error && caught.name === 'AbortError') return false
-          throw caught
-        }
-      } else {
-        await navigator.clipboard.writeText(url)
-        setMessage('Schedule link copied.')
-      }
-      setShowSavedCheck(false)
+      const result = await shareScheduleLink()
+      if (result === 'cancelled') return false
+      showToast(result === 'shared' ? 'Schedule shared.' : 'Schedule link copied.')
+      setPageError(null)
       if (user) {
         rememberShareCtaDismissal(user.id)
         setShareCtaDismissed(true)
       }
       return true
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : 'The schedule link could not be shared.')
-      setShowSavedCheck(false)
+      setPageError(caught instanceof Error ? caught.message : 'The schedule link couldn’t be shared. Try again.')
       return false
     } finally {
       setSharing(false)
@@ -395,6 +547,11 @@ export function SchedulePage() {
   function dismissShareCta() {
     if (user) rememberShareCtaDismissal(user.id)
     setShareCtaDismissed(true)
+  }
+
+  function openClearScheduleDialog() {
+    setClearError(null)
+    setClearScheduleOpen(true)
   }
 
   function closeClearScheduleDialog() {
@@ -412,38 +569,72 @@ export function SchedulePage() {
     setImportOnboarding(false)
   }
 
-  if (schedule.loading) return <LoadingScreen label="Loading your schedule…" />
+  if (showScheduleSkeleton) return <ScheduleSkeleton />
+
+  const clarificationCallout = clarification
+    ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} onDismiss={finishClarification} />
+    : null
+  const clarificationPrompt = clarification && clarificationPromptOpen
+    ? <ImportIssueChoiceDialog
+      count={clarification.rowIds.length}
+      onFix={() => { setClarificationPromptOpen(false); setClarificationOpen(true) }}
+      onManual={finishClarification}
+    />
+    : null
 
   if (!user) {
     const sharedStudentCount = guestImportResult?.shared_student_count ?? 0
     const hasGuestPreview = guestPreviewEnrollments.length > 0
     return (
-      <div className="schedule-page guest-schedule-page">
-        <header className="page-heading schedule-heading">
-          <div><h1>My Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
-          <div className="schedule-heading-actions">
-            <button className="button button-import" type="button" onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
-            <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}><Plus size={18} aria-hidden="true" /> Add new class</button>
+      <div className="page schedule-page is-guest">
+        <PageHeader
+          title="My schedule"
+          description="Build your schedule and see who shares your classes."
+          actions={hasGuestPreview ? <button className="button button-secondary" type="button" onClick={() => openImport(false)}><ImagePlus aria-hidden="true" />Import screenshot</button> : null}
+        />
+        {clarificationCallout}
+        {!hasGuestPreview ? (
+          <section className="schedule-intro" aria-labelledby="schedule-intro-title">
+            <span className="schedule-intro-icon"><ImagePlus aria-hidden="true" /></span>
+            <div className="schedule-intro-text">
+              <h2 id="schedule-intro-title">Import your schedule</h2>
+              <p>Upload a screenshot of your schedule and ScheduleShare will find your classes. To add classes one at a time, create an account first.</p>
+            </div>
+            <div className="schedule-intro-actions">
+              <button className="button button-primary" type="button" onClick={() => openImport(false)}><ImagePlus aria-hidden="true" />Import screenshot</button>
+              <button className="button button-secondary" type="button" onClick={() => openAccountPrompt('/schedule')}>Create account</button>
+            </div>
+          </section>
+        ) : (
+          <section className="notice schedule-callout is-account" aria-labelledby="schedule-account-title">
+            <Users aria-hidden="true" />
+            <div className="schedule-callout-text">
+              <h2 id="schedule-account-title">See who shares classes with you</h2>
+              <p><strong className="numeric">{sharedStudentCount}</strong> {sharedStudentCount === 1 ? 'student shares' : 'students share'} at least one class with you. Create an account to save this schedule and see who.</p>
+            </div>
+            <div className="schedule-callout-actions">
+              <button className="button button-primary" type="button" onClick={() => {
+                if (guestImportResult) saveGuestScheduleImportDraft(guestImportResult)
+                openAccountPrompt('/schedule')
+              }}>Create account</button>
+            </div>
+          </section>
+        )}
+        <section className="schedule-board" aria-label="Your classes">
+          <div className="schedule-toolbar">
+            <TermSelector value={selectedTerm} onChange={setPickedTerm} />
+            <OpenScheduleSlotsNote enrollments={guestPreviewEnrollments} />
           </div>
-        </header>
-        {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} onDismiss={finishClarification} /> : null}
-        {!hasGuestPreview ? <section className="schedule-import-empty-card guest-import-try-card">
-          <ImagePlus size={34} aria-hidden="true" />
-          <div><h2>Import your schedule</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p></div>
-          <button className="button button-primary" type="button" onClick={() => openImport(false)}>Choose Screenshot</button>
-        </section> : <section className="schedule-share-cta guest-schedule-account-cta">
-          <Users size={34} aria-hidden="true" />
-          <div><h2>See who shares classes with you</h2><p><strong>{sharedStudentCount}</strong> {sharedStudentCount === 1 ? 'student shares' : 'students share'} at least one class with you. Create an account to save this schedule and see who.</p></div>
-          <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" onClick={() => {
-            if (guestImportResult) saveGuestScheduleImportDraft(guestImportResult)
-            openAccountPrompt('/schedule')
-          }}>Create account</button></div>
-        </section>}
-        <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-        <OpenScheduleSlotsNote enrollments={guestPreviewEnrollments} />
-        <div className="schedule-layout">
-          <ScheduleGrid enrollments={guestPreviewEnrollments} selectedTerm={selectedTerm} readOnly={hasGuestPreview} onAdd={() => openAccountPrompt('/schedule')} onRemove={() => undefined} onReplace={() => undefined} />
-        </div>
+          <ScheduleGrid
+            enrollments={guestPreviewEnrollments}
+            selectedTerm={selectedTerm}
+            readOnly={hasGuestPreview}
+            onAdd={() => openAccountPrompt('/schedule')}
+            onRemove={() => undefined}
+            onReplace={() => undefined}
+            {...gridTodayProps}
+          />
+        </section>
         {importOpen ? <ScheduleImportDialog
           open
           isGuest
@@ -475,60 +666,124 @@ export function SchedulePage() {
           onClarificationChange={updateClarification}
           onClarificationResolved={finishClarification}
         /> : null}
-        {clarification && clarificationPromptOpen ? <ImportIssueChoiceDialog
-          count={clarification.rowIds.length}
-          onFix={() => { setClarificationPromptOpen(false); setClarificationOpen(true) }}
-          onManual={finishClarification}
-        /> : null}
+        {clarificationPrompt}
       </div>
     )
   }
 
   const hasSchedule = schedule.enrollments.length > 0
+  const enrollmentCount = schedule.enrollments.length
+  const removeClass = (enrollment: ScheduleEnrollment) => void remove(enrollment)
+  const replaceClass = (enrollment: ScheduleEnrollment, dayType: DayType, period: number) => setActiveCell({ dayType, period, semester: selectedTerm, replacing: enrollment })
+  const importDisabledReason = isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined
+  const onImported = async ({ added, removed }: { added: number; removed: number }) => {
+    await schedule.reload()
+    clearGuestScheduleImportDraft()
+    rememberOnboarding(user.id, 'completed')
+    showToast(importSavedMessage(added, removed))
+  }
+
   return (
-    <div className="schedule-page">
-      <header className="page-heading schedule-heading">
-        <div><h1>My Schedule</h1><p>Build your schedule and find the people in your classes.</p></div>
-        <div className="schedule-heading-actions">
-          <button className="button button-import" type="button" disabled={isDemo} title={isDemo ? 'Connect Supabase to use AI screenshot importing.' : undefined} onClick={() => openImport(false)}><ImagePlus size={18} aria-hidden="true" /> Import schedule</button>
-          <button className="button button-secondary" type="button" disabled={!hasSchedule || sharing} onClick={() => void shareSchedule()}><Share2 size={18} aria-hidden="true" /> {sharing ? 'Sharing…' : 'Share schedule'}</button>
-          <button className="button button-secondary danger-text" type="button" disabled={!hasSchedule || clearingSchedule} onClick={() => setClearScheduleOpen(true)}><Trash2 size={18} aria-hidden="true" /> Clear schedule</button>
+    <div className="page schedule-page">
+      <PageHeader
+        title="My schedule"
+        description="Your A and B day classes, period by period."
+        actions={hasSchedule ? (
+          <>
+            <button className="button button-secondary" type="button" disabled={isDemo} title={importDisabledReason} onClick={() => openImport(false)}><ImagePlus aria-hidden="true" />Import screenshot</button>
+            <button className="button button-secondary" type="button" disabled={sharing} onClick={() => void shareSchedule()}><Share2 aria-hidden="true" />{sharing ? 'Sharing…' : 'Share schedule'}</button>
+          </>
+        ) : null}
+      />
+
+      {clarificationCallout}
+      {pageError ? <ErrorNotice onDismiss={() => setPageError(null)}>{pageError}</ErrorNotice> : null}
+      {schedule.error ? (
+        <ErrorNotice action={<button className="button button-secondary button-sm" type="button" onClick={() => void schedule.reload()}><RefreshCw aria-hidden="true" />Try again</button>}>
+          <strong>Your schedule didn’t load.</strong> {schedule.error}
+        </ErrorNotice>
+      ) : null}
+
+      {!hasSchedule ? (
+        <section className="schedule-intro" aria-labelledby="schedule-intro-title">
+          <span className="schedule-intro-icon"><ImagePlus aria-hidden="true" /></span>
+          <div className="schedule-intro-text">
+            <h2 id="schedule-intro-title" ref={introHeadingRef} tabIndex={-1}>Add your schedule in about a minute</h2>
+            <p>Upload a screenshot of your schedule from the school portal. ScheduleShare reads your classes, and you can fix anything it gets wrong.</p>
+          </div>
+          <ol className="schedule-intro-steps">
+            <li><span className="period-numeral" aria-hidden="true">1</span>Take a screenshot</li>
+            <li><span className="period-numeral" aria-hidden="true">2</span>Check your classes</li>
+            <li><span className="period-numeral" aria-hidden="true">3</span>Find your classmates</li>
+          </ol>
+          <div className="schedule-intro-actions">
+            <button className="button button-primary" type="button" disabled={isDemo} title={importDisabledReason} onClick={() => openImport(false)}><ImagePlus aria-hidden="true" />Import screenshot</button>
+            <button className="button button-secondary" type="button" onClick={() => setActiveCell({ dayType: 'A', period: 1, semester: selectedTerm })}>Enter classes manually</button>
+          </div>
+        </section>
+      ) : null}
+
+      {hasSchedule && !profile?.students_visited_at ? (
+        <section className="notice schedule-callout" aria-labelledby="schedule-discovery-title">
+          <Users aria-hidden="true" />
+          <div className="schedule-callout-text">
+            <h2 id="schedule-discovery-title">See who you share classes with</h2>
+            <p>Every period lists the classmates who are in it with you.</p>
+          </div>
+          <div className="schedule-callout-actions">
+            <Link className="button button-primary button-sm" to="/students">Find classmates</Link>
+          </div>
+        </section>
+      ) : null}
+      {hasSchedule && profile?.students_visited_at && !shareCtaDismissed ? (
+        <section className="notice schedule-callout" aria-labelledby="schedule-share-title">
+          <Share2 aria-hidden="true" />
+          <div className="schedule-callout-text">
+            <h2 id="schedule-share-title">Share your schedule with friends</h2>
+            <p>Send a link that shows your full schedule.</p>
+          </div>
+          <div className="schedule-callout-actions">
+            <button className="button button-primary button-sm" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share link'}</button>
+          </div>
+          <button className="icon-button schedule-callout-dismiss" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X aria-hidden="true" /></button>
+        </section>
+      ) : null}
+
+      <section className="schedule-board" aria-label="Your classes" aria-busy={schedule.loading || undefined} ref={scheduleBoardRef} tabIndex={-1}>
+        <div className="schedule-toolbar">
+          <TermSelector value={selectedTerm} onChange={setPickedTerm} />
+          <OpenScheduleSlotsNote enrollments={schedule.enrollments} />
         </div>
-      </header>
-      {clarification ? <ClarificationCallout count={clarification.rowIds.length} onReview={() => setClarificationOpen(true)} onDismiss={finishClarification} /> : null}
-      {message ? <div className={showSavedCheck ? 'toast-message schedule-save-success' : 'toast-message'} role="status">{showSavedCheck ? <CheckCircle2 className="success-checkmark" aria-hidden="true" /> : null}<span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button></div> : null}
-      {schedule.error ? <div className="notice-box error" role="alert">{schedule.error}</div> : null}
-      {!hasSchedule ? <section className="schedule-import-empty-card">
-        <ImagePlus size={34} aria-hidden="true" />
-        <div><h2>Add your schedule in about a minute</h2><p>Upload screenshots, and ScheduleShare will identify your classes.</p><div className="import-onboarding-flow"><span>Screenshot</span><strong>→</strong><span>Review classes</span><strong>→</strong><span>Find classmates</span></div></div>
-        <div><button className="button button-primary" type="button" disabled={isDemo} onClick={() => openImport(false)}>Choose Screenshot</button><button className="button button-secondary" type="button" onClick={() => setActiveCell({ dayType: 'A', period: 1 })}>Enter Schedule Manually</button></div>
-      </section> : null}
-      {hasSchedule && !profile?.students_visited_at ? <section className="schedule-discovery-callout">
-        <Users aria-hidden="true" />
-        <div><h2>See Who You Share Classes With</h2></div>
-        <Link className="button button-primary" to="/students">Find Classmates</Link>
-      </section> : null}
-      {hasSchedule && profile?.students_visited_at && !shareCtaDismissed ? <section className="schedule-share-cta">
-        <Share2 size={34} aria-hidden="true" />
-        <div><h2>Share your Schedule with friends</h2><p>Send a link that shows your full schedule</p></div>
-        <div className="schedule-share-cta-actions"><button className="button button-primary" type="button" disabled={sharing} onClick={() => void shareSchedule()}>{sharing ? 'Sharing…' : 'Share'}</button><button className="icon-button" type="button" aria-label="Dismiss sharing reminder" onClick={dismissShareCta}><X size={18} aria-hidden="true" /></button></div>
-      </section> : null}
-      <TermSelector value={selectedTerm} onChange={setSelectedTerm} />
-      <OpenScheduleSlotsNote enrollments={schedule.enrollments} />
-      <div className="schedule-layout">
+        <ConflictNotice
+          enrollments={schedule.enrollments}
+          term={selectedTerm}
+          onReplace={replaceClass}
+          onRemove={(enrollment) => {
+            // The button goes away with the class, so keep focus on the schedule.
+            scheduleBoardRef.current?.focus({ preventScroll: true })
+            removeClass(enrollment)
+          }}
+        />
         <ScheduleGrid
           enrollments={schedule.enrollments}
           selectedTerm={selectedTerm}
-          onAdd={(dayType, period) => setActiveCell({ dayType, period })}
-          onRemove={(enrollment) => void remove(enrollment)}
-          onReplace={(enrollment, dayType, period) => setActiveCell({ dayType, period, replacing: enrollment })}
+          onAdd={(dayType, period) => setActiveCell({ dayType, period, semester: selectedTerm })}
+          onRemove={removeClass}
+          onReplace={replaceClass}
+          {...gridTodayProps}
         />
-      </div>
+        {hasSchedule ? (
+          <div className="schedule-board-footer">
+            <button className="button button-ghost schedule-clear-button" type="button" disabled={clearingSchedule} onClick={openClearScheduleDialog}><Trash2 aria-hidden="true" />Clear schedule</button>
+          </div>
+        ) : null}
+      </section>
+
       {activeCell ? <AddClassDialog
         open
         dayType={activeCell.dayType}
         period={activeCell.period}
-        semester={selectedTerm}
+        semester={activeCell.semester}
         replacing={activeCell.replacing}
         onClose={() => setActiveCell(null)}
         onChanged={schedule.reload}
@@ -540,14 +795,8 @@ export function SchedulePage() {
         isAdmin={isAdmin}
         currentEnrollments={schedule.enrollments}
         onClose={closeImport}
-        onManualEntry={() => setActiveCell({ dayType: 'A', period: 1 })}
-        onImported={async ({ added, removed }) => {
-          await schedule.reload()
-          clearGuestScheduleImportDraft()
-          rememberOnboarding(user.id, 'completed')
-          setShowSavedCheck(true)
-          setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
-        }}
+        onManualEntry={() => setActiveCell({ dayType: 'A', period: 1, semester: selectedTerm })}
+        onImported={onImported}
         onNeedsClarification={startClarification}
       /> : null}
       {clarification && clarificationOpen ? <ScheduleImportDialog
@@ -557,27 +806,30 @@ export function SchedulePage() {
         clarificationRowIds={clarification.rowIds}
         currentEnrollments={schedule.enrollments}
         onClose={() => setClarificationOpen(false)}
-        onImported={async ({ added, removed }) => {
-          await schedule.reload()
-          clearGuestScheduleImportDraft()
-          rememberOnboarding(user.id, 'completed')
-          setShowSavedCheck(true)
-          setMessage(`Schedule saved: ${added} ${added === 1 ? 'class' : 'classes'} added and ${removed} prior ${removed === 1 ? 'class' : 'classes'} removed.`)
-        }}
+        onImported={onImported}
         onClarificationChange={updateClarification}
         onClarificationResolved={finishClarification}
       /> : null}
-      {clarification && clarificationPromptOpen ? <ImportIssueChoiceDialog
-        count={clarification.rowIds.length}
-        onFix={() => { setClarificationPromptOpen(false); setClarificationOpen(true) }}
-        onManual={finishClarification}
-      /> : null}
-      {clearScheduleOpen ? <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeClearScheduleDialog() }}>
-        <section className="class-dialog clear-schedule-dialog" ref={clearScheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="clear-schedule-dialog-title" aria-describedby="clear-schedule-dialog-description" tabIndex={-1}>
-          <header><div><h2 id="clear-schedule-dialog-title">Clear your schedule?</h2><p id="clear-schedule-dialog-description">Are you sure? This will remove all {schedule.enrollments.length} {schedule.enrollments.length === 1 ? 'class' : 'classes'} from your schedule. The shared classes themselves will not be deleted.</p></div><button className="icon-button" type="button" aria-label="Close clear schedule confirmation" disabled={clearingSchedule} onClick={closeClearScheduleDialog}><X aria-hidden="true" /></button></header>
-          <div className="form-actions"><button className="button button-secondary" type="button" disabled={clearingSchedule} onClick={closeClearScheduleDialog}>Cancel</button><button className="button button-danger" type="button" disabled={clearingSchedule} onClick={() => void clearAllClasses()}>{clearingSchedule ? 'Clearing…' : 'Yes, clear schedule'}</button></div>
-        </section>
-      </div> : null}
+      {clarificationPrompt}
+      {clearScheduleOpen ? (
+        <Dialog
+          title="Clear your schedule?"
+          description={enrollmentCount === 1 ? 'This removes your 1 class from your schedule.' : `This removes all ${enrollmentCount} classes from your schedule.`}
+          onClose={closeClearScheduleDialog}
+          dismissible={!clearingSchedule}
+          closeLabel="Close clear schedule confirmation"
+          size="small"
+          footer={(
+            <>
+              <button className="button button-secondary" type="button" disabled={clearingSchedule} onClick={closeClearScheduleDialog}>Cancel</button>
+              <button className="button button-danger" type="button" disabled={clearingSchedule} onClick={() => void clearAllClasses()}>{clearingSchedule ? 'Clearing…' : 'Remove all classes'}</button>
+            </>
+          )}
+        >
+          <p className="schedule-dialog-note">The classes stay in the catalog for other students, and you can add yours again any time.</p>
+          {clearError ? <p className="form-error" role="alert"><AlertCircle aria-hidden="true" />{clearError}</p> : null}
+        </Dialog>
+      ) : null}
     </div>
   )
 }

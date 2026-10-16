@@ -3,6 +3,12 @@ import type {
   AdminClassRecord,
   AdminSchoolDayContext,
   AdminClubPromptSettings,
+  AdminHomepageLayoutSettings,
+  AppIssueDetail,
+  AppIssueEvent,
+  AppIssuePage,
+  AppIssueStatus,
+  AppIssueSummary,
   AdminCourseNameRecord,
   AdminReportRecord,
   AdminScheduleEngineJob,
@@ -18,6 +24,7 @@ import type {
   EventLogCategory,
   EventLogRecord,
   GuestStudentResult,
+  HomepageLayout,
   HomepageStatistic,
   HomepageStatisticSettings,
   MeetingSlot,
@@ -43,7 +50,7 @@ import type {
   StudentDirectoryResult,
   SchoolDayContext,
 } from '../domain'
-import { supabase } from './client'
+import { supabase, supabasePublishableKey, supabaseUrl } from './client'
 import type { Json } from './database.types'
 
 function requireClient() {
@@ -994,6 +1001,129 @@ export async function adminUpdateClubPromptSettings(input: Omit<AdminClubPromptS
     p_delay_seconds: input.delay_seconds,
     p_why_scheduleshare_enabled: input.why_scheduleshare_enabled,
   })
+}
+
+export function homepageLayoutFrom(value: unknown): HomepageLayout {
+  return value === 'bell_schedule' ? 'bell_schedule' : 'balanced'
+}
+
+export async function getHomepageLayout(): Promise<HomepageLayout> {
+  return homepageLayoutFrom(await callUntypedRpc('get_homepage_layout'))
+}
+
+export async function adminGetHomepageLayout(): Promise<AdminHomepageLayoutSettings> {
+  const data = await callUntypedRpc('admin_get_homepage_layout')
+  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined
+  if (!row) throw new Error('Homepage layout settings are missing.')
+  return { layout: homepageLayoutFrom(row.layout), updated_at: String(row.updated_at) }
+}
+
+export async function adminUpdateHomepageLayout(layout: HomepageLayout): Promise<void> {
+  await callUntypedRpc('admin_update_homepage_layout', { p_layout: layout })
+}
+
+/**
+ * Sends one scrubbed error report to the bounded issue-store RPC. Uses a
+ * keepalive request (same headers supabase-js sends) so the report survives a
+ * reload or tab close right after a crash.
+ */
+export async function reportAppIssue(payload: object): Promise<void> {
+  const client = requireClient()
+  const { data } = await client.auth.getSession()
+  const bearer = data.session?.access_token ?? supabasePublishableKey
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/report_app_issue`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { apikey: supabasePublishableKey, Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_event: payload }),
+  })
+  if (!response.ok) throw new Error(`issue_report_failed_${response.status}`)
+}
+
+function issueRecord(value: unknown): Record<string, unknown> {
+  return recordFrom(value) ?? {}
+}
+
+function appIssueSummaryFrom(value: unknown): AppIssueSummary {
+  const row = issueRecord(value)
+  const text = (key: string) => (row[key] === null || row[key] === undefined ? null : String(row[key]))
+  return {
+    id: String(row.id),
+    fingerprint: String(row.fingerprint),
+    source: String(row.source) as AppIssueSummary['source'],
+    level: String(row.level) as AppIssueSummary['level'],
+    title: String(row.title),
+    culprit: text('culprit'),
+    status: String(row.status) as AppIssueStatus,
+    event_count: Number(row.event_count ?? 0),
+    user_count: Number(row.user_count ?? 0),
+    first_seen_at: String(row.first_seen_at),
+    last_seen_at: String(row.last_seen_at),
+    first_release: text('first_release'),
+    last_release: text('last_release'),
+    environment: text('environment'),
+    regressed_at: text('regressed_at'),
+  }
+}
+
+function appIssueEventFrom(value: unknown): AppIssueEvent {
+  const row = issueRecord(value)
+  const objectOrEmpty = (item: unknown) => (item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {})
+  return {
+    event_id: String(row.event_id),
+    level: String(row.level) as AppIssueEvent['level'],
+    message: String(row.message ?? ''),
+    exception_type: row.exception_type === null || row.exception_type === undefined ? null : String(row.exception_type),
+    user_id: row.user_id === null || row.user_id === undefined ? null : String(row.user_id),
+    stacktrace: Array.isArray(row.stacktrace) ? row.stacktrace as AppIssueEvent['stacktrace'] : [],
+    breadcrumbs: Array.isArray(row.breadcrumbs) ? row.breadcrumbs as AppIssueEvent['breadcrumbs'] : [],
+    tags: Object.fromEntries(Object.entries(objectOrEmpty(row.tags)).map(([key, item]) => [key, String(item)])),
+    context: objectOrEmpty(row.context),
+    created_at: String(row.created_at),
+  }
+}
+
+export async function adminListAppIssues(input: { status: AppIssueStatus | 'all'; search?: string; limit?: number; offset?: number }): Promise<AppIssuePage> {
+  const data = await callUntypedRpc('admin_list_app_issues', {
+    p_status: input.status,
+    p_search: input.search?.trim() || null,
+    p_limit: input.limit ?? 50,
+    p_offset: input.offset ?? 0,
+  })
+  const rows = Array.isArray(data) ? data : []
+  return {
+    issues: rows.map(appIssueSummaryFrom),
+    total: rows.length > 0 ? Number(issueRecord(rows[0]).total_count ?? rows.length) : 0,
+  }
+}
+
+export async function adminGetAppIssue(issueId: string): Promise<AppIssueDetail> {
+  const data = issueRecord(await callUntypedRpc('admin_get_app_issue', { p_issue_id: issueId }))
+  return { ...appIssueSummaryFrom(data), events: Array.isArray(data.events) ? data.events.map(appIssueEventFrom) : [] }
+}
+
+/** Looks up the issue behind an error reference a student included in a report. */
+export async function adminFindAppIssueByReference(reference: string): Promise<string | null> {
+  const data = await callUntypedRpc('admin_find_app_issue_by_reference', { p_reference: reference.trim().toLowerCase() })
+  return typeof data === 'string' ? data : null
+}
+
+export async function adminUpdateAppIssueStatus(issueId: string, status: AppIssueStatus): Promise<void> {
+  await callUntypedRpc('admin_update_app_issue_status', { p_issue_id: issueId, p_status: status })
+}
+
+export async function adminGetAppIssueSettings(): Promise<{ ingest_enabled: boolean; updated_at: string }> {
+  const data = await callUntypedRpc('admin_get_app_issue_settings')
+  const row = issueRecord(Array.isArray(data) ? data[0] : data)
+  return { ingest_enabled: row.ingest_enabled !== false, updated_at: String(row.updated_at ?? '') }
+}
+
+export async function adminSetAppIssueIngest(enabled: boolean): Promise<void> {
+  await callUntypedRpc('admin_set_app_issue_ingest', { p_enabled: enabled })
+}
+
+export async function adminDeleteAppIssue(issueId: string): Promise<void> {
+  await callUntypedRpc('admin_delete_app_issue', { p_issue_id: issueId })
 }
 
 export async function adminListScheduleImportModels(): Promise<ScheduleImportModelRecord[]> {

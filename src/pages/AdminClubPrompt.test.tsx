@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../components/ui/Toast'
 import { ClubPromptPanel } from './AdminPage'
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +32,7 @@ afterEach(() => {
 describe('admin club invitation settings', () => {
   it('saves the toggle and the delay', async () => {
     const user = userEvent.setup()
-    render(<ClubPromptPanel isDemo={false} />)
+    render(<ToastProvider><ClubPromptPanel isDemo={false} /></ToastProvider>)
 
     const delay = await screen.findByLabelText(/Delay before it appears/)
     expect(delay).toHaveValue(180)
@@ -42,12 +43,12 @@ describe('admin club invitation settings', () => {
     await user.click(screen.getByRole('button', { name: 'Save invitation settings' }))
 
     await waitFor(() => expect(mocks.adminUpdateSettings).toHaveBeenCalledWith({ enabled: true, delay_seconds: 600, why_scheduleshare_enabled: true }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Club invitation and page visibility settings saved.')
+    expect(await screen.findByText('Club invitation and page visibility settings saved.')).toBeInTheDocument()
   })
 
   it('rejects a delay outside the supported range and can disable the popup', async () => {
     const user = userEvent.setup()
-    render(<ClubPromptPanel isDemo={false} />)
+    render(<ToastProvider><ClubPromptPanel isDemo={false} /></ToastProvider>)
 
     const delay = await screen.findByLabelText(/Delay before it appears/)
     await user.clear(delay)
@@ -67,7 +68,7 @@ describe('admin club invitation settings', () => {
 
   it('can take down the Why ScheduleShare page independently of the popup', async () => {
     const user = userEvent.setup()
-    render(<ClubPromptPanel isDemo={false} />)
+    render(<ToastProvider><ClubPromptPanel isDemo={false} /></ToastProvider>)
 
     const pageToggle = await screen.findByRole('checkbox', { name: /Show the Why ScheduleShare page/ })
     await user.click(pageToggle)

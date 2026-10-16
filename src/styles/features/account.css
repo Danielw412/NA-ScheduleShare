@@ -1,0 +1,821 @@
+/*
+ * Account area: sign in, onboarding, password recovery, suspension, profile
+ * settings, reporting, the Why ScheduleShare page, and the club invitations.
+ * Tokens only (see docs/design/system.md).
+ */
+
+/* ---------- Standalone frame (outside the app shell) ---------- */
+.account-standalone {
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding:
+    calc(var(--safe-top) + clamp(var(--space-6), 9vh, var(--space-20)))
+    var(--page-gutter)
+    calc(var(--safe-bottom) + var(--space-10));
+  background: var(--chalk);
+}
+
+.account-standalone-column {
+  display: grid;
+  gap: var(--space-6);
+  width: min(100%, 480px);
+  min-width: 0;
+}
+
+.account-standalone-brand {
+  display: flex;
+  justify-content: center;
+}
+
+.account-standalone-brand .brand-mark {
+  width: 34px;
+  height: 34px;
+}
+
+.account-standalone-panel {
+  display: grid;
+  gap: var(--space-6);
+  padding: clamp(var(--space-6), 5vw, var(--space-8));
+}
+
+.account-standalone-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.account-standalone-header h1,
+.account-standalone-message h1 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+
+.account-standalone-header p {
+  color: var(--slate);
+}
+
+.account-standalone-footer {
+  color: var(--slate);
+  font-size: var(--text-xs);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Status screens: suspension and account load failure. */
+.account-standalone-message {
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.account-standalone-message > p {
+  color: var(--slate);
+}
+
+.account-standalone-message .form-actions {
+  margin-top: var(--space-3);
+}
+
+.account-standalone-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--warning-wash);
+  color: var(--warning-ink);
+}
+
+.account-standalone-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.account-standalone-icon.is-danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.account-suspension-reason {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--danger);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  background: var(--chalk);
+}
+
+.account-suspension-reason h2 {
+  color: var(--slate);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.account-suspension-reason p {
+  overflow-wrap: anywhere;
+}
+
+/* Phones: the form is the whole screen, so drop the card. */
+@media (max-width: 519px) {
+  .account-standalone {
+    background: var(--paper);
+  }
+
+  .account-standalone-column {
+    gap: var(--space-8);
+  }
+
+  .account-standalone-panel {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+}
+
+/* ---------- Choice rows (privacy levels, report targets) ---------- */
+.account-choice-set > legend {
+  margin-bottom: var(--space-3);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.account-choices {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.account-choice {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-4);
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.account-choice + .account-choice {
+  border-top: 1px solid var(--line);
+}
+
+.account-choice:hover {
+  background: var(--chalk);
+}
+
+.account-choice:has(input:checked) {
+  background: var(--gold-wash);
+}
+
+/* The chosen option also gets a gold edge, so selection never relies on tint alone. */
+.account-choice:has(input:checked)::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--gold);
+  content: "";
+}
+
+.account-choice input {
+  margin-top: 1px;
+}
+
+.account-choice-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-choice-text strong {
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+}
+
+.account-choice-text small {
+  color: var(--slate);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.account-choice-icon {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--slate);
+}
+
+.account-choice:has(input:checked) .account-choice-icon {
+  color: var(--gold-ink);
+}
+
+.account-choice-set:disabled .account-choice {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+/* ---------- Sign in / create account ---------- */
+.auth-dialog {
+  position: relative;
+}
+
+.auth-dialog-close {
+  position: absolute;
+  z-index: 1;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.auth-dialog-body {
+  padding: var(--space-8) var(--space-8) var(--space-6);
+}
+
+.auth-form {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.auth-form-header {
+  display: grid;
+  gap: var(--space-2);
+  padding-right: var(--space-8);
+}
+
+.auth-form-mark {
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--space-2);
+}
+
+.auth-form-header h2 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+
+.auth-form-header p {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.auth-form code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.auth-form-google {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.auth-google-button,
+.auth-submit {
+  min-height: 48px;
+  font-size: var(--text-md);
+}
+
+.auth-google-button .auth-google-logo {
+  width: 18px;
+  height: 18px;
+}
+
+.auth-form-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--slate);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.auth-form-divider::before,
+.auth-form-divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.auth-form-fields {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/*
+ * "Forgot password?" follows the password input in the DOM (so Tab reaches
+ * the password first) but is shown at the end of the label row.
+ */
+.auth-password-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+}
+
+.auth-password-field > label {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.auth-password-field > input {
+  grid-column: 1 / -1;
+}
+
+/* Keeps a 44px target without pushing the field down. */
+.auth-forgot-button {
+  grid-row: 1;
+  grid-column: 2;
+  justify-self: end;
+  margin: -12px 0;
+  color: var(--slate);
+  font-weight: 500;
+}
+
+.auth-forgot-button:hover {
+  color: var(--ink);
+}
+
+.auth-submit {
+  margin-top: var(--space-1);
+}
+
+.auth-form-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  color: var(--slate);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+@media (max-width: 639px) {
+  .auth-dialog-body {
+    padding: var(--space-4) var(--space-5) calc(var(--space-5) + var(--safe-bottom));
+  }
+
+  .auth-dialog-close {
+    top: var(--space-4);
+  }
+}
+
+/* ---------- Onboarding ---------- */
+.onboarding-submit {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+}
+
+/* ---------- Profile ---------- */
+.profile-sections,
+.profile-form {
+  display: grid;
+  min-width: 0;
+}
+
+.profile-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-8) 0;
+  border-top: 1px solid var(--line);
+}
+
+.profile-section-intro {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+}
+
+.profile-section-intro p {
+  max-width: 40ch;
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.profile-section-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+  max-width: 600px;
+}
+
+.profile-body-text {
+  color: var(--ink-soft);
+}
+
+.profile-email {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.profile-identity-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-identity-text strong {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  overflow-wrap: anywhere;
+}
+
+.profile-identity-text span {
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.profile-picture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-file-button {
+  cursor: pointer;
+}
+
+/* The real file input is visually hidden inside the label; show its focus on the label. */
+.profile-file-button:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.profile-file-button.is-disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.profile-file-button.is-disabled:hover {
+  border-color: var(--line-strong);
+}
+
+.profile-theme .segmented-option svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (min-width: 640px) {
+  .profile-theme {
+    justify-self: start;
+    min-width: 360px;
+  }
+}
+
+.profile-danger {
+  margin-top: var(--space-6);
+  border-top-color: var(--danger);
+}
+
+.profile-danger .profile-section-intro h2 {
+  color: var(--danger);
+}
+
+.profile-delete-word {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.profile-delete-dialog .notice p {
+  color: var(--ink);
+}
+
+@media (min-width: 900px) {
+  .profile-section {
+    grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
+    gap: var(--space-10);
+  }
+}
+
+/* ---------- Report a problem ---------- */
+.report-form {
+  display: grid;
+  gap: var(--space-8);
+  max-width: 640px;
+  min-width: 0;
+}
+
+.report-target {
+  gap: var(--space-3);
+}
+
+.report-selected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 64px;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--gold-wash);
+}
+
+.report-selected > .button {
+  flex: none;
+  margin-left: auto;
+}
+
+.report-option-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.report-option-text strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-option-text small {
+  overflow: hidden;
+  color: var(--slate);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-slots {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  max-width: 45%;
+}
+
+.report-results {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.report-results:empty {
+  display: none;
+}
+
+.report-results-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.report-results .list {
+  max-height: 22rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.report-option {
+  padding-inline: var(--space-2);
+  cursor: pointer;
+}
+
+.report-optional {
+  color: var(--slate);
+  font-weight: 400;
+}
+
+/* ---------- Why ScheduleShare (long-form) ---------- */
+.why-page {
+  gap: var(--space-12);
+}
+
+.why-header .page-header-text {
+  max-width: 760px;
+}
+
+.why-header h1 {
+  font-size: var(--text-3xl);
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.why-header .page-header-text > p {
+  font-size: var(--text-lg);
+}
+
+/*
+ * .back-link is styled for links; reset the button chrome. The 44px touch
+ * target overhangs by 4px each side so the header keeps its spacing.
+ */
+.why-back {
+  justify-self: start;
+  min-height: 44px;
+  margin-block: -4px calc(var(--space-3) - 4px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.why-reasons {
+  display: grid;
+  max-width: 760px;
+  list-style: none;
+  border-top: 1px solid var(--ink);
+}
+
+.why-reasons li {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-6) 0 var(--space-8);
+  border-bottom: 1px solid var(--line);
+}
+
+.why-reason-number {
+  color: var(--slate);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.why-reasons li > div {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.why-reasons h2 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+
+.why-reasons p {
+  max-width: var(--reading-width);
+  color: var(--ink-soft);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.why-final {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  max-width: 760px;
+}
+
+.why-final h2 {
+  font-size: var(--text-2xl);
+  letter-spacing: -0.025em;
+}
+
+.why-final p {
+  color: var(--slate);
+  font-size: var(--text-lg);
+}
+
+.why-final .form-actions {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 639px) {
+  .why-reasons li {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .why-reasons h2,
+  .why-reason-number {
+    font-size: var(--text-lg);
+  }
+}
+
+/* ---------- Club invitation dialog ---------- */
+.club-dialog-intro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.club-dialog-mark {
+  width: 40px;
+  height: 40px;
+  margin-top: 2px;
+}
+
+.club-dialog-intro > div {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.club-dialog-intro p:first-child {
+  color: var(--ink-soft);
+}
+
+.club-dialog-intro .muted {
+  font-size: var(--text-sm);
+}
+
+.club-dialog .dialog-footer .button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Club visit nudge ---------- */
+.club-nudge {
+  position: fixed;
+  z-index: 50;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  width: min(380px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-4) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  animation: club-nudge-in var(--duration-slow) var(--ease-out) both;
+}
+
+.club-nudge-mark {
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.club-nudge-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--slate);
+  font-size: var(--text-sm);
+}
+
+.club-nudge-title {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.club-nudge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-5);
+}
+
+.club-nudge-actions .inline-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--text-sm);
+}
+
+.club-nudge-close {
+  margin-top: calc(-1 * var(--space-2));
+  color: var(--slate);
+}
+
+/* Above the mobile tab bar, inset from both edges. */
+@media (max-width: 1023px) {
+  .club-nudge {
+    right: var(--space-3);
+    bottom: calc(var(--tabbar-height) + var(--safe-bottom) + var(--space-3));
+    left: var(--space-3);
+    width: auto;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+}
+
+@keyframes club-nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

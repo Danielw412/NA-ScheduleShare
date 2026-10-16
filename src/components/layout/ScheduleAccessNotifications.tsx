@@ -19,7 +19,7 @@ function notificationDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
 }
 
-export function ScheduleAccessNotifications({ userId }: { userId: string }) {
+export function ScheduleAccessNotifications({ userId, variant = 'icon' }: { userId: string; variant?: 'icon' | 'row' }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [bundle, setBundle] = useState<ScheduleAccessNotifications>(emptyNotifications)
@@ -133,7 +133,7 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
   const badgeLabel = bundle.count > 99 ? '99+' : String(bundle.count)
 
   return (
-    <div className="schedule-notifications" ref={rootRef}>
+    <div className={variant === 'row' ? 'schedule-notifications is-row' : 'schedule-notifications'} ref={rootRef}>
       <button
         ref={bellRef}
         aria-controls="schedule-notification-panel"
@@ -144,6 +144,7 @@ export function ScheduleAccessNotifications({ userId }: { userId: string }) {
         onClick={() => { setFeedback(null); setOpen((current) => !current) }}
       >
         <Bell aria-hidden="true" />
+        {variant === 'row' ? <span className="notification-bell-label" aria-hidden="true">Notifications</span> : null}
         {bundle.count > 0 ? <span className="notification-badge">{badgeLabel}</span> : null}
       </button>
       {open ? <button className="notification-sheet-backdrop" type="button" aria-label="Close notifications" onClick={closeAndRestoreFocus} /> : null}

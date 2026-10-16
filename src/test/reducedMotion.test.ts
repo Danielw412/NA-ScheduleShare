@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import styles from '../styles.css?raw'
+import styles from '../styles/base.css?raw'
 
 describe('reduced motion styles', () => {
   it('disables nonessential transforms and shortens transitions when reduced motion is requested', () => {

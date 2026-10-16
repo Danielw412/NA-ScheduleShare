@@ -4,6 +4,7 @@ import { maxCollateralChangesFromEnvironment } from './prediction-engine.js'
 import { createSchedulePolicyPredictionFunction } from './schedule-policy.js'
 import { createScheduleEngineStore } from './supabase-store.js'
 import type { ScheduleEngineStore } from './types.js'
+import { errorSummary, workerIssueEvent, type WorkerFailureReporter } from './observability.js'
 import { processFullQueue, processNextJob } from './worker.js'
 
 function requiredEnvironment(name: string): string {
@@ -47,12 +48,18 @@ export function startControlPanel(options: {
   port: number
   autoProcessInitially?: boolean
   autoProcessIntervalMs?: number
+  /** Reports failed jobs to the issue store (see src/observability.ts). */
+  onFailure?: WorkerFailureReporter
 }) {
   let busy = false
   let autoProcessing = options.autoProcessInitially ?? false
   const logs: string[] = [`${new Date().toISOString()} Control panel started.`]
   const log = (message: string) => { logs.unshift(`${new Date().toISOString()} ${message}`); logs.splice(100) }
-  const workerOptions = { store: options.store, workerId: options.workerId, predict: options.predict, notify: options.notify }
+  const onFailure: WorkerFailureReporter = async (error, context) => {
+    log(`Job ${context.jobId} failed during ${context.stage}: ${errorSummary(error).message}`)
+    await options.onFailure?.(error, context)
+  }
+  const workerOptions = { store: options.store, workerId: options.workerId, predict: options.predict, notify: options.notify, onFailure }
 
   const runAutomaticQueue = async () => {
     if (!autoProcessing || busy) return
@@ -121,6 +128,9 @@ function main() {
   const maxCollateralChanges = maxCollateralChangesFromEnvironment(process.env.SCHEDULE_ENGINE_MAX_COLLATERAL_CHANGES)
   const smtpConfig = smtpNotifierConfigFromEnvironment()
   startControlPanel({ store, workerId, maxCollateralChanges, emailConfigured: smtpConfigured(smtpConfig),
+    onFailure: async (error, context) => {
+      await store.reportIssue(workerIssueEvent(error, { ...context, workerId, release: process.env.APP_RELEASE?.trim() }))
+    },
     predict: createSchedulePolicyPredictionFunction({ maxCollateralChanges }),
     notify: createPredictionReadyNotifier(smtpConfig), port: Number(process.env.SCHEDULE_ENGINE_GUI_PORT || 4174),
     autoProcessInitially: enabledFromEnvironment(process.env.SCHEDULE_ENGINE_AUTO_PROCESS) })

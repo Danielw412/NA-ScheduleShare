@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AddClassDialog } from './AddClassDialog'
@@ -73,7 +73,7 @@ describe('AddClassDialog Lunch defaults', () => {
 
     await user.click(screen.getByText('Lunch - NASH'))
 
-    expect(screen.getByRole('combobox', { name: 'Academic term' })).toHaveValue('full_year')
+    expect(within(screen.getByRole('radiogroup', { name: 'Academic term' })).getByRole('radio', { name: 'Full year' })).toBeChecked()
   })
 
   it('defaults a newly created Lunch section to Full Year', async () => {
@@ -83,6 +83,6 @@ describe('AddClassDialog Lunch defaults', () => {
     await user.click(screen.getByRole('button', { name: 'Create a new class' }))
     await user.click(screen.getByRole('button', { name: 'Lunch - NASH' }))
 
-    expect(screen.getByRole('combobox', { name: 'Academic term' })).toHaveValue('full_year')
+    expect(within(screen.getByRole('radiogroup', { name: 'Academic term' })).getByRole('radio', { name: 'Full year' })).toBeChecked()
   })
 })
