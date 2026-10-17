@@ -4,11 +4,22 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { easternLocalTime } from '../../lib/bellSchedule'
-import type { SchoolDayContext } from '../../lib/domain'
+import type { ScheduleEnrollment, SchoolDayContext } from '../../lib/domain'
 import { BellNowIndicator } from './BellNowIndicator'
 
-const mocks = vi.hoisted(() => ({ useBellSchedule: vi.fn(), retry: vi.fn() }))
+const mocks = vi.hoisted(() => ({ useBellSchedule: vi.fn(), retry: vi.fn(), useAuth: vi.fn(), useSchedule: vi.fn(), reload: vi.fn() }))
 vi.mock('../../features/bell/BellScheduleProvider', () => ({ useBellSchedule: mocks.useBellSchedule }))
+vi.mock('../../features/auth/AuthProvider', () => ({ useAuth: mocks.useAuth }))
+vi.mock('../../hooks/useSchedule', () => ({ useSchedule: mocks.useSchedule }))
+
+function enrollment(courseName: string, period: number): ScheduleEnrollment {
+  const slots = [{ day_type: 'A' as const, period_number: period }]
+  return {
+    id: `${courseName}-enrollment`, class_id: `${courseName}-class`, student_id: 'student-1', academic_term: 'full_year', active: true,
+    created_at: '', updated_at: '', meeting_slots: slots,
+    class: { id: `${courseName}-class`, course_name_id: `${courseName}-course`, course_name: courseName, teacher_last_name: 'Teacher', default_academic_term: 'full_year', is_double_period: false, meeting_slots: slots },
+  }
+}
 
 const today: SchoolDayContext = {
   date: '2026-08-24', campus: 'NASH', day_type: 'A', semester: 'semester_1', no_school: false, source: 'default',
@@ -29,6 +40,8 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(easternLocalTime('2026-08-24', '07:48'))
   mocks.useBellSchedule.mockReturnValue({ days: [today], status: 'ready', retry: mocks.retry })
+  mocks.useAuth.mockReturnValue({ user: null })
+  mocks.useSchedule.mockReturnValue({ enrollments: [], reload: mocks.reload })
 })
 
 afterEach(() => {
@@ -54,7 +67,16 @@ describe('BellNowIndicator', () => {
     expect(link).toHaveTextContent('Right now')
   })
 
-  it('points to the next school day once school is out', () => {
+  it('counts down to the student’s next class by name', () => {
+    vi.setSystemTime(easternLocalTime('2026-08-24', '07:20'))
+    mocks.useAuth.mockReturnValue({ user: { id: 'student-1' } })
+    mocks.useSchedule.mockReturnValue({ enrollments: [enrollment('English', 1)], reload: mocks.reload })
+    renderIndicator('sidebar')
+    const link = screen.getByRole('link', { name: /Before school\. 8:00 until English\. Period 1 starts at 7:28 AM/ })
+    expect(link).toHaveTextContent('until English')
+  })
+
+    it('points to the next school day once school is out', () => {
     vi.setSystemTime(easternLocalTime('2026-08-24', '15:00'))
     mocks.useBellSchedule.mockReturnValue({ days: [today, { ...today, date: '2026-08-25' }], status: 'ready', retry: mocks.retry })
     renderIndicator('sidebar')

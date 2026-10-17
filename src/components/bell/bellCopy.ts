@@ -1,7 +1,9 @@
+import type { ScheduleEnrollment } from '../../lib/domain'
 import {
   daysFromToday,
   blockMark,
   blockTitle,
+  coursesAtBlock,
   formatCountdown,
   formatEasternDayLabel,
   formatEasternTime,
@@ -26,7 +28,26 @@ export interface BellNowCopy {
   live: boolean
 }
 
-export function describeBellNow(bell: BellNow, now: Date): BellNowCopy {
+/**
+ * The student's class during the current or next bell: course names, "No
+ * class" for a free period, or null when it can't be known (guests, non-class
+ * blocks, or no A/B day).
+ */
+export function courseLine(bell: BellNow, enrollments: ScheduleEnrollment[] | undefined, which: 'current' | 'next'): string | null {
+  const block = which === 'current' ? bell.current : bell.next
+  // Without an A/B day the student's class for a period is unknown; say nothing
+  // rather than "No class".
+  if (!enrollments || !bell.day || !block || block.kind !== 'class' || bell.day.day_type === null) return null
+  const courses = coursesAtBlock(bell.day, block, enrollments)
+  if (courses.length > 0) return courses.map((course) => course.class.course_name).join(' / ')
+  return enrollments.some((enrollment) => enrollment.active) ? 'No class' : null
+}
+
+/**
+ * @param nextCourse The student's class at the next bell, so the countdown
+ * reads "until Chemistry" rather than "until Period 3".
+ */
+export function describeBellNow(bell: BellNow, now: Date, nextCourse?: string | null): BellNowCopy {
   const remaining = bell.remainingMs
   const countdown = remaining !== null && remaining < LIVE_COUNTDOWN_THRESHOLD_MS ? formatCountdown(remaining) : null
 
@@ -44,12 +65,13 @@ export function describeBellNow(bell: BellNow, now: Date): BellNowCopy {
 
   if ((bell.state === 'passing' || bell.state === 'before_school') && bell.next && bell.targetAt) {
     const nextTitle = blockTitle(bell.next)
+    const countdownTarget = nextCourse && nextCourse !== 'No class' ? nextCourse : nextTitle
     return {
       mark: blockMark(bell.next),
       title: bell.state === 'passing' ? 'Passing time' : 'Before school',
       detail: `${nextTitle} starts at ${formatEasternTime(bell.targetAt)}`,
       countdown,
-      countdownCaption: countdown ? `until ${nextTitle}` : null,
+      countdownCaption: countdown ? `until ${countdownTarget}` : null,
       compact: `${nextTitle} at ${formatEasternTime(bell.targetAt)}`,
       live: countdown !== null,
     }
