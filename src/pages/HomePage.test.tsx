@@ -158,6 +158,7 @@ describe('HomePage balanced layout', () => {
     renderPage()
     const strip = await screen.findByRole('link', { name: /Period 1/ })
     expect(strip).toHaveTextContent('No class now. Chemistry starts at 8:25 AM')
+    expect(strip).toHaveAccessibleName(/Time until Chemistry: ?37:00/)
   })
 
   it('does not show an incorrect schedule action while the signed-in schedule is loading', async () => {
@@ -277,7 +278,16 @@ describe('HomePage bell-focused layout', () => {
     expect(board).not.toHaveTextContent('Then')
   })
 
-  it('names a non-class block and counts down to its end', async () => {
+  it('counts down to the student’s next class by name between bells', async () => {
+    vi.setSystemTime(easternLocalTime('2026-08-24', '08:22'))
+    signIn([enrollment('Chemistry', 2)])
+    renderPage()
+    const board = await screen.findByRole('region', { name: 'Passing time' })
+    expect(board).toHaveTextContent('3:00until Chemistry')
+    expect(within(board).getByRole('progressbar', { name: 'Time until Chemistry' })).toBeInTheDocument()
+  })
+
+    it('names a non-class block and counts down to its end', async () => {
     vi.setSystemTime(easternLocalTime('2026-08-24', '08:10'))
     signIn([enrollment('AP Psychology', 1)])
     renderPage()

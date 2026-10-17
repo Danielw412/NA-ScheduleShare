@@ -5,7 +5,6 @@ import {
   blockMark,
   blockTimes,
   blockTitle,
-  coursesAtBlock,
   easternDateKey,
   formatCountdown,
   formatEasternTime,
@@ -14,7 +13,7 @@ import {
   type BellNow,
   type NextClassTiming,
 } from '../../lib/bellSchedule'
-import { describeBellNow } from './bellCopy'
+import { courseLine, describeBellNow } from './bellCopy'
 
 interface NowBoardProps {
   bell: BellNow
@@ -26,24 +25,14 @@ interface NowBoardProps {
   variant: 'hero' | 'strip'
 }
 
-function courseLine(bell: BellNow, enrollments: ScheduleEnrollment[] | undefined, which: 'current' | 'next'): string | null {
-  const block = which === 'current' ? bell.current : bell.next
-  // Without an A/B day the student's class for a period is unknown; say nothing
-  // rather than "No class".
-  if (!enrollments || !bell.day || !block || block.kind !== 'class' || bell.day.day_type === null) return null
-  const courses = coursesAtBlock(bell.day, block, enrollments)
-  if (courses.length > 0) return courses.map((course) => course.class.course_name).join(' / ')
-  return enrollments.some((enrollment) => enrollment.active) ? 'No class' : null
-}
-
 /**
  * The live state of the school day. As the homepage hero it is the largest
  * thing on screen; as a strip it is a single tappable line.
  */
 export function NowBoard({ bell, now, enrollments, nextClass, variant }: NowBoardProps) {
-  const copy = describeBellNow(bell, now)
   const currentCourse = courseLine(bell, enrollments, 'current')
   const nextCourse = courseLine(bell, enrollments, 'next')
+  const copy = describeBellNow(bell, now, nextCourse)
   const progress = bell.progressPercent
   const live = copy.live
   const showsNextRow = bell.state === 'in_block' && bell.next && bell.day
@@ -60,6 +49,7 @@ export function NowBoard({ bell, now, enrollments, nextClass, variant }: NowBoar
         course: nextClass.courseName,
         startsAt: nextClass.targetAt,
         countdown: nextClass.remainingMs !== null && nextClass.remainingMs < LIVE_COUNTDOWN_THRESHOLD_MS ? formatCountdown(nextClass.remainingMs) : null,
+        progress: nextClass.progressPercent,
         block: orderedBlocks(bell.day).find((block) => blockTimes(bell.day!, block).start.getTime() === nextClass.targetAt!.getTime()) ?? null,
       }
     : null
@@ -76,6 +66,10 @@ export function NowBoard({ bell, now, enrollments, nextClass, variant }: NowBoar
         : upcoming && nextCourse && nextCourse !== 'No class' && bell.targetAt
           ? `${nextCourse} starts at ${formatEasternTime(bell.targetAt)}`
           : copy.detail
+    // When the detail names a later class, the countdown is to that class.
+    const countdown = personal ? personal.countdown : copy.countdown
+    const countdownCaption = personal ? `until ${personal.course}` : copy.countdownCaption
+    const stripProgress = personal ? personal.progress : progress
     return (
       <Link className={live ? 'now-strip is-live' : 'now-strip'} to="/bell" viewTransition>
         {copy.mark ? <span className={live ? 'period-numeral is-now' : 'period-numeral'} aria-hidden="true">{copy.mark}</span> : null}
@@ -83,9 +77,9 @@ export function NowBoard({ bell, now, enrollments, nextClass, variant }: NowBoar
           <strong>{headline}</strong>
           <small>{detail}</small>
         </span>
-        {copy.countdown ? <span className="now-strip-count numeric"><span className="sr-only">Time remaining: </span>{copy.countdown}</span> : null}
+        {countdown ? <span className="now-strip-count numeric"><span className="sr-only">{`Time ${countdownCaption ?? 'remaining'}: `}</span>{countdown}</span> : null}
         <ChevronRight className="now-strip-chevron" aria-hidden="true" />
-        {progress !== null ? <span className="now-strip-progress" aria-hidden="true"><span style={{ inlineSize: `${progress}%` }} /></span> : null}
+        {stripProgress !== null ? <span className="now-strip-progress" aria-hidden="true"><span style={{ inlineSize: `${stripProgress}%` }} /></span> : null}
       </Link>
     )
   }
@@ -117,7 +111,7 @@ export function NowBoard({ bell, now, enrollments, nextClass, variant }: NowBoar
         <div
           className="now-board-progress"
           role="progressbar"
-          aria-label={bell.state === 'in_block' ? `${copy.title} progress` : 'Time until the next bell'}
+          aria-label={bell.state === 'in_block' ? `${copy.title} progress` : `Time ${copy.countdownCaption ?? 'until the next bell'}`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress)}

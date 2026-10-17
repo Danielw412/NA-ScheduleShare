@@ -1,9 +1,12 @@
 import { RefreshCw } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { useAuth } from '../../features/auth/AuthProvider'
 import { useBellSchedule } from '../../features/bell/BellScheduleProvider'
 import { useNow } from '../../hooks/useNow'
+import { useSchedule } from '../../hooks/useSchedule'
 import { resolveBellNow } from '../../lib/bellSchedule'
-import { describeBellNow } from './bellCopy'
+import { courseLine, describeBellNow } from './bellCopy'
 
 /**
  * The live bell, always one glance away: a panel at the foot of the desktop
@@ -11,7 +14,18 @@ import { describeBellNow } from './bellCopy'
  */
 export function BellNowIndicator({ variant }: { variant: 'sidebar' | 'pill' }) {
   const { days, status, retry } = useBellSchedule()
+  const { user } = useAuth()
+  const { enrollments, reload } = useSchedule()
+  const { pathname } = useLocation()
+  const loadedPath = useRef(pathname)
   const now = useNow(1000)
+
+  // The shell outlives pages, so pick up schedule edits on the next navigation.
+  useEffect(() => {
+    if (loadedPath.current === pathname) return
+    loadedPath.current = pathname
+    void reload()
+  }, [pathname, reload])
 
   if (status === 'loading') {
     return variant === 'pill'
@@ -26,7 +40,7 @@ export function BellNowIndicator({ variant }: { variant: 'sidebar' | 'pill' }) {
   }
 
   const bell = resolveBellNow(now, days)
-  const copy = describeBellNow(bell, now)
+  const copy = describeBellNow(bell, now, courseLine(bell, user ? enrollments : undefined, 'next'))
   const label = [copy.title, copy.countdown ? `${copy.countdown} ${copy.countdownCaption ?? ''}`.trim() : null, copy.detail, 'Open bell schedule'].filter(Boolean).join('. ')
   const progress = bell.progressPercent
 
